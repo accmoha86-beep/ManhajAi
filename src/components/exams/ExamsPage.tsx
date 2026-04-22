@@ -151,7 +151,16 @@ export default function ExamsPage() {
       });
       const json = await res.json();
       if (res.ok && json.result) {
-        setResult(json.result);
+        // Map RPC field names to component field names
+        const r = json.result;
+        setResult({
+          score: r.score,
+          total_questions: r.total || r.total_questions || questions.length,
+          correct_answers: r.correct ?? r.correct_answers ?? 0,
+          points_earned: r.points_earned || 0,
+          time_taken: r.time_taken || timer,
+          answers: r.answers || [],
+        });
         setView("result");
       } else {
         setError(json.error || "فشل في تقديم الامتحان");
