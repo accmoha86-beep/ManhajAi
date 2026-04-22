@@ -64,16 +64,16 @@ export default function Sidebar() {
           border: 'none',
           cursor: 'pointer',
           fontFamily: "'Cairo', sans-serif",
-          fontSize: '0.85rem',
-          fontWeight: active ? 700 : 500,
+          fontSize: '0.9rem',
+          fontWeight: active ? 700 : 600,
           background: active
-            ? 'linear-gradient(135deg, var(--theme-primary), var(--theme-secondary))'
+            ? 'var(--theme-sidebar-active-gradient)'
             : 'transparent',
-          color: active ? '#fff' : 'var(--theme-text-secondary)',
+          color: active ? '#fff' : 'var(--theme-sidebar-text)',
           transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
           justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
           whiteSpace: 'nowrap',
-          boxShadow: active ? '0 4px 15px rgba(0,0,0,0.2)' : 'none',
+          boxShadow: active ? '0 4px 15px rgba(0,0,0,0.25)' : 'none',
           position: 'relative',
           overflow: 'hidden',
           width: '100%',
@@ -133,11 +133,11 @@ export default function Sidebar() {
         width: sidebarWidth,
         zIndex: 1000,
         background: 'var(--theme-sidebar-bg)',
-        borderLeft: '1px solid var(--theme-border)',
+        borderLeft: '1px solid var(--theme-sidebar-border)',
         display: 'flex',
         flexDirection: 'column',
         transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        boxShadow: '-4px 0 25px rgba(0,0,0,0.12)',
+        boxShadow: '-4px 0 25px rgba(0,0,0,0.15)',
         overflow: 'hidden',
       }}
     >
@@ -148,8 +148,8 @@ export default function Sidebar() {
         className="flex items-center justify-center h-10 border-none cursor-pointer"
         style={{
           background: 'transparent',
-          color: 'var(--theme-text-secondary)',
-          borderBottom: '1px solid var(--theme-border)',
+          color: 'var(--theme-sidebar-text)',
+          borderBottom: '1px solid var(--theme-sidebar-border)',
         }}
       >
         <ChevronLeft
@@ -167,12 +167,12 @@ export default function Sidebar() {
           <div
             className="font-cairo"
             style={{
-              fontSize: '0.65rem',
+              fontSize: '0.7rem',
               fontWeight: 700,
-              color: 'var(--theme-text-secondary)',
-              opacity: 0.6,
+              color: 'var(--theme-sidebar-text-muted)',
               padding: '0.5rem 0.85rem 0.3rem',
               letterSpacing: '0.04em',
+              textTransform: 'uppercase',
             }}
           >
             القائمة
@@ -186,7 +186,7 @@ export default function Sidebar() {
           className="mx-2 my-[0.6rem]"
           style={{
             height: '1px',
-            background: 'var(--theme-border)',
+            background: 'var(--theme-sidebar-border)',
           }}
         />
 
@@ -195,12 +195,12 @@ export default function Sidebar() {
           <div
             className="font-cairo"
             style={{
-              fontSize: '0.65rem',
+              fontSize: '0.7rem',
               fontWeight: 700,
-              color: 'var(--theme-text-secondary)',
-              opacity: 0.6,
+              color: 'var(--theme-sidebar-text-muted)',
               padding: '0.5rem 0.85rem 0.3rem',
               letterSpacing: '0.04em',
+              textTransform: 'uppercase',
             }}
           >
             صفحات الموقع

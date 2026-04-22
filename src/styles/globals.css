@@ -28,7 +28,14 @@
   --theme-surface-bg: #FFFFFF;
   --theme-surface-border: #E5E7EB;
   --theme-nav-bg: rgba(255,255,255,0.92);
+
+  /* Sidebar — dark blue matching topbar blue/purple */
   --theme-sidebar-bg: #1E293B;
+  --theme-sidebar-text: #E2E8F0;
+  --theme-sidebar-text-muted: rgba(226,232,240,0.5);
+  --theme-sidebar-border: #334155;
+  --theme-sidebar-hover: rgba(59,130,246,0.15);
+  --theme-sidebar-active-gradient: linear-gradient(135deg, #3B82F6, #7C3AED);
 
   --theme-text-primary: #111827;
   --theme-text-secondary: #4B5563;
@@ -83,7 +90,14 @@
   --theme-surface-bg: #1A2E1A;
   --theme-surface-border: #2E4A2E;
   --theme-nav-bg: rgba(15,26,15,0.95);
-  --theme-sidebar-bg: #0A120A;
+
+  /* Sidebar — deep green with gold accents, matching topbar green→gold */
+  --theme-sidebar-bg: #0A150A;
+  --theme-sidebar-text: #F5F5DC;
+  --theme-sidebar-text-muted: rgba(250,204,21,0.5);
+  --theme-sidebar-border: #1B3A1B;
+  --theme-sidebar-hover: rgba(212,160,23,0.12);
+  --theme-sidebar-active-gradient: linear-gradient(135deg, #1B5E20, #D4A017);
 
   --theme-text-primary: #F5F5DC;
   --theme-text-secondary: #C8D6A0;
@@ -138,7 +152,14 @@
   --theme-surface-bg: #FFFFFF;
   --theme-surface-border: #FED7AA;
   --theme-nav-bg: rgba(255,247,237,0.95);
+
+  /* Sidebar — dark red/brown matching topbar red */
   --theme-sidebar-bg: #7C2D12;
+  --theme-sidebar-text: #FEF2F2;
+  --theme-sidebar-text-muted: rgba(254,202,202,0.6);
+  --theme-sidebar-border: #9A3412;
+  --theme-sidebar-hover: rgba(220,38,38,0.2);
+  --theme-sidebar-active-gradient: linear-gradient(135deg, #DC2626, #EA580C);
 
   --theme-text-primary: #1C1917;
   --theme-text-secondary: #57534E;
@@ -193,7 +214,14 @@
   --theme-surface-bg: #FFFFFF;
   --theme-surface-border: #BBF7D0;
   --theme-nav-bg: rgba(240,253,244,0.95);
+
+  /* Sidebar — dark emerald matching topbar green */
   --theme-sidebar-bg: #14532D;
+  --theme-sidebar-text: #ECFDF5;
+  --theme-sidebar-text-muted: rgba(187,247,208,0.55);
+  --theme-sidebar-border: #166534;
+  --theme-sidebar-hover: rgba(16,185,129,0.2);
+  --theme-sidebar-active-gradient: linear-gradient(135deg, #059669, #0D9488);
 
   --theme-text-primary: #14532D;
   --theme-text-secondary: #166534;
@@ -248,7 +276,14 @@
   --theme-surface-bg: #1E293B;
   --theme-surface-border: #334155;
   --theme-nav-bg: rgba(15,23,42,0.95);
-  --theme-sidebar-bg: #0F172A;
+
+  /* Sidebar — deep navy matching topbar indigo */
+  --theme-sidebar-bg: #0C1222;
+  --theme-sidebar-text: #E2E8F0;
+  --theme-sidebar-text-muted: rgba(165,180,252,0.5);
+  --theme-sidebar-border: #1E293B;
+  --theme-sidebar-hover: rgba(99,102,241,0.15);
+  --theme-sidebar-active-gradient: linear-gradient(135deg, #6366F1, #7C3AED);
 
   --theme-text-primary: #F1F5F9;
   --theme-text-secondary: #94A3B8;
@@ -490,7 +525,7 @@
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 .sidebar-item:hover {
-  background: var(--theme-hover-overlay) !important;
+  background: var(--theme-sidebar-hover) !important;
   transform: translateX(-3px);
 }
 .sidebar-item-active {
