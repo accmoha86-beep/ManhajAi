@@ -43,25 +43,31 @@ export async function getAuthUser(
     }
 
     const supabase = await createServerSupabaseClient();
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, full_name, phone, role, is_verified')
-      .eq('id', payload.sub)
-      .single();
+    const { data: userData, error } = await supabase.rpc('get_auth_user', {
+      p_user_id: payload.sub,
+    });
 
-    if (error || !user) {
+    if (error || !userData) {
       return err('المستخدم غير موجود');
     }
 
-    if (!user.is_verified) {
+    if (userData.error === 'not_found') {
+      return err('المستخدم غير موجود');
+    }
+
+    if (userData.error === 'banned') {
+      return err('تم حظر الحساب');
+    }
+
+    if (!userData.is_verified) {
       return err('الحساب غير مُفعّل');
     }
 
     return ok({
-      id: user.id,
-      fullName: user.full_name,
-      phone: user.phone,
-      role: user.role as 'student' | 'admin',
+      id: userData.id,
+      fullName: userData.full_name,
+      phone: userData.phone,
+      role: userData.role as 'student' | 'admin',
     });
   } catch {
     return err('انتهت صلاحية الجلسة. يرجى تسجيل الدخول مرة أخرى');
