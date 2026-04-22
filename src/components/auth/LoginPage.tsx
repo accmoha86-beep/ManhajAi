@@ -59,7 +59,9 @@ export default function LoginPage() {
         },
         data.token
       );
-      router.push('/dashboard');
+      // Use full page reload to ensure cookie is sent with next request
+      const redirect = new URLSearchParams(window.location.search).get('redirect') || '/dashboard';
+      window.location.href = redirect;
     } catch {
       setError('فشل الاتصال بالخادم');
       setLoading(false);

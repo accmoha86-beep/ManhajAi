@@ -2,7 +2,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
+// Lazy JWT secret getter (avoids top-level env read issues)
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('JWT_SECRET env var is not set!');
+    return null;
+  }
+  return new TextEncoder().encode(secret);
+}
 
 // Routes that require authentication
 const PROTECTED_ROUTES = [
@@ -53,15 +61,19 @@ export async function middleware(request: NextRequest) {
     request.cookies.get('auth-token')?.value ??
     request.headers.get('Authorization')?.replace('Bearer ', '');
 
-  let user: { sub: string; phone: string; role: string } | null = null;
+  let user: { userId?: string; sub?: string; phone: string; role: string } | null = null;
 
   if (token) {
-    try {
-      const { payload } = await jwtVerify(token, JWT_SECRET);
-      user = payload as unknown as { sub: string; phone: string; role: string };
-    } catch {
-      // Token invalid or expired — treat as unauthenticated
-      user = null;
+    const jwtSecret = getJwtSecret();
+    if (jwtSecret) {
+      try {
+        const { payload } = await jwtVerify(token, jwtSecret);
+        user = payload as unknown as { userId?: string; sub?: string; phone: string; role: string };
+      } catch (err) {
+        // Token invalid or expired — treat as unauthenticated
+        console.error('JWT verification failed:', err instanceof Error ? err.message : 'unknown');
+        user = null;
+      }
     }
   }
 
