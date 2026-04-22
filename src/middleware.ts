@@ -13,6 +13,8 @@ const PROTECTED_ROUTES = [
   '/profile',
   '/subscription',
   '/leaderboard',
+  '/certificates',
+  '/settings',
 ];
 
 // Routes that require admin role
