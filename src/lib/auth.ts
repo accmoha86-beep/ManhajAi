@@ -1,11 +1,9 @@
-// lib/auth.ts — Server-side auth helper for API routes
 import { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 import type { Result } from '@/lib/result';
 import { ok, err } from '@/lib/result';
 import { createServerSupabaseClient } from '@/infrastructure/supabase/server';
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
+import { getSecret } from '@/lib/secrets';
 
 export interface AuthenticatedUser {
   id: string;
@@ -14,14 +12,20 @@ export interface AuthenticatedUser {
   fullName: string;
 }
 
-/**
- * Extract and verify the authenticated user from a request.
- * Checks cookie first, then Authorization header.
- */
+async function getJwtSecret(): Promise<Uint8Array> {
+  // Try env var first, then DB
+  const envSecret = process.env.JWT_SECRET;
+  if (envSecret) return new TextEncoder().encode(envSecret);
+  
+  const dbSecret = await getSecret('jwt_secret');
+  if (dbSecret) return new TextEncoder().encode(dbSecret);
+  
+  throw new Error('JWT_SECRET not configured');
+}
+
 export async function getAuthUser(
   request: NextRequest
 ): Promise<Result<AuthenticatedUser>> {
-  // Get token from cookie or Authorization header
   const token =
     request.cookies.get('auth-token')?.value ??
     request.headers.get('Authorization')?.replace('Bearer ', '');
@@ -31,13 +35,13 @@ export async function getAuthUser(
   }
 
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const secret = await getJwtSecret();
+    const { payload } = await jwtVerify(token, secret);
 
     if (!payload.sub) {
       return err('رمز المصادقة غير صالح');
     }
 
-    // Fetch fresh user data from DB
     const supabase = await createServerSupabaseClient();
     const { data: user, error } = await supabase
       .from('users')

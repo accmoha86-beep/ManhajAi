@@ -1,42 +1,37 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-// Cache secrets in memory for 5 minutes to reduce DB calls
-const secretsCache: Map<string, { value: string; expiry: number }> = new Map();
+const secretsCache: Record<string, { value: string; expires: number }> = {};
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
 
 export async function getSecret(key: string): Promise<string | null> {
   // Check cache first
-  const cached = secretsCache.get(key);
-  if (cached && Date.now() < cached.expiry) {
+  const cached = secretsCache[key];
+  if (cached && Date.now() < cached.expires) {
     return cached.value;
   }
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data, error } = await supabase.rpc('get_system_secret', { p_key: key });
+    const supabase = getSupabase();
+    if (!supabase) return null;
     
-    if (error) {
-      console.error(`Error fetching secret ${key}:`, error.message);
-      // Fallback to env var
-      return process.env[key.toUpperCase()] || null;
-    }
-
-    const value = data as string;
-    if (value) {
-      secretsCache.set(key, { value, expiry: Date.now() + CACHE_TTL });
-    }
-    return value || null;
-  } catch (err) {
-    console.error(`Failed to fetch secret ${key}:`, err);
-    // Fallback to env var
-    return process.env[key.toUpperCase()] || null;
+    const { data, error } = await supabase.rpc('get_system_secret', { secret_key: key });
+    if (error || !data) return null;
+    
+    // Cache the value
+    secretsCache[key] = { value: data, expires: Date.now() + CACHE_TTL };
+    return data;
+  } catch {
+    return null;
   }
 }
 
-// Clear cache (useful when admin updates a key)
 export function clearSecretsCache() {
-  secretsCache.clear();
+  Object.keys(secretsCache).forEach(key => delete secretsCache[key]);
 }

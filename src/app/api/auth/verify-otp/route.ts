@@ -5,14 +5,20 @@ import { SignJWT } from 'jose';
 import { createServerSupabaseClient } from '@/infrastructure/supabase/server';
 import { validatePhone } from '@/domain/auth';
 import { isOTPExpired } from '@/infrastructure/whatsapp/client';
+import { getSecret } from '@/lib/secrets';
 
 const VerifyOTPSchema = z.object({
   phone: z.string(),
   code: z.string().length(4, 'رمز التحقق يجب أن يكون 4 أرقام'),
 });
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
+
 const JWT_EXPIRY = '30d';
+
+async function getJwtSecretKey(): Promise<Uint8Array> {
+  const secret = process.env.JWT_SECRET || await getSecret('jwt_secret') || 'fallback-secret';
+  return new TextEncoder().encode(secret);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -103,7 +109,7 @@ export async function POST(request: NextRequest) {
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime(JWT_EXPIRY)
-      .sign(JWT_SECRET);
+      .sign(await getJwtSecretKey());
 
     // Set token in HTTP-only cookie
     const response = NextResponse.json({

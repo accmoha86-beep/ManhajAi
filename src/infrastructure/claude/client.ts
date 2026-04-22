@@ -5,9 +5,11 @@ import { ok, err } from '@/lib/result';
 import type { Question } from '@/types';
 import { buildSummaryPrompt, buildQuestionBankPrompt } from '@/domain/ai';
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+function getClient() {
+  return new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY!,
+  });
+}
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 const DEFAULT_MAX_TOKENS = 4096;
@@ -23,7 +25,7 @@ export async function chat(params: {
   Result<{ content: string; inputTokens: number; outputTokens: number }>
 > {
   try {
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: DEFAULT_MODEL,
       max_tokens: params.maxTokens ?? DEFAULT_MAX_TOKENS,
       system: params.systemPrompt,
@@ -69,7 +71,7 @@ export async function generateSummary(
   try {
     const prompt = buildSummaryPrompt(lessonTitle, pdfText);
 
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: DEFAULT_MODEL,
       max_tokens: 8192,
       system:
@@ -113,7 +115,7 @@ export async function generateQuestions(
   try {
     const prompt = buildQuestionBankPrompt(lessonTitle, summary);
 
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: DEFAULT_MODEL,
       max_tokens: 8192,
       system:
