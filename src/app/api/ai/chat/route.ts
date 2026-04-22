@@ -1,46 +1,29 @@
-// app/api/ai/chat/route.ts — AI chat endpoint
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { createServerSupabaseClient } from '@/infrastructure/supabase/server';
 import { chat } from '@/infrastructure/claude/client';
 import { buildChatSystemPrompt, canSendMessage, estimateCost } from '@/domain/ai';
 import { getAuthUser } from '@/lib/auth';
 
-const ChatSchema = z.object({
-  subjectId: z.string().uuid('معرف المادة غير صالح'),
-  message: z
-    .string()
-    .min(1, 'الرسالة مطلوبة')
-    .max(2000, 'الرسالة طويلة جدًا (الحد الأقصى 2000 حرف)'),
-});
-
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate user
     const authResult = await getAuthUser(request);
     if (!authResult.ok) {
-      return NextResponse.json(
-        { error: authResult.error },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
     const user = authResult.data;
-
     const body = await request.json();
+    
+    // Accept both field naming conventions
+    const subjectId = body.subjectId || body.subject_id;
+    const message = body.message;
 
-    // Validate input
-    const parsed = ChatSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.errors[0]?.message ?? 'بيانات غير صالحة' },
-        { status: 400 }
-      );
+    if (!message || message.length > 2000) {
+      return NextResponse.json({ error: 'الرسالة مطلوبة (حد أقصى 2000 حرف)' }, { status: 400 });
     }
 
-    const { subjectId, message } = parsed.data;
     const supabase = await createServerSupabaseClient();
 
-    // Get message limits from settings
+    // Get limits from settings
     const { data: settings } = await supabase
       .from('settings')
       .select('key, value')
@@ -54,7 +37,7 @@ export async function POST(request: NextRequest) {
       monthly: parseInt(String(settingsMap.get('ai_monthly_limit') ?? '500'), 10),
     };
 
-    // Get user's usage counts
+    // Count usage
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -73,41 +56,33 @@ export async function POST(request: NextRequest) {
       .eq('role', 'user')
       .gte('created_at', monthStart.toISOString());
 
-    // Check limits
-    const limitResult = canSendMessage(
-      dailyCount ?? 0,
-      monthlyCount ?? 0,
-      limits
-    );
+    const limitResult = canSendMessage(dailyCount ?? 0, monthlyCount ?? 0, limits);
     if (!limitResult.ok) {
-      return NextResponse.json(
-        { error: limitResult.error },
-        { status: 429 }
-      );
+      return NextResponse.json({ error: limitResult.error }, { status: 429 });
     }
 
-    // Fetch subject info for context
-    const { data: subject } = await supabase
-      .from('subjects')
-      .select('id, name, grade')
-      .eq('id', subjectId)
-      .single();
-
-    if (!subject) {
-      return NextResponse.json(
-        { error: 'المادة غير موجودة' },
-        { status: 404 }
-      );
+    // Get subject info
+    let subjectName = 'المنهج المصري';
+    if (subjectId) {
+      const { data: subject } = await supabase
+        .from('subjects')
+        .select('name')
+        .eq('id', subjectId)
+        .single();
+      if (subject) subjectName = subject.name;
     }
 
-    // Get conversation history (last 20 messages for context)
-    const { data: historyMessages } = await supabase
+    // Get conversation history
+    const historyQuery = supabase
       .from('chat_messages')
       .select('role, content')
       .eq('user_id', user.id)
-      .eq('subject_id', subjectId)
       .order('created_at', { ascending: false })
       .limit(20);
+    
+    if (subjectId) historyQuery.eq('subject_id', subjectId);
+    
+    const { data: historyMessages } = await historyQuery;
 
     const conversationHistory = (historyMessages ?? [])
       .reverse()
@@ -115,14 +90,10 @@ export async function POST(request: NextRequest) {
         role: m.role as 'user' | 'assistant',
         content: m.content,
       }));
-
-    // Add current message
     conversationHistory.push({ role: 'user', content: message });
 
-    // Build system prompt with subject context
-    const systemPrompt = buildChatSystemPrompt(subject.name);
+    const systemPrompt = buildChatSystemPrompt(subjectName);
 
-    // Call Claude
     const chatResult = await chat({
       systemPrompt,
       messages: conversationHistory,
@@ -130,38 +101,37 @@ export async function POST(request: NextRequest) {
     });
 
     if (!chatResult.ok) {
-      return NextResponse.json(
-        { error: chatResult.error },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: chatResult.error }, { status: 500 });
     }
 
     const { content: aiResponse, inputTokens, outputTokens } = chatResult.data;
     const cost = estimateCost(inputTokens, outputTokens);
 
-    // Save both user message and AI response
+    // Save messages
     const now = new Date().toISOString();
     await supabase.from('chat_messages').insert([
       {
         user_id: user.id,
-        subject_id: subjectId,
+        subject_id: subjectId || null,
         role: 'user',
         content: message,
         created_at: now,
       },
       {
         user_id: user.id,
-        subject_id: subjectId,
+        subject_id: subjectId || null,
         role: 'assistant',
         content: aiResponse,
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         cost,
-        created_at: new Date(Date.now() + 1).toISOString(), // +1ms for ordering
+        created_at: new Date(Date.now() + 1).toISOString(),
       },
     ]);
 
     return NextResponse.json({
+      success: true,
+      data: { reply: aiResponse },
       message: aiResponse,
       usage: {
         dailyRemaining: limits.daily - (dailyCount ?? 0) - 1,
@@ -169,10 +139,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[AI Chat] Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى' },
-      { status: 500 }
-    );
+    console.error('[AI Chat] Error:', error);
+    return NextResponse.json({ error: 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى' }, { status: 500 });
   }
 }

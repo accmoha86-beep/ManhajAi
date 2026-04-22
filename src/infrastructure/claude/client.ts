@@ -2,13 +2,30 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Result } from '@/lib/result';
 import { ok, err } from '@/lib/result';
+import { getSecret } from '@/lib/secrets';
 import type { Question } from '@/types';
 import { buildSummaryPrompt, buildQuestionBankPrompt } from '@/domain/ai';
 
-function getClient() {
-  return new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY!,
-  });
+let cachedClient: Anthropic | null = null;
+let cachedKeyHash: string | null = null;
+
+async function getClient(): Promise<Anthropic> {
+  // Try env var first, then DB
+  let apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    apiKey = await getSecret('anthropic_api_key') || '';
+  }
+  if (!apiKey) {
+    throw new Error('Anthropic API key not configured');
+  }
+  // Cache client if key hasn't changed
+  const keyHash = apiKey.substring(0, 10);
+  if (cachedClient && cachedKeyHash === keyHash) {
+    return cachedClient;
+  }
+  cachedClient = new Anthropic({ apiKey });
+  cachedKeyHash = keyHash;
+  return cachedClient;
 }
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
@@ -21,22 +38,19 @@ export async function chat(params: {
   systemPrompt: string;
   messages: { role: 'user' | 'assistant'; content: string }[];
   maxTokens?: number;
-}): Promise<
-  Result<{ content: string; inputTokens: number; outputTokens: number }>
-> {
+}): Promise<Result<{ content: string; inputTokens: number; outputTokens: number }>> {
   try {
-    const response = await getClient().messages.create({
+    const client = await getClient();
+    const response = await client.messages.create({
       model: DEFAULT_MODEL,
       max_tokens: params.maxTokens ?? DEFAULT_MAX_TOKENS,
       system: params.systemPrompt,
       messages: params.messages,
     });
-
     const textBlock = response.content.find((block) => block.type === 'text');
     if (!textBlock || textBlock.type !== 'text') {
       return err('لم يتم الحصول على رد نصي من الذكاء الاصطناعي');
     }
-
     return ok({
       content: textBlock.text,
       inputTokens: response.usage.input_tokens,
@@ -44,19 +58,11 @@ export async function chat(params: {
     });
   } catch (error) {
     if (error instanceof Anthropic.APIError) {
-      if (error.status === 429) {
-        return err(
-          'الخدمة مشغولة حاليًا. يرجى المحاولة بعد قليل'
-        );
-      }
-      if (error.status === 401) {
-        return err('خطأ في إعدادات الذكاء الاصطناعي. يرجى التواصل مع الدعم');
-      }
+      if (error.status === 429) return err('الخدمة مشغولة حاليًا. يرجى المحاولة بعد قليل');
+      if (error.status === 401) return err('خطأ في إعدادات الذكاء الاصطناعي. يرجى التواصل مع الدعم');
       return err(`خطأ في خدمة الذكاء الاصطناعي: ${error.message}`);
     }
-
-    const message =
-      error instanceof Error ? error.message : 'خطأ غير معروف';
+    const message = error instanceof Error ? error.message : 'خطأ غير معروف';
     return err(`فشل الاتصال بالذكاء الاصطناعي: ${message}`);
   }
 }
@@ -69,9 +75,10 @@ export async function generateSummary(
   pdfText: string
 ): Promise<Result<object>> {
   try {
+    const client = await getClient();
     const prompt = buildSummaryPrompt(lessonTitle, pdfText);
 
-    const response = await getClient().messages.create({
+    const response = await client.messages.create({
       model: DEFAULT_MODEL,
       max_tokens: 8192,
       system:
@@ -84,7 +91,6 @@ export async function generateSummary(
       return err('لم يتم إنشاء الملخص');
     }
 
-    // Parse JSON response — handle possible markdown code fences
     let jsonText = textBlock.text.trim();
     if (jsonText.startsWith('```')) {
       jsonText = jsonText
@@ -98,7 +104,6 @@ export async function generateSummary(
     if (error instanceof SyntaxError) {
       return err('فشل في تحليل رد الذكاء الاصطناعي. يرجى المحاولة مرة أخرى');
     }
-
     const message =
       error instanceof Error ? error.message : 'خطأ غير معروف';
     return err(`فشل في إنشاء الملخص: ${message}`);
@@ -113,9 +118,10 @@ export async function generateQuestions(
   summary: object
 ): Promise<Result<Question[]>> {
   try {
+    const client = await getClient();
     const prompt = buildQuestionBankPrompt(lessonTitle, summary);
 
-    const response = await getClient().messages.create({
+    const response = await client.messages.create({
       model: DEFAULT_MODEL,
       max_tokens: 8192,
       system:
@@ -128,7 +134,6 @@ export async function generateQuestions(
       return err('لم يتم إنشاء الأسئلة');
     }
 
-    // Parse JSON response
     let jsonText = textBlock.text.trim();
     if (jsonText.startsWith('```')) {
       jsonText = jsonText
@@ -137,37 +142,21 @@ export async function generateQuestions(
     }
 
     const bank = JSON.parse(jsonText);
-
-    // Flatten all question types into a single array
     const questions: Question[] = [];
 
     if (bank.mcq && Array.isArray(bank.mcq)) {
       for (const q of bank.mcq) {
-        questions.push({
-          ...q,
-          type: 'mcq',
-          id: crypto.randomUUID(),
-        });
+        questions.push({ ...q, type: 'mcq', id: crypto.randomUUID() });
       }
     }
-
     if (bank.trueFalse && Array.isArray(bank.trueFalse)) {
       for (const q of bank.trueFalse) {
-        questions.push({
-          ...q,
-          type: 'true_false',
-          id: crypto.randomUUID(),
-        });
+        questions.push({ ...q, type: 'true_false', id: crypto.randomUUID() });
       }
     }
-
     if (bank.essay && Array.isArray(bank.essay)) {
       for (const q of bank.essay) {
-        questions.push({
-          ...q,
-          type: 'essay',
-          id: crypto.randomUUID(),
-        });
+        questions.push({ ...q, type: 'essay', id: crypto.randomUUID() });
       }
     }
 
@@ -176,7 +165,6 @@ export async function generateQuestions(
     if (error instanceof SyntaxError) {
       return err('فشل في تحليل الأسئلة المُولّدة. يرجى المحاولة مرة أخرى');
     }
-
     const message =
       error instanceof Error ? error.message : 'خطأ غير معروف';
     return err(`فشل في إنشاء بنك الأسئلة: ${message}`);

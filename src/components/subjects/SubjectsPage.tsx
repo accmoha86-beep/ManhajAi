@@ -1,355 +1,418 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  BookOpen, ChevronLeft, ChevronRight, FileText,
-  ClipboardCheck, CheckCircle, Lock,
+  BookOpen, ChevronLeft, FileText, Loader2, AlertCircle,
+  Search, Layers, Bot, PlayCircle,
 } from "lucide-react";
 import SubjectChat from "@/components/chat/SubjectChat";
-
-interface Lesson {
-  id: string;
-  title: string;
-  locked: boolean;
-  completed: boolean;
-  summary?: string;
-  quiz?: { question: string; options: string[]; correct: number }[];
-}
 
 interface Subject {
   id: string;
   name: string;
   icon: string;
-  color: string;
+  description: string;
+  lesson_count: number;
+}
+
+interface Lesson {
+  id: string;
+  title: string;
+  sort_order: number;
+  has_summary: boolean;
+  question_count: number;
+}
+
+interface SubjectDetail {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
   lessons: Lesson[];
 }
 
-const subjects: Subject[] = [
-  {
-    id: "math",
-    name: "الرياضيات",
-    icon: "📐",
-    color: "#3B82F6",
-    lessons: [
-      { id: "m1", title: "التفاضل والتكامل", locked: false, completed: true,
-        summary: "التفاضل هو دراسة معدل التغير. المشتقة الأولى تعطينا ميل المماس عند نقطة معينة على المنحنى. قواعد التفاضل الأساسية:\n\n• مشتقة الثابت = صفر\n• مشتقة xⁿ = n·xⁿ⁻¹\n• مشتقة sin(x) = cos(x)\n• مشتقة cos(x) = -sin(x)",
-        quiz: [
-          { question: "ما مشتقة x³؟", options: ["3x²", "x²", "3x", "2x³"], correct: 0 },
-          { question: "ما مشتقة الثابت؟", options: ["1", "0", "x", "لا يوجد"], correct: 1 },
-        ]
-      },
-      { id: "m2", title: "الهندسة الفراغية", locked: false, completed: true,
-        summary: "الهندسة الفراغية تدرس الأشكال ثلاثية الأبعاد. تشمل المستوى، المستقيم في الفراغ، المسافة بين نقطتين في الفراغ.",
-        quiz: [
-          { question: "كم بُعد للفراغ؟", options: ["2", "3", "4", "1"], correct: 1 },
-        ]
-      },
-      { id: "m3", title: "الجبر والعلاقات", locked: false, completed: false,
-        summary: "المحددات والمصفوفات: طرق حل المعادلات الخطية باستخدام المصفوفات وقاعدة كرامر.",
-        quiz: []
-      },
-      { id: "m4", title: "الاستاتيكا", locked: false, completed: false, summary: "علم الاتزان ودراسة القوى المؤثرة على الأجسام الساكنة.", quiz: [] },
-      { id: "m5", title: "الديناميكا", locked: true, completed: false },
-      { id: "m6", title: "حساب المثلثات", locked: true, completed: false },
-    ],
-  },
-  {
-    id: "physics",
-    name: "الفيزياء",
-    icon: "⚛️",
-    color: "#8B5CF6",
-    lessons: [
-      { id: "p1", title: "قوانين نيوتن", locked: false, completed: true,
-        summary: "قوانين نيوتن الثلاثة:\n1. الجسم الساكن يبقى ساكناً ما لم تؤثر عليه قوة\n2. F = ma\n3. لكل فعل رد فعل مساوٍ ومعاكس",
-        quiz: [
-          { question: "ما صيغة القانون الثاني لنيوتن؟", options: ["F=mv", "F=ma", "F=mg", "F=mω"], correct: 1 },
-        ]
-      },
-      { id: "p2", title: "الكهربية والمغناطيسية", locked: false, completed: false,
-        summary: "قانون كولوم: القوة بين شحنتين تتناسب طردياً مع حاصل ضرب الشحنتين وعكسياً مع مربع المسافة.", quiz: [] },
-      { id: "p3", title: "الحرارة", locked: false, completed: false, summary: "دراسة انتقال الحرارة والقوانين الأساسية.", quiz: [] },
-      { id: "p4", title: "الضوء", locked: true, completed: false },
-    ],
-  },
-  {
-    id: "chemistry",
-    name: "الكيمياء",
-    icon: "🧪",
-    color: "#10B981",
-    lessons: [
-      { id: "c1", title: "الكيمياء العضوية", locked: false, completed: true,
-        summary: "الكيمياء العضوية تدرس مركبات الكربون. الهيدروكربونات: ألكانات (روابط أحادية)، ألكينات (رابطة ثنائية)، ألكاينات (رابطة ثلاثية).",
-        quiz: [
-          { question: "ما نوع الرابطة في الألكانات؟", options: ["ثنائية", "أحادية", "ثلاثية", "تناسقية"], correct: 1 },
-        ]
-      },
-      { id: "c2", title: "الاتزان الكيميائي", locked: false, completed: false,
-        summary: "الاتزان الكيميائي يحدث عندما يتساوى معدل التفاعل الطردي مع العكسي.", quiz: [] },
-      { id: "c3", title: "الكيمياء الكهربية", locked: true, completed: false },
-    ],
-  },
-];
+interface LessonContent {
+  id: string;
+  title: string;
+  summary: {
+    key_points: string[];
+    definitions: { term: string; definition: string }[];
+    laws?: { name: string; formula?: string; description: string }[];
+    examples?: { title: string; content: string }[];
+  } | null;
+  question_count: number;
+}
 
 export default function SubjectsPage() {
-  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
-  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "lesson">("list");
-  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
-  const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedSubject, setSelectedSubject] = useState<SubjectDetail | null>(null);
+  const [loadingSubject, setLoadingSubject] = useState(false);
+  const [selectedLesson, setSelectedLesson] = useState<LessonContent | null>(null);
+  const [loadingLesson, setLoadingLesson] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [error, setError] = useState("");
 
-  const openSubject = (subject: Subject) => {
-    setSelectedSubject(subject);
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const res = await fetch("/api/subjects", { credentials: "include" });
+        if (res.ok) {
+          const json = await res.json();
+          setSubjects(json.subjects || []);
+        }
+      } catch {
+        setError("فشل في جلب المواد");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSubjects();
+  }, []);
+
+  const handleSelectSubject = async (subjectId: string) => {
+    setLoadingSubject(true);
     setSelectedLesson(null);
-    setViewMode("list");
-  };
-
-  const openLesson = (lesson: Lesson) => {
-    if (lesson.locked) return;
-    setSelectedLesson(lesson);
-    setViewMode("lesson");
-    setQuizAnswers({});
-    setQuizSubmitted(false);
-  };
-
-  const goBack = () => {
-    if (viewMode === "lesson") {
-      setViewMode("list");
-      setSelectedLesson(null);
-    } else {
-      setSelectedSubject(null);
+    setError("");
+    try {
+      const res = await fetch(`/api/subjects/${subjectId}`, {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setSelectedSubject(json.data);
+      } else {
+        setError("فشل في جلب تفاصيل المادة");
+      }
+    } catch {
+      setError("فشل في الاتصال");
+    } finally {
+      setLoadingSubject(false);
     }
   };
 
-  // If no subject selected, show subject list
-  if (!selectedSubject) {
+  const handleSelectLesson = async (lessonId: string) => {
+    if (!selectedSubject) return;
+    setLoadingLesson(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/subjects/${selectedSubject.id}/lessons/${lessonId}`,
+        { credentials: "include" }
+      );
+      if (res.ok) {
+        const json = await res.json();
+        setSelectedLesson(json.data);
+      } else {
+        setError("فشل في جلب محتوى الدرس");
+      }
+    } catch {
+      setError("فشل في الاتصال");
+    } finally {
+      setLoadingLesson(false);
+    }
+  };
+
+  const filteredSubjects = subjects.filter((s) =>
+    s.name.includes(searchQuery)
+  );
+
+  if (loading) {
     return (
-      <div className="p-6 font-cairo" style={{ color: "var(--theme-text-primary)" }}>
-        <h1 className="text-2xl font-extrabold mb-6">📚 المواد الدراسية</h1>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          {subjects.map((subject) => (
-            <button
-              key={subject.id}
-              onClick={() => openSubject(subject)}
-              className="themed-card p-6 text-right cursor-pointer hover:shadow-lg transition-shadow"
-              style={{ border: "none" }}
-            >
-              <div className="text-4xl mb-4">{subject.icon}</div>
-              <h2 className="text-xl font-extrabold mb-2" style={{ color: "var(--theme-text-primary)" }}>
-                {subject.name}
-              </h2>
-              <div className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                {subject.lessons.length} دروس ·{" "}
-                {subject.lessons.filter((l) => l.completed).length} مكتمل
-              </div>
-              {/* Progress bar */}
-              <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: "var(--theme-surface-border)" }}>
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${(subject.lessons.filter((l) => l.completed).length / subject.lessons.length) * 100}%`,
-                    background: subject.color,
-                  }}
-                />
-              </div>
-            </button>
-          ))}
+      <div className="p-6 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <Loader2 size={40} className="animate-spin mx-auto mb-4" style={{ color: "var(--theme-primary)" }} />
+          <p className="text-sm font-bold" style={{ color: "var(--theme-text-secondary)" }}>
+            جارٍ تحميل المواد...
+          </p>
         </div>
       </div>
     );
   }
 
-  // Subject selected — split layout
   return (
-    <div className="flex font-cairo" style={{ height: "calc(100vh - 4rem)" }}>
-      {/* RIGHT: Content area (62%) */}
-      <div className="flex-1 overflow-y-auto" style={{ width: "62%", borderLeft: "1px solid var(--theme-border)" }}>
-        <div className="p-6">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 mb-6">
-            <button
-              onClick={goBack}
-              className="flex items-center gap-1 text-sm font-bold cursor-pointer"
-              style={{ color: "var(--theme-primary)", background: "none", border: "none" }}
-            >
-              <ChevronRight size={16} />
-              {viewMode === "lesson" ? selectedSubject.name : "المواد"}
-            </button>
-            {viewMode === "lesson" && selectedLesson && (
-              <>
-                <span style={{ color: "var(--theme-text-muted)" }}>/</span>
-                <span className="text-sm font-bold" style={{ color: "var(--theme-text-primary)" }}>
-                  {selectedLesson.title}
-                </span>
-              </>
-            )}
+    <div className="flex h-[calc(100vh-4rem)]" style={{ color: "var(--theme-text-primary)" }}>
+      {/* Main Content — 62% */}
+      <div className="w-[62%] overflow-y-auto p-6 space-y-6" style={{ borderLeft: "1px solid var(--theme-surface-border)" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
+              📚 المواد الدراسية
+            </h1>
+            <p className="text-sm mt-1" style={{ color: "var(--theme-text-secondary)" }}>
+              اختر مادة ثم درس لبدء المذاكرة
+            </p>
           </div>
-
-          {/* Lessons List View */}
-          {viewMode === "list" && (
-            <>
-              <div className="flex items-center gap-3 mb-6">
-                <span className="text-3xl">{selectedSubject.icon}</span>
-                <h1 className="text-xl font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
-                  {selectedSubject.name}
-                </h1>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {selectedSubject.lessons.map((lesson) => (
-                  <button
-                    key={lesson.id}
-                    onClick={() => openLesson(lesson)}
-                    disabled={lesson.locked}
-                    className="themed-card p-4 text-right cursor-pointer flex items-center gap-3 hover:shadow-md transition-shadow"
-                    style={{
-                      opacity: lesson.locked ? 0.5 : 1,
-                      cursor: lesson.locked ? "not-allowed" : "pointer",
-                      border: "none",
-                    }}
-                  >
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{
-                        background: lesson.completed
-                          ? "rgba(16,185,129,0.15)"
-                          : lesson.locked
-                          ? "var(--theme-surface-border)"
-                          : "var(--theme-hover-overlay)",
-                      }}
-                    >
-                      {lesson.locked ? (
-                        <Lock size={18} style={{ color: "var(--theme-text-muted)" }} />
-                      ) : lesson.completed ? (
-                        <CheckCircle size={18} style={{ color: "#10B981" }} />
-                      ) : (
-                        <BookOpen size={18} style={{ color: "var(--theme-primary)" }} />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-bold text-sm" style={{ color: "var(--theme-text-primary)" }}>
-                        {lesson.title}
-                      </div>
-                      <div className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
-                        {lesson.locked ? "🔒 مقفل" : lesson.completed ? "✅ مكتمل" : "📖 متاح"}
-                      </div>
-                    </div>
-                    {!lesson.locked && <ChevronLeft size={16} style={{ color: "var(--theme-text-muted)" }} />}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Lesson Detail View */}
-          {viewMode === "lesson" && selectedLesson && (
-            <>
-              <h1 className="text-xl font-extrabold mb-6" style={{ color: "var(--theme-text-primary)" }}>
-                {selectedLesson.title}
-              </h1>
-
-              {/* Summary */}
-              {selectedLesson.summary && (
-                <div className="themed-card p-6 mb-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <FileText size={20} style={{ color: "var(--theme-primary)" }} />
-                    <h2 className="text-lg font-bold" style={{ color: "var(--theme-text-primary)" }}>
-                      📝 ملخص الدرس
-                    </h2>
-                  </div>
-                  <div
-                    className="text-sm leading-relaxed whitespace-pre-line"
-                    style={{ color: "var(--theme-text-secondary)" }}
-                  >
-                    {selectedLesson.summary}
-                  </div>
-                </div>
-              )}
-
-              {/* Quiz */}
-              {selectedLesson.quiz && selectedLesson.quiz.length > 0 && (
-                <div className="themed-card p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <ClipboardCheck size={20} style={{ color: "var(--theme-primary)" }} />
-                    <h2 className="text-lg font-bold" style={{ color: "var(--theme-text-primary)" }}>
-                      ✅ اختبر نفسك
-                    </h2>
-                  </div>
-                  <div className="space-y-6">
-                    {selectedLesson.quiz.map((q, qi) => (
-                      <div key={qi}>
-                        <div className="text-sm font-bold mb-3" style={{ color: "var(--theme-text-primary)" }}>
-                          {qi + 1}. {q.question}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          {q.options.map((opt, oi) => {
-                            const selected = quizAnswers[qi] === oi;
-                            const isCorrect = q.correct === oi;
-                            let bg = "var(--theme-surface-bg)";
-                            let borderColor = "var(--theme-surface-border)";
-                            if (quizSubmitted && selected && isCorrect) {
-                              bg = "rgba(16,185,129,0.15)";
-                              borderColor = "#10B981";
-                            } else if (quizSubmitted && selected && !isCorrect) {
-                              bg = "rgba(220,38,38,0.15)";
-                              borderColor = "#DC2626";
-                            } else if (quizSubmitted && isCorrect) {
-                              bg = "rgba(16,185,129,0.1)";
-                              borderColor = "#10B981";
-                            } else if (selected) {
-                              bg = "var(--theme-hover-overlay)";
-                              borderColor = "var(--theme-primary)";
-                            }
-                            return (
-                              <button
-                                key={oi}
-                                onClick={() => {
-                                  if (!quizSubmitted) setQuizAnswers({ ...quizAnswers, [qi]: oi });
-                                }}
-                                className="p-3 rounded-lg text-sm font-bold text-right cursor-pointer transition-all"
-                                style={{ background: bg, border: `2px solid ${borderColor}`, color: "var(--theme-text-primary)" }}
-                              >
-                                {opt}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => setQuizSubmitted(true)}
-                      disabled={Object.keys(quizAnswers).length < (selectedLesson.quiz?.length || 0)}
-                      className="themed-btn-primary px-6 py-2 flex items-center gap-2"
-                      style={{ opacity: Object.keys(quizAnswers).length < (selectedLesson.quiz?.length || 0) ? 0.5 : 1 }}
-                    >
-                      <CheckCircle size={18} />
-                      <span>تحقق من إجاباتك</span>
-                    </button>
-                    {quizSubmitted && (
-                      <div className="p-3 rounded-lg text-sm font-bold text-center"
-                        style={{
-                          background: "rgba(16,185,129,0.1)",
-                          color: "#059669",
-                          border: "1px solid rgba(16,185,129,0.3)",
-                        }}>
-                        🎉 نتيجتك:{" "}
-                        {selectedLesson.quiz?.filter((q, i) => quizAnswers[i] === q.correct).length}/
-                        {selectedLesson.quiz?.length}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
+          {selectedSubject && (
+            <button
+              onClick={() => {
+                setSelectedSubject(null);
+                setSelectedLesson(null);
+              }}
+              className="themed-btn-outline text-sm flex items-center gap-1"
+            >
+              كل المواد
+            </button>
           )}
         </div>
+
+        {/* Search */}
+        {!selectedSubject && (
+          <div className="relative">
+            <Search size={18} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "var(--theme-text-muted)" }} />
+            <input
+              className="themed-input pr-10 w-full"
+              placeholder="ابحث عن مادة..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        )}
+
+        {error && (
+          <div
+            className="p-3 rounded-lg text-sm font-bold flex items-center gap-2"
+            style={{ background: "rgba(220,38,38,0.1)", color: "#DC2626", border: "1px solid rgba(220,38,38,0.3)" }}
+          >
+            <AlertCircle size={16} />
+            {error}
+          </div>
+        )}
+
+        {/* Subject List */}
+        {!selectedSubject && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredSubjects.length > 0 ? (
+              filteredSubjects.map((subject) => (
+                <button
+                  key={subject.id}
+                  onClick={() => handleSelectSubject(subject.id)}
+                  className="themed-card p-5 text-right block w-full hover:shadow-lg transition-shadow cursor-pointer"
+                  style={{ border: "none" }}
+                >
+                  <div className="text-3xl mb-3">{subject.icon || "📖"}</div>
+                  <h3 className="text-lg font-extrabold mb-1" style={{ color: "var(--theme-text-primary)" }}>
+                    {subject.name}
+                  </h3>
+                  <p className="text-xs mb-3" style={{ color: "var(--theme-text-secondary)" }}>
+                    {subject.description || ""}
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold flex items-center gap-1" style={{ color: "var(--theme-text-muted)" }}>
+                      <Layers size={14} />
+                      {subject.lesson_count || 0} درس
+                    </span>
+                    <span className="text-xs font-bold flex items-center gap-1" style={{ color: "var(--theme-primary)" }}>
+                      عرض الدروس
+                      <ChevronLeft size={14} />
+                    </span>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="col-span-2 themed-card p-8 text-center">
+                <div className="text-4xl mb-3">📚</div>
+                <p className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                  لا توجد مواد متاحة حالياً
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Loading Subject */}
+        {loadingSubject && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 size={30} className="animate-spin" style={{ color: "var(--theme-primary)" }} />
+          </div>
+        )}
+
+        {/* Subject Detail: Lesson list */}
+        {selectedSubject && !loadingSubject && !selectedLesson && (
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-3xl">{selectedSubject.icon || "📖"}</span>
+              <div>
+                <h2 className="text-xl font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
+                  {selectedSubject.name}
+                </h2>
+                <p className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>
+                  {selectedSubject.lessons?.length || 0} درس
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {(selectedSubject.lessons || []).map((lesson, i) => (
+                <button
+                  key={lesson.id}
+                  onClick={() => handleSelectLesson(lesson.id)}
+                  className="themed-card p-4 w-full text-right flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer"
+                  style={{ border: "none" }}
+                >
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-sm font-extrabold"
+                    style={{ background: "var(--theme-cta-gradient)", color: "#fff" }}
+                  >
+                    {i + 1}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
+                      {lesson.title}
+                    </h3>
+                    <div className="flex items-center gap-3 mt-1">
+                      {lesson.has_summary && (
+                        <span className="text-xs flex items-center gap-1" style={{ color: "var(--theme-text-muted)" }}>
+                          <FileText size={12} />
+                          ملخص
+                        </span>
+                      )}
+                      {lesson.question_count > 0 && (
+                        <span className="text-xs flex items-center gap-1" style={{ color: "var(--theme-text-muted)" }}>
+                          <PlayCircle size={12} />
+                          {lesson.question_count} سؤال
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronLeft size={18} style={{ color: "var(--theme-text-muted)" }} />
+                </button>
+              ))}
+              {(selectedSubject.lessons || []).length === 0 && (
+                <div className="themed-card p-8 text-center">
+                  <p className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                    لا توجد دروس متاحة حالياً لهذه المادة
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Loading lesson */}
+        {loadingLesson && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 size={30} className="animate-spin" style={{ color: "var(--theme-primary)" }} />
+          </div>
+        )}
+
+        {/* Lesson Content */}
+        {selectedLesson && !loadingLesson && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedLesson(null)}
+                className="themed-btn-outline text-sm"
+              >
+                ← رجوع للدروس
+              </button>
+              <h2 className="text-lg font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
+                {selectedLesson.title}
+              </h2>
+            </div>
+
+            {selectedLesson.summary ? (
+              <div className="space-y-5">
+                {/* Key points */}
+                {selectedLesson.summary.key_points?.length > 0 && (
+                  <div className="themed-card p-5">
+                    <h3 className="text-base font-extrabold mb-3 flex items-center gap-2" style={{ color: "var(--theme-text-primary)" }}>
+                      💡 النقاط الرئيسية
+                    </h3>
+                    <ul className="space-y-2">
+                      {selectedLesson.summary.key_points.map((p, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                          <span className="mt-1 w-2 h-2 rounded-full flex-shrink-0" style={{ background: "var(--theme-primary)" }} />
+                          {p}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Definitions */}
+                {selectedLesson.summary.definitions?.length > 0 && (
+                  <div className="themed-card p-5">
+                    <h3 className="text-base font-extrabold mb-3 flex items-center gap-2" style={{ color: "var(--theme-text-primary)" }}>
+                      📝 التعريفات
+                    </h3>
+                    <div className="space-y-3">
+                      {selectedLesson.summary.definitions.map((d, i) => (
+                        <div key={i} className="p-3 rounded-lg" style={{ background: "var(--theme-hover-overlay)" }}>
+                          <div className="text-sm font-extrabold mb-1" style={{ color: "var(--theme-primary)" }}>
+                            {d.term}
+                          </div>
+                          <div className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                            {d.definition}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Laws */}
+                {selectedLesson.summary.laws && selectedLesson.summary.laws.length > 0 && (
+                  <div className="themed-card p-5">
+                    <h3 className="text-base font-extrabold mb-3 flex items-center gap-2" style={{ color: "var(--theme-text-primary)" }}>
+                      ⚖️ القوانين
+                    </h3>
+                    <div className="space-y-3">
+                      {selectedLesson.summary.laws.map((l, i) => (
+                        <div key={i} className="p-3 rounded-lg" style={{ background: "var(--theme-hover-overlay)" }}>
+                          <div className="text-sm font-extrabold mb-1" style={{ color: "var(--theme-primary)" }}>
+                            {l.name}
+                          </div>
+                          {l.formula && (
+                            <div className="text-sm font-mono mb-1 px-2 py-1 rounded" style={{ background: "var(--theme-surface-border)", color: "var(--theme-text-primary)" }}>
+                              {l.formula}
+                            </div>
+                          )}
+                          <div className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                            {l.description}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Examples */}
+                {selectedLesson.summary.examples && selectedLesson.summary.examples.length > 0 && (
+                  <div className="themed-card p-5">
+                    <h3 className="text-base font-extrabold mb-3 flex items-center gap-2" style={{ color: "var(--theme-text-primary)" }}>
+                      📌 أمثلة
+                    </h3>
+                    <div className="space-y-3">
+                      {selectedLesson.summary.examples.map((ex, i) => (
+                        <div key={i} className="p-3 rounded-lg" style={{ background: "var(--theme-hover-overlay)" }}>
+                          <div className="text-sm font-extrabold mb-1" style={{ color: "var(--theme-text-primary)" }}>
+                            {ex.title}
+                          </div>
+                          <div className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                            {ex.content}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="themed-card p-8 text-center">
+                <div className="text-4xl mb-3">📝</div>
+                <p className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                  لم يتم إعداد ملخص لهذا الدرس بعد. اسأل المساعد الذكي عن أي شيء!
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* LEFT: AI Chat (38%) */}
-      <div style={{ width: "38%" }}>
-        <SubjectChat
-          subjectId={selectedSubject.id}
-          subjectName={selectedSubject.name}
-          subjectIcon={selectedSubject.icon}
-        />
+      {/* Chat Panel — 38% */}
+      <div className="w-[38%] flex flex-col h-full overflow-hidden">
+        <SubjectChat subjectId={selectedSubject?.id || null} subjectName={selectedSubject?.name || null} />
       </div>
     </div>
   );
