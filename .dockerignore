@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+*.py
+__pycache__
+curriculum
+download
+requirements.txt
+runtime.txt
+.env*.local
+README.md

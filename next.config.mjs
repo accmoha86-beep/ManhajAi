@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
+
   // Images: allow Supabase storage and other CDNs
   images: {
     remotePatterns: [
