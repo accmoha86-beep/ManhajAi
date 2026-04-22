@@ -180,8 +180,8 @@ async function getSubjects(sb: SupabaseClient) {
 
   // Get lesson counts and question counts per subject
   const subjectIds = (subjects ?? []).map((s: { id: string }) => s.id);
-  let lessonCounts: Record<string, number> = {};
-  let questionCounts: Record<string, number> = {};
+  const lessonCounts: Record<string, number> = {};
+  const questionCounts: Record<string, number> = {};
 
   if (subjectIds.length > 0) {
     const { data: lessons } = await sb
