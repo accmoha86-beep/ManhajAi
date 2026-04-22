@@ -1,158 +1,36 @@
-# 🤖 Manhaj AI
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-بوت تيليجرام ذكي لتعليم الفيزياء للصف الثاني الثانوي (الترم الثاني - 2026).
+## Getting Started
 
----
+First, run the development server:
 
-## ✨ المميزات
-
-### للطلبة:
-- 📚 20 ملخَّص كامل للوحدات الثلاث
-- 📝 276 سؤال MCQ بالشرح
-- 💬 شات ذكي بالذكاء الاصطناعي (GPT-4o-mini)
-- 📊 تتبُّع التقدُّم الشخصي
-- 🏆 ترتيب الأوائل (Leaderboard)
-- 🎓 شهادات إنجاز (عند تجاوز 80%)
-- 🆓 تجربة مجانية 24 ساعة
-- 🎁 اشتراكات مجانية بنظام الإحالة (10 أيام لكل صديق)
-
-### للأدمن:
-- 👑 لوحة تحكُّم كاملة بـ 15 زر
-- 💰 نظام دفع أوتوماتيك بـ AI Vision
-- 📊 إحصائيات وتحليلات تفصيلية
-- 📄 تقارير CSV قابلة للتصدير
-- 🔍 بحث متقدم عن الطلبة
-- 💾 Backup تلقائي كل ساعة
-- 📢 Broadcast للإعلانات
-
-### نظام الدفع الأوتوماتيك:
-- 📱 6 طرق دفع مصرية (فودافون/اتصالات/أورانج/وي/إنستا باي/فوري)
-- 🤖 AI يفحص الإيصال تلقائياً
-- ✅ تفعيل فوري لو AI متأكد >85%
-- 🛡️ حماية من الإيصالات المكرَّرة
-
----
-
-## 📁 هيكل المشروع
-
-```
-manhaj-ai-bot/
-│
-├── main.py              منطق البوت (122 KB)
-├── database.py          قاعدة البيانات (35 KB)
-│
-├── curriculum/          مجلَّد المناهج
-│   ├── __init__.py           مجمِّع المواد
-│   ├── physics_grade_2.py    الفيزياء تانية ثانوي
-│   └── template.py           قالب لإضافة مواد جديدة
-│
-├── requirements.txt     المكتبات
-├── Procfile             إعدادات Railway
-├── runtime.txt          إصدار Python
-├── .gitignore           حماية الـ secrets
-└── README.md            هذا الملف
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
----
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## 🚀 خطوات التشغيل
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-### 1. أنشئ Repository على GitHub
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-- روح github.com/new
-- اسم الـ repo: manhaj-ai-bot
-- اختار Private
-- اضغط Create
+## Learn More
 
-### 2. ارفع الملفات على GitHub
+To learn more about Next.js, take a look at the following resources:
 
-ارفع كل الملفات:
-- main.py
-- database.py
-- curriculum/ (الفولدر كامل)
-- requirements.txt
-- Procfile
-- runtime.txt
-- .gitignore
-- README.md
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-### 3. أنشئ حساب Railway
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-- روح railway.app → Login with GitHub
-- اضغط New Project → Deploy from GitHub Repo
-- اختار manhaj-ai-bot
+## Deploy on Vercel
 
-### 4. ضيف Environment Variables
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-في Railway → تاب Variables → New Variable:
-
-| Variable | Value |
-|----------|-------|
-| BOT_TOKEN | توكن البوت من @BotFather |
-| OPENAI_API_KEY | مفتاح OpenAI من platform.openai.com |
-| ADMIN_ID | Telegram ID بتاعك (من @userinfobot) |
-| BOT_USERNAME | اسم البوت بدون @ |
-| DB_PATH | /data/manhaj.db |
-
-### 5. أضف Volume لقاعدة البيانات (مهم!)
-
-في Railway:
-- اضغط + Create → Volume
-- Mount Path: /data
-- اضغط Attach
-
-### 6. بعد التشغيل - إعداد طرق الدفع
-
-1. افتح البوت كأدمن: /start
-2. اضغط ⚙️ إعداد الدفع
-3. لكل طريقة دفع:
-   - اضغط عليها
-   - اضغط ✏️ تعديل الرقم
-   - ادخل رقم محفظتك
-4. الطرق تتفعَّل تلقائياً
-
----
-
-## 💰 التكلفة الشهرية
-
-| الخدمة | التكلفة |
-|--------|---------|
-| Railway (Hobby Plan) | ~$5 |
-| OpenAI API | $10-30 حسب الاستخدام |
-| المجموع | ~$15-35 شهرياً |
-
----
-
-## 🛠️ تعديل المنهج
-
-### لتحديث محتوى الفيزياء:
-افتح curriculum/physics_grade_2.py وعدِّل في:
-- SUMMARIES للملخَّصات
-- QUESTIONS للأسئلة
-
-### لإضافة مادة جديدة:
-1. انسخ curriculum/template.py وسمِّه {subject}_grade_{number}.py
-2. املأ المحتوى
-3. افتح curriculum/__init__.py:
-   - ضيف: from . import subject_grade_X
-   - ضيف للـ REGISTRY
-
----
-
-## 🔒 الأمان
-
-- ✅ OTP محمي بعدد محاولات
-- ✅ Transaction ID فريد لمنع الاحتيال
-- ✅ حماية صلاحيات الأدمن
-- ✅ Error handler ذكي
-- ✅ Auto-backup كل ساعة
-
----
-
-## 📞 الدعم
-
-لأي استفسار أو مشكلة، تواصل مع الأدمن عبر البوت.
-
----
-
-**صُنع بـ ❤️ للطلبة المصريين**
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
