@@ -1,4 +1,4 @@
-// app/api/auth/login/route.ts — Student login
+// app/api/auth/login/route.ts — Student login (uses SECURITY DEFINER functions)
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
@@ -40,14 +40,11 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createServerSupabaseClient();
 
-    // Find user by phone
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select(
-        'id, full_name, phone, password_hash, role, is_verified, trial_ends_at, referral_code, avatar_url'
-      )
-      .eq('phone', phoneResult.data)
-      .single();
+    // Use RPC function to bypass RLS (SECURITY DEFINER)
+    const { data: users, error: userError } = await supabase
+      .rpc('authenticate_user', { p_phone: phoneResult.data });
+
+    const user = users?.[0];
 
     if (userError || !user) {
       return NextResponse.json(
@@ -76,11 +73,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update last login timestamp
-    await supabase
-      .from('users')
-      .update({ last_login_at: new Date().toISOString() })
-      .eq('id', user.id);
+    // Update last login timestamp (RPC bypasses RLS)
+    await supabase.rpc('update_last_login', { p_user_id: user.id });
 
     // Generate JWT token
     const token = await new SignJWT({
