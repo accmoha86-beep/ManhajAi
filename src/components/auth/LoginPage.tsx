@@ -44,17 +44,20 @@ export default function LoginPage() {
         return;
       }
 
+      // Set auth cookie for middleware
+      document.cookie = `auth-token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+
       login(
         {
-          id: data.data.user.id,
-          fullName: data.data.user.full_name,
-          phone: data.data.user.phone,
-          role: data.data.user.role,
-          trialEndsAt: data.data.user.trial_ends_at || null,
-          referralCode: data.data.user.referral_code || '',
-          avatarUrl: data.data.user.avatar_url || null,
+          id: data.user.id,
+          fullName: data.user.name,
+          phone: data.user.phone,
+          role: data.user.role,
+          trialEndsAt: data.user.trialEndsAt || null,
+          referralCode: data.user.referralCode || '',
+          avatarUrl: data.user.avatarUrl || null,
         },
-        data.data.token
+        data.token
       );
       router.push('/dashboard');
     } catch {
