@@ -20,10 +20,8 @@ interface LeaderEntry {
 }
 
 interface LeaderboardData {
-  entries: LeaderEntry[];
-  current_user_rank: number | null;
-  current_user_points: number | null;
-  total_users: number;
+  leaderboard: LeaderEntry[];
+  current_user: { rank: number; points: number; streak_days: number } | null;
 }
 
 export default function LeaderboardPage() {
@@ -61,10 +59,10 @@ export default function LeaderboardPage() {
     fetchLeaderboard(gov || undefined);
   };
 
-  const entries = data?.entries || [];
+  const entries = data?.leaderboard || [];
   const top3 = entries.slice(0, 3);
   const rest = entries.slice(3);
-  const currentRank = data?.current_user_rank;
+  const currentRank = data?.current_user?.rank || null;
 
   const podiumColors = [
     { bg: "rgba(245,158,11,0.15)", text: "#F59E0B", icon: Crown, medal: "🥇" },
@@ -94,7 +92,7 @@ export default function LeaderboardPage() {
             🏆 لوحة المتصدرين
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--theme-text-secondary)" }}>
-            أعلى {data?.total_users || 0} طالب أداءً
+            أعلى {entries.length} طالب أداءً
           </p>
         </div>
         <div className="relative">
@@ -160,7 +158,7 @@ export default function LeaderboardPage() {
               ترتيبك الحالي
             </div>
             <div className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>
-              {(data?.current_user_points || 0).toLocaleString()} نقطة
+              {(data?.current_user?.points || 0).toLocaleString()} نقطة
             </div>
           </div>
           <TrendingUp size={20} style={{ color: "var(--theme-primary)" }} />
