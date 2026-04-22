@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as jose from 'jose';
 
-// Create anon Supabase client (for RPC calls with SECURITY DEFINER)
 function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,7 +9,6 @@ function getSupabase() {
   );
 }
 
-// Verify JWT and extract user info
 async function getAuthUser(request: NextRequest): Promise<{ id: string; role: string } | null> {
   try {
     const token = request.cookies.get('auth-token')?.value;
@@ -26,81 +24,96 @@ async function getAuthUser(request: NextRequest): Promise<{ id: string; role: st
   }
 }
 
-// Helper to handle RPC responses
-function rpcResponse(data: any, error: any) {
-  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-  if (data?.error) return NextResponse.json({ success: false, error: data.error }, { status: 403 });
+function ok(data: Record<string, unknown>) {
   return NextResponse.json({ success: true, data });
+}
+function err(msg: string, status = 500) {
+  return NextResponse.json({ success: false, error: msg }, { status });
 }
 
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthUser(request);
-    if (!user) return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    if (user.role !== 'admin') return NextResponse.json({ success: false, error: 'Not authorized' }, { status: 403 });
+    if (!user) return err('Not authenticated', 401);
+    if (user.role !== 'admin') return err('Not authorized', 403);
 
     const body = await request.json();
     const { action, ...params } = body;
-    const supabase = getSupabase();
-    const aid = user.id; // admin ID
+    const sb = getSupabase();
+    const aid = user.id;
 
     switch (action) {
       // ===== OVERVIEW =====
       case 'get_stats':
       case 'overview': {
-        const { data, error } = await supabase.rpc('admin_overview', { p_admin_id: aid });
-        return rpcResponse(data, error);
+        const { data, error } = await sb.rpc('admin_overview', { p_admin_id: aid });
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        // Overview returns a flat object - pass through directly
+        return ok(data);
       }
 
       // ===== STUDENTS =====
       case 'get_students': {
-        const { data, error } = await supabase.rpc('admin_list_students_v2', {
+        const { data, error } = await sb.rpc('admin_list_students_v2', {
           p_admin_id: aid,
           p_search: params.search || null,
           p_page: params.page || 1,
           p_limit: params.limit || 50
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        // RPC returns {students: [...], total, page, pages} - pass through
+        return ok(data);
       }
 
       case 'update_student': {
-        const { data, error } = await supabase.rpc('admin_update_student', {
+        const { data, error } = await sb.rpc('admin_update_student', {
           p_admin_id: aid,
           p_student_id: params.student_id || params.id,
           p_updates: JSON.stringify(params.updates || { is_banned: params.is_banned })
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok({ success: true });
       }
 
       case 'toggle_student_ban': {
-        const { data, error } = await supabase.rpc('admin_toggle_student_ban', {
+        const { data, error } = await sb.rpc('admin_toggle_student_ban', {
           p_admin_id: aid,
           p_student_id: params.student_id
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok(data);
       }
 
       // ===== SUBJECTS =====
       case 'get_subjects': {
-        const { data, error } = await supabase.rpc('admin_list_subjects', { p_admin_id: aid });
-        return rpcResponse(data, error);
+        const { data, error } = await sb.rpc('admin_list_subjects', { p_admin_id: aid });
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        // RPC returns array - wrap in {subjects: [...]}
+        return ok({ subjects: data });
       }
 
       case 'create_subject': {
-        const { data, error } = await supabase.rpc('admin_create_subject', {
+        const { data, error } = await sb.rpc('admin_create_subject', {
           p_admin_id: aid,
           p_name_ar: params.name_ar,
           p_name_en: params.name_en || null,
           p_icon: params.icon || '📘',
           p_color: params.color || '#3B82F6',
-          p_grade_level: params.grade_level || 'grade_3',
+          p_grade_level: params.grade_level || 3,
           p_is_published: params.is_published || false
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok(data);
       }
 
       case 'update_subject': {
-        const { data, error } = await supabase.rpc('admin_update_subject', {
+        const { data, error } = await sb.rpc('admin_update_subject', {
           p_admin_id: aid,
           p_subject_id: params.id || params.subject_id,
           p_updates: JSON.stringify({
@@ -112,115 +125,143 @@ export async function POST(request: NextRequest) {
             grade_level: params.grade_level
           })
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok(data);
       }
 
       case 'delete_subject': {
-        const { data, error } = await supabase.rpc('admin_delete_subject', {
+        const { data, error } = await sb.rpc('admin_delete_subject', {
           p_admin_id: aid,
           p_subject_id: params.id || params.subject_id
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok(data);
       }
 
       case 'toggle_subject': {
-        const { data, error } = await supabase.rpc('admin_toggle_subject_publish', {
+        const { data, error } = await sb.rpc('admin_toggle_subject_publish', {
           p_admin_id: aid,
           p_subject_id: params.subject_id
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok(data);
       }
 
       // ===== LESSONS =====
       case 'get_lessons':
       case 'lessons': {
-        const { data, error } = await supabase.rpc('admin_list_lessons', {
+        const { data, error } = await sb.rpc('admin_list_lessons', {
           p_admin_id: aid,
           p_subject_id: params.subject_id || null
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok({ lessons: data });
       }
 
       // ===== SUBSCRIPTIONS =====
       case 'get_subscriptions':
       case 'subscriptions': {
-        const { data, error } = await supabase.rpc('admin_list_subscriptions', { p_admin_id: aid });
-        return rpcResponse(data, error);
+        const { data, error } = await sb.rpc('admin_list_subscriptions', { p_admin_id: aid });
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        // Wrap in {subscriptions: [...], total}
+        const arr = Array.isArray(data) ? data : [];
+        return ok({ subscriptions: arr, total: arr.length });
       }
 
       // ===== PAYMENTS =====
       case 'get_payments':
       case 'payments': {
-        const { data, error } = await supabase.rpc('admin_list_payments', { p_admin_id: aid });
-        return rpcResponse(data, error);
+        const { data, error } = await sb.rpc('admin_list_payments', { p_admin_id: aid });
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        const arr = Array.isArray(data) ? data : [];
+        return ok({ payments: arr, total: arr.length });
       }
 
       // ===== SETTINGS =====
       case 'get_settings':
       case 'settings': {
-        const { data, error } = await supabase.rpc('admin_list_settings', { p_admin_id: aid });
-        return rpcResponse(data, error);
+        const { data, error } = await sb.rpc('admin_list_settings', { p_admin_id: aid });
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok({ settings: Array.isArray(data) ? data : [] });
       }
 
       case 'update_setting': {
-        const { data, error } = await supabase.rpc('admin_update_setting', {
+        const { data, error } = await sb.rpc('admin_update_setting', {
           p_admin_id: aid,
           p_key: params.key,
           p_value: String(params.value)
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok({ success: true });
       }
 
       // ===== THEMES =====
       case 'get_themes':
       case 'themes': {
-        const { data, error } = await supabase.rpc('admin_list_themes', { p_admin_id: aid });
-        return rpcResponse(data, error);
+        const { data, error } = await sb.rpc('admin_list_themes', { p_admin_id: aid });
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok({ themes: Array.isArray(data) ? data : [] });
       }
 
       case 'update_theme': {
-        // Support both slug-based and id-based updates
         if (params.slug) {
-          const { data, error } = await supabase.rpc('admin_update_theme_by_slug', {
+          const { data, error } = await sb.rpc('admin_update_theme_by_slug', {
             p_admin_id: aid,
             p_slug: params.slug,
             p_updates: JSON.stringify(params.updates || { is_active: params.is_active })
           });
-          return rpcResponse(data, error);
+          if (error) return err(error.message);
+          if (data?.error) return err(data.error, 403);
+          return ok(data);
         } else {
-          const { data, error } = await supabase.rpc('admin_update_theme', {
+          const { data, error } = await sb.rpc('admin_update_theme', {
             p_admin_id: aid,
             p_theme_id: params.theme_id || params.id,
             p_is_active: params.is_active ?? null,
             p_schedule_start: params.schedule_start || null,
             p_schedule_end: params.schedule_end || null
           });
-          return rpcResponse(data, error);
+          if (error) return err(error.message);
+          if (data?.error) return err(data.error, 403);
+          return ok(data);
         }
       }
 
       // ===== SECRETS =====
       case 'get_secrets':
       case 'secrets': {
-        const { data, error } = await supabase.rpc('admin_list_secrets', { p_admin_id: aid });
-        return rpcResponse(data, error);
+        const { data, error } = await sb.rpc('admin_list_secrets', { p_admin_id: aid });
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok({ secrets: Array.isArray(data) ? data : [] });
       }
 
       case 'update_secret': {
-        const { data, error } = await supabase.rpc('admin_update_secret', {
+        const { data, error } = await sb.rpc('admin_update_secret', {
           p_admin_id: aid,
           p_key: params.key,
           p_value: params.value,
           p_description: params.description || null
         });
-        return rpcResponse(data, error);
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok({ success: true });
       }
 
       default:
-        return NextResponse.json({ success: false, error: `Unknown action: ${action}` }, { status: 400 });
+        return err(`Unknown action: ${action}`, 400);
     }
   } catch (error) {
     console.error('Admin API error:', error);
-    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+    return err('Internal server error');
   }
 }
