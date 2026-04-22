@@ -58,7 +58,31 @@ export default function Dashboard() {
         if (res.ok) {
           const json = await res.json();
           if (json.success && json.data) {
-            setData(json.data);
+            const d = json.data;
+            const transformed: DashboardData = {
+              average_score: d.stats?.avg_score || 0,
+              total_exams: d.stats?.exams_completed || 0,
+              total_points: d.stats?.points || 0,
+              streak_days: d.stats?.streak_days || 0,
+              rank: 0,
+              subjects: (d.subjects || []).map((s: { id: string; name: string; icon: string; color: string; lesson_count: number; completed_lessons: number }) => ({
+                id: s.id,
+                name: s.name,
+                icon: s.icon,
+                color: s.color || '#3B82F6',
+                progress: s.lesson_count > 0 ? Math.round((s.completed_lessons / s.lesson_count) * 100) : 0,
+                total_lessons: s.lesson_count || 0,
+                completed_lessons: s.completed_lessons || 0,
+              })),
+              recent_activity: (d.recent_activity || []).map((a: { subject_icon: string; subject_name: string; score: number; created_at: string; correct_answers: number; total_questions: number }) => ({
+                type: 'exam',
+                text: `${a.subject_icon} ${a.subject_name} — ${a.score}%`,
+                time: new Date(a.created_at).toLocaleDateString('ar-EG'),
+                score: `${a.correct_answers}/${a.total_questions}`,
+              })),
+              streak_week: defaultStreakDays,
+            };
+            setData(transformed);
           }
         }
       } catch {
