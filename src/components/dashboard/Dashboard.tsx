@@ -6,8 +6,9 @@ import Link from "next/link";
 import {
   BookOpen, CheckSquare, Trophy, Flame, Clock,
   TrendingUp, ChevronLeft, Bot, Star,
-  Target, Loader2, AlertCircle,
+  Target, Loader2, AlertCircle, BarChart3,
 } from "lucide-react";
+import PerformanceReport from "@/components/performance/PerformanceReport";
 
 interface DashboardData {
   average_score: number;
@@ -48,6 +49,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showPerformance, setShowPerformance] = useState(false);
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -140,6 +142,15 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 font-cairo space-y-6" style={{ color: "var(--theme-text-primary)" }}>
+      {/* Performance Report Modal */}
+      {showPerformance && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl" style={{ background: 'var(--theme-surface-bg)' }}>
+            <PerformanceReport onClose={() => setShowPerformance(false)} />
+          </div>
+        </div>
+      )}
+
       {/* Welcome Banner */}
       <div
         className="rounded-2xl p-6 relative overflow-hidden"
@@ -199,6 +210,53 @@ export default function Dashboard() {
             </div>
           );
         })}
+      </div>
+
+      {/* Performance Report + Emergency Banner */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <button
+          onClick={() => setShowPerformance(true)}
+          className="themed-card p-4 flex items-center gap-3 text-right transition-all hover:shadow-lg cursor-pointer"
+          style={{ border: 'none' }}
+        >
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'rgba(99,102,241,0.12)' }}
+          >
+            <BarChart3 size={22} style={{ color: '#6366F1' }} />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-extrabold text-sm" style={{ color: 'var(--theme-text-primary)' }}>
+              📊 تقرير الأداء
+            </h3>
+            <p className="text-xs" style={{ color: 'var(--theme-text-secondary)' }}>
+              عرض تقرير أدائك المفصّل
+            </p>
+          </div>
+          <ChevronLeft size={18} style={{ color: 'var(--theme-text-muted)' }} />
+        </button>
+
+        <Link
+          href="/emergency"
+          className="themed-card p-4 flex items-center gap-3 transition-all hover:shadow-lg"
+          style={{ textDecoration: 'none' }}
+        >
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'rgba(239,68,68,0.12)' }}
+          >
+            <span className="text-2xl">🚨</span>
+          </div>
+          <div className="flex-1">
+            <h3 className="font-extrabold text-sm" style={{ color: 'var(--theme-text-primary)' }}>
+              وضع الطوارئ
+            </h3>
+            <p className="text-xs" style={{ color: 'var(--theme-text-secondary)' }}>
+              مراجعة سريعة قبل الامتحان
+            </p>
+          </div>
+          <ChevronLeft size={18} style={{ color: 'var(--theme-text-muted)' }} />
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

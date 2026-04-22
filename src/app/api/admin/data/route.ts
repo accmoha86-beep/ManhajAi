@@ -49,7 +49,6 @@ export async function POST(request: NextRequest) {
         const { data, error } = await sb.rpc('admin_overview', { p_admin_id: aid });
         if (error) return err(error.message);
         if (data?.error) return err(data.error, 403);
-        // Overview returns a flat object - pass through directly
         return ok(data);
       }
 
@@ -63,7 +62,6 @@ export async function POST(request: NextRequest) {
         });
         if (error) return err(error.message);
         if (data?.error) return err(data.error, 403);
-        // RPC returns {students: [...], total, page, pages} - pass through
         return ok(data);
       }
 
@@ -93,7 +91,6 @@ export async function POST(request: NextRequest) {
         const { data, error } = await sb.rpc('admin_list_subjects', { p_admin_id: aid });
         if (error) return err(error.message);
         if (data?.error) return err(data.error, 403);
-        // RPC returns array - wrap in {subjects: [...]}
         return ok({ subjects: data });
       }
 
@@ -168,7 +165,6 @@ export async function POST(request: NextRequest) {
         const { data, error } = await sb.rpc('admin_list_subscriptions', { p_admin_id: aid });
         if (error) return err(error.message);
         if (data?.error) return err(data.error, 403);
-        // Wrap in {subscriptions: [...], total}
         const arr = Array.isArray(data) ? data : [];
         return ok({ subscriptions: arr, total: arr.length });
       }
@@ -255,6 +251,117 @@ export async function POST(request: NextRequest) {
         if (error) return err(error.message);
         if (data?.error) return err(data.error, 403);
         return ok({ success: true });
+      }
+
+      // ===== COUPONS =====
+      case 'get_coupons': {
+        const { data, error } = await sb
+          .from('coupons')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (error) return err(error.message);
+        return ok({ coupons: data || [] });
+      }
+
+      case 'create_coupon': {
+        const { data, error } = await sb
+          .from('coupons')
+          .insert({
+            code: (params.code || '').toUpperCase(),
+            discount_percent: params.discount_percent || 10,
+            max_uses: params.max_uses || null,
+            used_count: 0,
+            is_active: true,
+            expires_at: params.expires_at || null,
+            description_ar: params.description_ar || null,
+          })
+          .select()
+          .single();
+        if (error) return err(error.message);
+        return ok({ coupon: data });
+      }
+
+      case 'update_coupon': {
+        const updates: any = {};
+        if (params.is_active !== undefined) updates.is_active = params.is_active;
+        if (params.discount_percent !== undefined) updates.discount_percent = params.discount_percent;
+        if (params.max_uses !== undefined) updates.max_uses = params.max_uses;
+        if (params.expires_at !== undefined) updates.expires_at = params.expires_at;
+        if (params.description_ar !== undefined) updates.description_ar = params.description_ar;
+        if (params.code !== undefined) updates.code = params.code.toUpperCase();
+
+        const { data, error } = await sb
+          .from('coupons')
+          .update(updates)
+          .eq('id', params.id || params.coupon_id)
+          .select()
+          .single();
+        if (error) return err(error.message);
+        return ok({ coupon: data });
+      }
+
+      case 'delete_coupon': {
+        const { error } = await sb
+          .from('coupons')
+          .delete()
+          .eq('id', params.id || params.coupon_id);
+        if (error) return err(error.message);
+        return ok({ success: true });
+      }
+
+      // ===== GRADES =====
+      case 'get_grades': {
+        const { data, error } = await sb
+          .from('grade_levels')
+          .select('*')
+          .order('level', { ascending: true });
+        if (error) return err(error.message);
+        return ok({ grades: data || [] });
+      }
+
+      case 'update_grade': {
+        const updates: any = {};
+        if (params.is_published !== undefined) updates.is_published = params.is_published;
+        if (params.has_terms !== undefined) updates.has_terms = params.has_terms;
+        if (params.term1_published !== undefined) updates.term1_published = params.term1_published;
+        if (params.term2_published !== undefined) updates.term2_published = params.term2_published;
+
+        const { data, error } = await sb
+          .from('grade_levels')
+          .update(updates)
+          .eq('id', params.id || params.grade_id)
+          .select()
+          .single();
+        if (error) return err(error.message);
+        return ok({ grade: data });
+      }
+
+      // ===== CONTENT GENERATION =====
+      case 'generate_content': {
+        // Trigger content generation
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const contentRes = await fetch(`${baseUrl}/api/content/generate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cookie': request.headers.get('Cookie') || '',
+            },
+            body: JSON.stringify({
+              subject_id: params.subject_id,
+              lesson_id: params.lesson_id,
+            }),
+          });
+          const contentData = await contentRes.json();
+          return ok(contentData);
+        } catch (e: any) {
+          return err(e.message || 'فشل في توليد المحتوى');
+        }
+      }
+
+      // ===== DOWNLOAD REPORT =====
+      case 'download_report': {
+        return ok({ redirect_url: '/api/admin/reports' });
       }
 
       default:

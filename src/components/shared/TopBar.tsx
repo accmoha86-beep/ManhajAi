@@ -5,6 +5,7 @@ import { useUIStore } from '@/store/ui-store';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Settings, LogIn, UserPlus, LogOut } from 'lucide-react';
+import NotificationBell from '@/components/notifications/NotificationBell';
 
 export default function TopBar() {
   const { user, isAuthenticated, logout } = useAuthStore();
@@ -43,6 +44,10 @@ export default function TopBar() {
 
       {/* Action buttons - LEFT side (RTL) */}
       <div className="flex items-center gap-2">
+        {isAuthenticated && (
+          <NotificationBell />
+        )}
+
         {/* Settings */}
         <Link
           href="/settings"

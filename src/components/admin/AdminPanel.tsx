@@ -1,2454 +1,967 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { useAuthStore } from "@/store/auth-store";
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Users,
-  CreditCard,
-  DollarSign,
-  Clock,
-  BookOpen,
-  CheckSquare,
-  Search,
-  Plus,
-  Trash2,
-  Edit3,
-  Save,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  Shield,
-  ShieldOff,
-  Eye,
-  EyeOff,
-  BarChart3,
-  MessageSquare,
-  Palette,
-  Key,
-  Settings,
-  Loader2,
-  AlertCircle,
-  CheckCircle,
-} from "lucide-react";
+  Users, BookOpen, Settings, BarChart3, Shield, Bell, Tag, Layers, FileText, Download,
+  Plus, Trash2, Edit, ToggleLeft, ToggleRight, Eye, EyeOff, Search, RefreshCw,
+  ChevronDown, ChevronUp, X, Check, AlertTriangle, Loader2, Upload
+} from 'lucide-react';
+import AdminNotifications from '@/components/admin/AdminNotifications';
 
-// ─── API Helper ───────────────────────────────────────────────────────────────
-async function adminAPI(action: string, params?: Record<string, any>) {
-  const res = await fetch("/api/admin/data", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
+// ==================== Types ====================
+interface TabDef {
+  key: string;
+  label: string;
+  icon?: any;
+}
+
+// ==================== Admin API Helper ====================
+async function adminAPI(action: string, params: Record<string, any> = {}) {
+  const res = await fetch('/api/admin/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, ...params }),
   });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || `API Error ${res.status}`);
+  }
   return res.json();
 }
 
-// ─── Toast Component ──────────────────────────────────────────────────────────
-function Toast({
-  message,
-  type,
-  onClose,
-}: {
-  message: string;
-  type: "success" | "error";
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 3000);
-    return () => clearTimeout(t);
-  }, [onClose]);
+// ==================== Main AdminPanel ====================
+export default function AdminPanel() {
+  const TABS: TabDef[] = [
+    { key: 'dashboard', label: '📊 لوحة التحكم' },
+    { key: 'students', label: '👥 الطلاب' },
+    { key: 'subjects', label: '📚 المواد' },
+    { key: 'exams', label: '📝 الامتحانات' },
+    { key: 'questions', label: '❓ الأسئلة' },
+    { key: 'settings', label: '⚙️ الإعدادات' },
+    { key: 'notifications', label: '🔔 الإشعارات' },
+    { key: 'coupons', label: '🏷️ الكوبونات' },
+    { key: 'grades', label: '📋 المراحل الدراسية' },
+    { key: 'content', label: '📄 توليد المحتوى' },
+    { key: 'reports', label: '📊 التقارير' },
+  ];
 
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [loading, setLoading] = useState(false);
+
+  return (
+    <div className="font-cairo min-h-screen" dir="rtl">
+      {/* Tab Navigation */}
+      <div className="flex flex-wrap gap-2 p-4 border-b" style={{ borderColor: 'var(--theme-border)', backgroundColor: 'var(--theme-card)' }}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            style={{
+              backgroundColor: activeTab === tab.key ? 'var(--theme-primary)' : 'var(--theme-bg)',
+              color: activeTab === tab.key ? '#fff' : 'var(--theme-text-primary)',
+              border: `1px solid ${activeTab === tab.key ? 'var(--theme-primary)' : 'var(--theme-border)'}`,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      <div className="p-4 md:p-6">
+        {activeTab === 'dashboard' && <DashboardTab />}
+        {activeTab === 'students' && <StudentsTab />}
+        {activeTab === 'subjects' && <SubjectsTab />}
+        {activeTab === 'exams' && <ExamsTab />}
+        {activeTab === 'questions' && <QuestionsTab />}
+        {activeTab === 'settings' && <SettingsTab />}
+        {activeTab === 'notifications' && <NotificationsAdminTab />}
+        {activeTab === 'coupons' && <CouponsTab />}
+        {activeTab === 'grades' && <GradesTab />}
+        {activeTab === 'content' && <ContentTab />}
+        {activeTab === 'reports' && <ReportsTab />}
+      </div>
+    </div>
+  );
+}
+
+// ==================== Shared Card Component ====================
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <div
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-xl shadow-lg text-white font-cairo text-sm flex items-center gap-2 animate-fade-in"
+      className={`rounded-xl p-4 md:p-6 ${className}`}
       style={{
-        background: type === "success" ? "#10B981" : "#EF4444",
+        backgroundColor: 'var(--theme-card)',
+        border: '1px solid var(--theme-border)',
       }}
     >
-      {type === "success" ? (
-        <CheckCircle className="w-4 h-4" />
-      ) : (
-        <AlertCircle className="w-4 h-4" />
-      )}
-      {message}
+      {children}
     </div>
   );
 }
 
-// ─── Spinner ──────────────────────────────────────────────────────────────────
-function Spinner() {
+function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-center py-12">
-      <Loader2
-        className="w-8 h-8 animate-spin"
-        style={{ color: "var(--theme-primary)" }}
-      />
-      <span
-        className="mr-3 font-cairo text-sm"
-        style={{ color: "var(--theme-text-secondary)" }}
-      >
-        جاري التحميل...
-      </span>
-    </div>
+    <h2 className="text-xl font-bold mb-4 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>
+      {children}
+    </h2>
   );
 }
 
-// ─── Empty State ──────────────────────────────────────────────────────────────
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16">
-      <BarChart3
-        className="w-12 h-12 mb-3"
-        style={{ color: "var(--theme-text-secondary)", opacity: 0.4 }}
-      />
-      <p
-        className="font-cairo text-sm"
-        style={{ color: "var(--theme-text-secondary)" }}
-      >
-        {message}
-      </p>
-    </div>
-  );
-}
-
-// ─── Tab Definitions ──────────────────────────────────────────────────────────
-const TABS = [
-  { key: "overview", label: "📊 نظرة عامة" },
-  { key: "students", label: "👥 الطلاب" },
-  { key: "subscriptions", label: "💳 الاشتراكات" },
-  { key: "subjects", label: "📚 المواد" },
-  { key: "payments", label: "💰 المدفوعات" },
-  { key: "settings", label: "⚙️ الإعدادات" },
-  { key: "secrets", label: "🔑 مفاتيح API" },
-  { key: "themes", label: "🎨 الثيمات" },
-] as const;
-
-type TabKey = (typeof TABS)[number]["key"];
-
-// ─── Status Badge ─────────────────────────────────────────────────────────────
-function StatusBadge({
-  label,
-  color,
-}: {
-  label: string;
-  color: string;
-}) {
-  return (
-    <span
-      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-cairo font-medium"
-      style={{
-        background: color + "22",
-        color: color,
-        border: `1px solid ${color}44`,
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// OVERVIEW TAB
-// ═══════════════════════════════════════════════════════════════════════════════
-function OverviewTab() {
+// ==================== Dashboard Tab ====================
+function DashboardTab() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
-    setLoading(true);
-    adminAPI("get_stats")
-      .then((res) => {
-        if (res.success) setStats(res.data);
-        else setError(res.error || "فشل تحميل الإحصائيات");
-      })
-      .catch(() => setError("خطأ في الاتصال"))
-      .finally(() => setLoading(false));
+    loadStats();
   }, []);
 
-  if (loading) return <Spinner />;
-  if (error)
-    return (
-      <p className="text-red-500 font-cairo text-center py-8">{error}</p>
-    );
-  if (!stats) return null;
+  const loadStats = async () => {
+    setLoading(true);
+    try {
+      const data = await adminAPI('get_stats');
+      setStats(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const cards = [
-    {
-      title: "إجمالي الطلاب",
-      value: stats.total_students ?? 0,
-      icon: Users,
-      color: "#6366F1",
-    },
-    {
-      title: "اشتراكات نشطة",
-      value: stats.active_subscriptions ?? 0,
-      icon: CreditCard,
-      color: "#10B981",
-    },
-    {
-      title: "الإيرادات",
-      value: `${stats.total_revenue ?? 0} ج.م`,
-      icon: DollarSign,
-      color: "#F59E0B",
-    },
-    {
-      title: "اشتراكات تجريبية",
-      value: stats.trial_subscriptions ?? 0,
-      icon: Clock,
-      color: "#8B5CF6",
-    },
-    {
-      title: "المواد المنشورة",
-      value: `${stats.published_subjects ?? 0} / ${stats.total_subjects ?? 0}`,
-      icon: BookOpen,
-      color: "#3B82F6",
-    },
-    {
-      title: "الأسئلة",
-      value: stats.total_questions ?? 0,
-      icon: CheckSquare,
-      color: "#EC4899",
-    },
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} /></div>;
+
+  const statCards = [
+    { label: 'إجمالي الطلاب', value: stats?.total_students || 0, icon: Users, color: '#4472C4' },
+    { label: 'الطلاب النشطين', value: stats?.active_students || 0, icon: Users, color: '#10B981' },
+    { label: 'المواد المنشورة', value: stats?.published_subjects || 0, icon: BookOpen, color: '#F59E0B' },
+    { label: 'إجمالي الامتحانات', value: stats?.total_exams || 0, icon: BarChart3, color: '#8B5CF6' },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {cards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <div
-              key={card.title}
-              className="themed-card p-5 flex flex-col gap-3"
-            >
-              <div className="flex items-center justify-between">
-                <span
-                  className="font-cairo text-xs"
-                  style={{ color: "var(--theme-text-secondary)" }}
-                >
-                  {card.title}
-                </span>
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: card.color + "18" }}
-                >
-                  <Icon className="w-4 h-4" style={{ color: card.color }} />
-                </div>
+      <SectionTitle>📊 لوحة التحكم</SectionTitle>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {statCards.map((s, i) => (
+          <Card key={i}>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: s.color + '20' }}>
+                <s.icon size={24} style={{ color: s.color }} />
               </div>
-              <span
-                className="font-cairo text-2xl font-bold"
-                style={{ color: "var(--theme-text-primary)" }}
-              >
-                {card.value}
-              </span>
+              <div>
+                <p className="text-sm" style={{ color: 'var(--theme-text-secondary)' }}>{s.label}</p>
+                <p className="text-2xl font-bold" style={{ color: 'var(--theme-text-primary)' }}>{s.value}</p>
+              </div>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Extra info cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="themed-card p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <MessageSquare
-              className="w-4 h-4"
-              style={{ color: "var(--theme-primary)" }}
-            />
-            <span
-              className="font-cairo text-sm font-semibold"
-              style={{ color: "var(--theme-text-primary)" }}
-            >
-              رسائل الدردشة
-            </span>
-          </div>
-          <p
-            className="font-cairo text-3xl font-bold"
-            style={{ color: "var(--theme-text-primary)" }}
-          >
-            {stats.total_chat_messages ?? 0}
-          </p>
-          <p
-            className="font-cairo text-xs mt-1"
-            style={{ color: "var(--theme-text-secondary)" }}
-          >
-            إجمالي رسائل المحادثة مع الذكاء الاصطناعي
-          </p>
-        </div>
-        <div className="themed-card p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <BookOpen
-              className="w-4 h-4"
-              style={{ color: "var(--theme-primary)" }}
-            />
-            <span
-              className="font-cairo text-sm font-semibold"
-              style={{ color: "var(--theme-text-primary)" }}
-            >
-              الدروس
-            </span>
-          </div>
-          <p
-            className="font-cairo text-3xl font-bold"
-            style={{ color: "var(--theme-text-primary)" }}
-          >
-            {stats.total_lessons ?? 0}
-          </p>
-          <p
-            className="font-cairo text-xs mt-1"
-            style={{ color: "var(--theme-text-secondary)" }}
-          >
-            إجمالي الدروس المتوفرة
-          </p>
-        </div>
-      </div>
-
-      {/* Placeholder Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="themed-card p-6 flex flex-col items-center justify-center min-h-[200px]">
-          <BarChart3
-            className="w-10 h-10 mb-3"
-            style={{ color: "var(--theme-text-secondary)", opacity: 0.3 }}
-          />
-          <p
-            className="font-cairo text-sm"
-            style={{ color: "var(--theme-text-secondary)" }}
-          >
-            📈 رسم بياني للاشتراكات - قريبًا
-          </p>
-        </div>
-        <div className="themed-card p-6 flex flex-col items-center justify-center min-h-[200px]">
-          <BarChart3
-            className="w-10 h-10 mb-3"
-            style={{ color: "var(--theme-text-secondary)", opacity: 0.3 }}
-          />
-          <p
-            className="font-cairo text-sm"
-            style={{ color: "var(--theme-text-secondary)" }}
-          >
-            📊 رسم بياني للإيرادات - قريبًا
-          </p>
-        </div>
+          </Card>
+        ))}
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// STUDENTS TAB
-// ═══════════════════════════════════════════════════════════════════════════════
+// ==================== Students Tab ====================
 function StudentsTab() {
   const [students, setStudents] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "error";
-  } | null>(null);
-  const limit = 15;
-
-  const fetchStudents = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await adminAPI("get_students", { search, page, limit });
-      if (res.success) {
-        setStudents(res.data?.students ?? []);
-        setTotal(res.data?.total ?? 0);
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, [search, page]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    fetchStudents();
-  }, [fetchStudents]);
-
-  const toggleBan = async (student: any) => {
-    setActionLoading(student.id);
-    try {
-      const res = await adminAPI("update_student", {
-        id: student.id,
-        updates: { is_banned: !student.is_banned },
-      });
-      if (res.success) {
-        setToast({ message: "✅ تم التحديث", type: "success" });
-        fetchStudents();
-      } else {
-        setToast({ message: res.error || "فشل التحديث", type: "error" });
-      }
-    } catch {
-      setToast({ message: "خطأ في الاتصال", type: "error" });
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const totalPages = Math.ceil(total / limit);
-
-  return (
-    <div className="space-y-4">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
-      {/* Search */}
-      <div className="relative">
-        <Search
-          className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4"
-          style={{ color: "var(--theme-text-secondary)" }}
-        />
-        <input
-          type="text"
-          className="themed-input w-full pr-10 font-cairo text-sm"
-          placeholder="بحث بالاسم أو الهاتف..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-        />
-      </div>
-
-      {loading ? (
-        <Spinner />
-      ) : students.length === 0 ? (
-        <EmptyState message="لا يوجد طلاب بعد" />
-      ) : (
-        <>
-          {/* Table */}
-          <div className="themed-card overflow-x-auto">
-            <table className="w-full text-right">
-              <thead>
-                <tr
-                  style={{
-                    borderBottom: "1px solid var(--theme-surface-border)",
-                  }}
-                >
-                  {["الاسم", "الهاتف", "المحافظة", "الحالة", "تاريخ التسجيل", "إجراءات"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className="px-4 py-3 font-cairo text-xs font-semibold"
-                        style={{ color: "var(--theme-text-secondary)" }}
-                      >
-                        {h}
-                      </th>
-                    )
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {students.map((s: any) => (
-                  <tr
-                    key={s.id}
-                    style={{
-                      borderBottom: "1px solid var(--theme-surface-border)",
-                    }}
-                    className="hover:opacity-80 transition-opacity"
-                  >
-                    <td
-                      className="px-4 py-3 font-cairo text-sm"
-                      style={{ color: "var(--theme-text-primary)" }}
-                    >
-                      {s.full_name || s.name || "-"}
-                    </td>
-                    <td
-                      className="px-4 py-3 font-cairo text-sm"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                      dir="ltr"
-                    >
-                      {s.phone || "-"}
-                    </td>
-                    <td
-                      className="px-4 py-3 font-cairo text-sm"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                    >
-                      {s.governorate || "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        {s.is_verified && (
-                          <StatusBadge label="مُفعّل" color="#10B981" />
-                        )}
-                        {s.is_banned && (
-                          <StatusBadge label="محظور" color="#EF4444" />
-                        )}
-                        {!s.is_verified && !s.is_banned && (
-                          <StatusBadge label="غير مُفعّل" color="#6B7280" />
-                        )}
-                      </div>
-                    </td>
-                    <td
-                      className="px-4 py-3 font-cairo text-xs"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                      dir="ltr"
-                    >
-                      {s.created_at
-                        ? new Date(s.created_at).toLocaleDateString("ar-EG")
-                        : "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => toggleBan(s)}
-                        disabled={actionLoading === s.id}
-                        className="themed-btn-outline text-xs font-cairo px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
-                        style={{
-                          color: s.is_banned ? "#10B981" : "#EF4444",
-                          borderColor: s.is_banned ? "#10B98144" : "#EF444444",
-                        }}
-                      >
-                        {actionLoading === s.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : s.is_banned ? (
-                          <ShieldOff className="w-3 h-3" />
-                        ) : (
-                          <Shield className="w-3 h-3" />
-                        )}
-                        {s.is_banned ? "إلغاء الحظر" : "حظر"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-4 py-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="themed-btn-outline p-2 rounded-lg disabled:opacity-30"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-              <span
-                className="font-cairo text-sm"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                صفحة {page} من {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="themed-btn-outline p-2 rounded-lg disabled:opacity-30"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBSCRIPTIONS TAB
-// ═══════════════════════════════════════════════════════════════════════════════
-function SubscriptionsTab() {
-  const [subscriptions, setSubscriptions] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const limit = 15;
-
-  const fetchSubs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params: any = { page, limit };
-      if (statusFilter) params.status = statusFilter;
-      const res = await adminAPI("get_subscriptions", params);
-      if (res.success) {
-        setSubscriptions(res.data?.subscriptions ?? []);
-        setTotal(res.data?.total ?? 0);
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, page]);
-
-  useEffect(() => {
-    fetchSubs();
-  }, [fetchSubs]);
-
-  const statusColors: Record<string, string> = {
-    trial: "#F59E0B",
-    active: "#10B981",
-    expired: "#EF4444",
-    cancelled: "#6B7280",
-  };
-
-  const statusLabels: Record<string, string> = {
-    trial: "تجريبي",
-    active: "نشط",
-    expired: "منتهي",
-    cancelled: "ملغي",
-  };
-
-  const filters = [
-    { key: "", label: "الكل" },
-    { key: "active", label: "نشط" },
-    { key: "trial", label: "تجريبي" },
-    { key: "expired", label: "منتهي" },
-    { key: "cancelled", label: "ملغي" },
-  ];
-
-  const totalPages = Math.ceil(total / limit);
-
-  return (
-    <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {filters.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => {
-              setStatusFilter(f.key);
-              setPage(1);
-            }}
-            className={`px-4 py-2 rounded-xl font-cairo text-xs font-medium transition-all ${
-              statusFilter === f.key
-                ? "themed-btn-primary"
-                : "themed-btn-outline"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {loading ? (
-        <Spinner />
-      ) : subscriptions.length === 0 ? (
-        <EmptyState message="لا توجد اشتراكات" />
-      ) : (
-        <>
-          <div className="themed-card overflow-x-auto">
-            <table className="w-full text-right">
-              <thead>
-                <tr
-                  style={{
-                    borderBottom: "1px solid var(--theme-surface-border)",
-                  }}
-                >
-                  {["الطالب", "الخطة", "المبلغ", "الحالة", "تاريخ البدء", "تاريخ الانتهاء"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className="px-4 py-3 font-cairo text-xs font-semibold"
-                        style={{ color: "var(--theme-text-secondary)" }}
-                      >
-                        {h}
-                      </th>
-                    )
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {subscriptions.map((sub: any, idx: number) => (
-                  <tr
-                    key={sub.id || idx}
-                    style={{
-                      borderBottom: "1px solid var(--theme-surface-border)",
-                    }}
-                    className="hover:opacity-80 transition-opacity"
-                  >
-                    <td
-                      className="px-4 py-3 font-cairo text-sm"
-                      style={{ color: "var(--theme-text-primary)" }}
-                    >
-                      {sub.student_name || sub.profiles?.full_name || "-"}
-                    </td>
-                    <td
-                      className="px-4 py-3 font-cairo text-sm"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                    >
-                      {sub.plan_id || sub.plan || "-"}
-                    </td>
-                    <td
-                      className="px-4 py-3 font-cairo text-sm"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                    >
-                      {sub.amount != null ? `${sub.amount} ج.م` : "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge
-                        label={statusLabels[sub.status] || sub.status || "-"}
-                        color={statusColors[sub.status] || "#6B7280"}
-                      />
-                    </td>
-                    <td
-                      className="px-4 py-3 font-cairo text-xs"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                      dir="ltr"
-                    >
-                      {sub.starts_at || sub.created_at
-                        ? new Date(
-                            sub.starts_at || sub.created_at
-                          ).toLocaleDateString("ar-EG")
-                        : "-"}
-                    </td>
-                    <td
-                      className="px-4 py-3 font-cairo text-xs"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                      dir="ltr"
-                    >
-                      {sub.expires_at
-                        ? new Date(sub.expires_at).toLocaleDateString("ar-EG")
-                        : "-"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-4 py-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="themed-btn-outline p-2 rounded-lg disabled:opacity-30"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-              <span
-                className="font-cairo text-sm"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                صفحة {page} من {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="themed-btn-outline p-2 rounded-lg disabled:opacity-30"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBJECTS TAB
-// ═══════════════════════════════════════════════════════════════════════════════
-function SubjectsTab() {
-  const [subjects, setSubjects] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "error";
-  } | null>(null);
-
-  const emptyForm = {
-    name_ar: "",
-    name_en: "",
-    icon: "📘",
-    color: "#6366F1",
-    grade_level: 1,
-    is_published: false,
-    sort_order: 0,
-  };
-  const [form, setForm] = useState(emptyForm);
-
-  const fetchSubjects = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await adminAPI("get_subjects");
-      if (res.success) setSubjects(res.data?.subjects ?? []);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
+    loadStudents();
   }, []);
 
-  useEffect(() => {
-    fetchSubjects();
-  }, [fetchSubjects]);
-
-  const openCreate = () => {
-    setEditingId(null);
-    setForm(emptyForm);
-    setShowForm(true);
-  };
-
-  const openEdit = (sub: any) => {
-    setEditingId(sub.id);
-    setForm({
-      name_ar: sub.name_ar || "",
-      name_en: sub.name_en || "",
-      icon: sub.icon || "📘",
-      color: sub.color || "#6366F1",
-      grade_level: sub.grade_level || 1,
-      is_published: sub.is_published ?? false,
-      sort_order: sub.sort_order ?? 0,
-    });
-    setShowForm(true);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
+  const loadStudents = async () => {
+    setLoading(true);
     try {
-      let res;
-      if (editingId) {
-        res = await adminAPI("update_subject", {
-          id: editingId,
-          updates: form,
-        });
-      } else {
-        res = await adminAPI("create_subject", form);
-      }
-      if (res.success) {
-        setToast({ message: "✅ تم الحفظ", type: "success" });
-        setShowForm(false);
-        setEditingId(null);
-        fetchSubjects();
-      } else {
-        setToast({ message: res.error || "فشل الحفظ", type: "error" });
-      }
-    } catch {
-      setToast({ message: "خطأ في الاتصال", type: "error" });
+      const data = await adminAPI('get_students');
+      setStudents(data.students || data || []);
+    } catch (err) {
+      console.error(err);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذه المادة؟")) return;
+  const toggleBan = async (userId: string, isBanned: boolean) => {
     try {
-      const res = await adminAPI("delete_subject", { id });
-      if (res.success) {
-        setToast({ message: "✅ تم الحذف", type: "success" });
-        fetchSubjects();
-      } else {
-        setToast({ message: res.error || "فشل الحذف", type: "error" });
-      }
-    } catch {
-      setToast({ message: "خطأ في الاتصال", type: "error" });
+      await adminAPI(isBanned ? 'unban_student' : 'ban_student', { user_id: userId });
+      loadStudents();
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  const togglePublish = async (sub: any) => {
-    try {
-      const res = await adminAPI("update_subject", {
-        id: sub.id,
-        updates: { is_published: !sub.is_published },
-      });
-      if (res.success) {
-        setToast({ message: "✅ تم التحديث", type: "success" });
-        fetchSubjects();
-      } else {
-        setToast({ message: res.error || "فشل التحديث", type: "error" });
-      }
-    } catch {
-      setToast({ message: "خطأ في الاتصال", type: "error" });
-    }
-  };
+  const filtered = students.filter((s: any) =>
+    (s.full_name || '').includes(searchTerm) || (s.phone || '').includes(searchTerm)
+  );
 
-  if (loading) return <Spinner />;
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} /></div>;
 
   return (
     <div className="space-y-4">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
-
-      <div className="flex items-center justify-between">
-        <h3
-          className="font-cairo text-lg font-bold"
-          style={{ color: "var(--theme-text-primary)" }}
-        >
-          المواد الدراسية ({subjects.length})
-        </h3>
-        <button
-          onClick={openCreate}
-          className="themed-btn-primary px-4 py-2 rounded-xl font-cairo text-sm flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          إضافة مادة
+      <SectionTitle>👥 إدارة الطلاب</SectionTitle>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2" size={18} style={{ color: 'var(--theme-text-secondary)' }} />
+          <input
+            type="text"
+            placeholder="بحث بالاسم أو الهاتف..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pr-10 pl-4 py-2 rounded-lg border font-cairo"
+            style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }}
+          />
+        </div>
+        <button onClick={loadStudents} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--theme-primary)', color: '#fff' }}>
+          <RefreshCw size={18} />
         </button>
       </div>
-
-      {/* Create / Edit Form */}
-      {showForm && (
-        <div
-          className="themed-card p-5 space-y-4"
-          style={{
-            border: "2px solid var(--theme-primary)",
-          }}
-        >
-          <div className="flex items-center justify-between">
-            <h4
-              className="font-cairo text-sm font-bold"
-              style={{ color: "var(--theme-text-primary)" }}
-            >
-              {editingId ? "تعديل المادة" : "إضافة مادة جديدة"}
-            </h4>
-            <button
-              onClick={() => {
-                setShowForm(false);
-                setEditingId(null);
-              }}
-              className="p-1 rounded-lg hover:opacity-70"
-            >
-              <X
-                className="w-4 h-4"
-                style={{ color: "var(--theme-text-secondary)" }}
-              />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label
-                className="block font-cairo text-xs mb-1"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                الاسم بالعربية
-              </label>
-              <input
-                type="text"
-                className="themed-input w-full font-cairo text-sm"
-                value={form.name_ar}
-                onChange={(e) =>
-                  setForm({ ...form, name_ar: e.target.value })
-                }
-                placeholder="مثال: الرياضيات"
-              />
-            </div>
-            <div>
-              <label
-                className="block font-cairo text-xs mb-1"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                الاسم بالإنجليزية
-              </label>
-              <input
-                type="text"
-                className="themed-input w-full font-cairo text-sm"
-                value={form.name_en}
-                onChange={(e) =>
-                  setForm({ ...form, name_en: e.target.value })
-                }
-                placeholder="e.g. Mathematics"
-              />
-            </div>
-            <div>
-              <label
-                className="block font-cairo text-xs mb-1"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                الأيقونة (إيموجي)
-              </label>
-              <input
-                type="text"
-                className="themed-input w-full font-cairo text-sm"
-                value={form.icon}
-                onChange={(e) => setForm({ ...form, icon: e.target.value })}
-                placeholder="📘"
-              />
-            </div>
-            <div>
-              <label
-                className="block font-cairo text-xs mb-1"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                اللون
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  className="w-10 h-10 rounded-lg border-0 cursor-pointer"
-                  value={form.color}
-                  onChange={(e) =>
-                    setForm({ ...form, color: e.target.value })
-                  }
-                />
-                <input
-                  type="text"
-                  className="themed-input flex-1 font-cairo text-sm"
-                  value={form.color}
-                  onChange={(e) =>
-                    setForm({ ...form, color: e.target.value })
-                  }
-                  dir="ltr"
-                />
-              </div>
-            </div>
-            <div>
-              <label
-                className="block font-cairo text-xs mb-1"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                الصف الدراسي
-              </label>
-              <select
-                className="themed-input w-full font-cairo text-sm"
-                value={form.grade_level}
-                onChange={(e) =>
-                  setForm({ ...form, grade_level: Number(e.target.value) })
-                }
-              >
-                <option value={1}>الصف الأول الثانوي</option>
-                <option value={2}>الصف الثاني الثانوي</option>
-                <option value={3}>الصف الثالث الثانوي</option>
-              </select>
-            </div>
-            <div>
-              <label
-                className="block font-cairo text-xs mb-1"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                ترتيب العرض
-              </label>
-              <input
-                type="number"
-                className="themed-input w-full font-cairo text-sm"
-                value={form.sort_order}
-                onChange={(e) =>
-                  setForm({ ...form, sort_order: Number(e.target.value) })
-                }
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.is_published}
-                onChange={(e) =>
-                  setForm({ ...form, is_published: e.target.checked })
-                }
-                className="w-4 h-4 rounded"
-              />
-              <span
-                className="font-cairo text-sm"
-                style={{ color: "var(--theme-text-primary)" }}
-              >
-                نشر المادة
-              </span>
-            </label>
-          </div>
-
-          <div className="flex items-center gap-2 justify-end">
-            <button
-              onClick={() => {
-                setShowForm(false);
-                setEditingId(null);
-              }}
-              className="themed-btn-outline px-4 py-2 rounded-xl font-cairo text-sm"
-            >
-              إلغاء
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving || !form.name_ar}
-              className="themed-btn-primary px-4 py-2 rounded-xl font-cairo text-sm flex items-center gap-2 disabled:opacity-50"
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              {editingId ? "حفظ التعديلات" : "إضافة"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Subject Cards Grid */}
-      {subjects.length === 0 ? (
-        <EmptyState message="لا توجد مواد بعد" />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {subjects.map((sub: any) => (
-            <div key={sub.id} className="themed-card p-4 space-y-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-11 h-11 rounded-xl flex items-center justify-center text-xl"
-                    style={{ background: (sub.color || "#6366F1") + "18" }}
-                  >
-                    {sub.icon || "📘"}
-                  </div>
-                  <div>
-                    <h4
-                      className="font-cairo text-sm font-bold"
-                      style={{ color: "var(--theme-text-primary)" }}
-                    >
-                      {sub.name_ar}
-                    </h4>
-                    <p
-                      className="font-cairo text-xs"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                    >
-                      {sub.name_en || ""} · الصف {sub.grade_level}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => togglePublish(sub)}
-                  title={sub.is_published ? "إلغاء النشر" : "نشر"}
-                >
-                  {sub.is_published ? (
-                    <StatusBadge label="منشور" color="#10B981" />
-                  ) : (
-                    <StatusBadge label="مسودة" color="#6B7280" />
-                  )}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <span
-                  className="font-cairo text-xs"
-                  style={{ color: "var(--theme-text-secondary)" }}
-                >
-                  📖 {sub.lesson_count ?? 0} درس
-                </span>
-                <span
-                  className="font-cairo text-xs"
-                  style={{ color: "var(--theme-text-secondary)" }}
-                >
-                  ❓ {sub.question_count ?? 0} سؤال
-                </span>
-              </div>
-
-              <div
-                className="flex items-center gap-2 pt-2"
-                style={{
-                  borderTop: "1px solid var(--theme-surface-border)",
-                }}
-              >
-                <button
-                  onClick={() => openEdit(sub)}
-                  className="themed-btn-outline flex-1 py-1.5 rounded-lg font-cairo text-xs flex items-center justify-center gap-1.5"
-                >
-                  <Edit3 className="w-3 h-3" />
-                  تعديل
-                </button>
-                <button
-                  onClick={() => handleDelete(sub.id)}
-                  className="themed-btn-outline flex-1 py-1.5 rounded-lg font-cairo text-xs flex items-center justify-center gap-1.5"
-                  style={{ color: "#EF4444", borderColor: "#EF444444" }}
-                >
-                  <Trash2 className="w-3 h-3" />
-                  حذف
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PAYMENTS TAB
-// ═══════════════════════════════════════════════════════════════════════════════
-function PaymentsTab() {
-  const [payments, setPayments] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const limit = 15;
-
-  const fetchPayments = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await adminAPI("get_payments", { page, limit });
-      if (res.success) {
-        setPayments(res.data?.payments ?? []);
-        setTotal(res.data?.total ?? 0);
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, [page]);
-
-  useEffect(() => {
-    fetchPayments();
-  }, [fetchPayments]);
-
-  const statusColors: Record<string, string> = {
-    completed: "#10B981",
-    pending: "#F59E0B",
-    failed: "#EF4444",
-    refunded: "#6B7280",
-  };
-
-  const statusLabels: Record<string, string> = {
-    completed: "مكتمل",
-    pending: "قيد الانتظار",
-    failed: "فشل",
-    refunded: "مسترد",
-  };
-
-  const totalPages = Math.ceil(total / limit);
-
-  if (loading) return <Spinner />;
-  if (payments.length === 0)
-    return <EmptyState message="لا توجد مدفوعات بعد" />;
-
-  return (
-    <div className="space-y-4">
-      <div className="themed-card overflow-x-auto">
-        <table className="w-full text-right">
-          <thead>
-            <tr
-              style={{
-                borderBottom: "1px solid var(--theme-surface-border)",
-              }}
-            >
-              {["الطالب", "الطريقة", "المبلغ", "الحالة", "التاريخ"].map(
-                (h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 font-cairo text-xs font-semibold"
-                    style={{ color: "var(--theme-text-secondary)" }}
-                  >
-                    {h}
-                  </th>
-                )
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {payments.map((p: any, idx: number) => (
-              <tr
-                key={p.id || idx}
-                style={{
-                  borderBottom: "1px solid var(--theme-surface-border)",
-                }}
-                className="hover:opacity-80 transition-opacity"
-              >
-                <td
-                  className="px-4 py-3 font-cairo text-sm"
-                  style={{ color: "var(--theme-text-primary)" }}
-                >
-                  {p.student_name || p.profiles?.full_name || "-"}
-                </td>
-                <td
-                  className="px-4 py-3 font-cairo text-sm"
-                  style={{ color: "var(--theme-text-secondary)" }}
-                >
-                  {p.provider || p.payment_method || "-"}
-                </td>
-                <td
-                  className="px-4 py-3 font-cairo text-sm font-semibold"
-                  style={{ color: "var(--theme-text-primary)" }}
-                >
-                  {p.amount != null ? `${p.amount} ج.م` : "-"}
-                </td>
-                <td className="px-4 py-3">
-                  <StatusBadge
-                    label={statusLabels[p.status] || p.status || "-"}
-                    color={statusColors[p.status] || "#6B7280"}
-                  />
-                </td>
-                <td
-                  className="px-4 py-3 font-cairo text-xs"
-                  style={{ color: "var(--theme-text-secondary)" }}
-                  dir="ltr"
-                >
-                  {p.created_at
-                    ? new Date(p.created_at).toLocaleDateString("ar-EG")
-                    : "-"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 py-2">
-          <button
-            onClick={() => setPage((pp) => Math.max(1, pp - 1))}
-            disabled={page <= 1}
-            className="themed-btn-outline p-2 rounded-lg disabled:opacity-30"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-          <span
-            className="font-cairo text-sm"
-            style={{ color: "var(--theme-text-secondary)" }}
-          >
-            صفحة {page} من {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((pp) => Math.min(totalPages, pp + 1))}
-            disabled={page >= totalPages}
-            className="themed-btn-outline p-2 rounded-lg disabled:opacity-30"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SETTINGS TAB
-// ═══════════════════════════════════════════════════════════════════════════════
-function SettingsTab() {
-  const [settings, setSettings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "error";
-  } | null>(null);
-
-  // Local editable state per key
-  const [editValues, setEditValues] = useState<Record<string, any>>({});
-
-  const fetchSettings = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await adminAPI("get_settings");
-      if (res.success) {
-        const s = res.data?.settings ?? [];
-        setSettings(s);
-        const vals: Record<string, any> = {};
-        s.forEach((item: any) => {
-          try {
-            vals[item.key] = typeof item.value === "string" ? JSON.parse(item.value) : item.value;
-          } catch {
-            vals[item.key] = item.value;
-          }
-        });
-        setEditValues(vals);
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
-
-  const saveSetting = async (key: string) => {
-    setSaving(key);
-    try {
-      const value = editValues[key];
-      const res = await adminAPI("update_setting", {
-        key,
-        value: typeof value === "object" ? JSON.stringify(value) : String(value),
-      });
-      if (res.success) {
-        setToast({ message: "✅ تم الحفظ", type: "success" });
-      } else {
-        setToast({ message: res.error || "فشل الحفظ", type: "error" });
-      }
-    } catch {
-      setToast({ message: "خطأ في الاتصال", type: "error" });
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const getVal = (key: string, subKey?: string): any => {
-    const v = editValues[key];
-    if (subKey && typeof v === "object" && v !== null) return v[subKey] ?? "";
-    return v ?? "";
-  };
-
-  const setVal = (key: string, value: any, subKey?: string) => {
-    setEditValues((prev) => {
-      if (subKey) {
-        const existing = typeof prev[key] === "object" && prev[key] !== null ? { ...prev[key] } : {};
-        existing[subKey] = value;
-        return { ...prev, [key]: existing };
-      }
-      return { ...prev, [key]: value };
-    });
-  };
-
-  if (loading) return <Spinner />;
-
-  const renderNumberInput = (
-    label: string,
-    key: string,
-    subKey?: string,
-    placeholder?: string
-  ) => (
-    <div className="flex items-center justify-between gap-3">
-      <label
-        className="font-cairo text-sm whitespace-nowrap"
-        style={{ color: "var(--theme-text-primary)" }}
-      >
-        {label}
-      </label>
-      <input
-        type="number"
-        className="themed-input w-32 font-cairo text-sm text-left"
-        dir="ltr"
-        value={getVal(key, subKey)}
-        placeholder={placeholder}
-        onChange={(e) => {
-          const v = e.target.value === "" ? "" : Number(e.target.value);
-          setVal(key, v, subKey);
-        }}
-      />
-    </div>
-  );
-
-  const renderSaveButton = (key: string) => (
-    <button
-      onClick={() => saveSetting(key)}
-      disabled={saving === key}
-      className="themed-btn-primary px-4 py-2 rounded-xl font-cairo text-sm flex items-center gap-2 disabled:opacity-50 mt-3"
-    >
-      {saving === key ? (
-        <Loader2 className="w-4 h-4 animate-spin" />
-      ) : (
-        <Save className="w-4 h-4" />
-      )}
-      حفظ التعديلات
-    </button>
-  );
-
-  const chatBudget = editValues["chat_budget"] || {};
-  const costConfig = editValues["cost_config"] || {};
-
-  const planLabels: Record<string, string> = {
-    trial: "تجريبي",
-    one_subject: "مادة واحدة",
-    three_subjects: "3 مواد",
-    all_subjects: "كل المواد",
-  };
-
-  return (
-    <div className="space-y-6">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
-
-      {/* Pricing Section */}
-      <div className="themed-card p-5 space-y-4">
-        <h3
-          className="font-cairo text-base font-bold flex items-center gap-2"
-          style={{ color: "var(--theme-text-primary)" }}
-        >
-          💰 التسعير
-        </h3>
-        <div className="space-y-3">
-          {renderNumberInput(
-            "مادة واحدة (ج.م)",
-            "pricing",
-            "one_subject_price"
-          )}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex-1">
-              {renderNumberInput(
-                "3 مواد (ج.م)",
-                "pricing",
-                "three_subjects_price"
-              )}
-            </div>
-            <div className="flex-1">
-              {renderNumberInput(
-                "خصم %",
-                "pricing",
-                "three_subjects_discount"
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex-1">
-              {renderNumberInput(
-                "كل المواد (ج.م)",
-                "pricing",
-                "all_subjects_price"
-              )}
-            </div>
-            <div className="flex-1">
-              {renderNumberInput(
-                "خصم %",
-                "pricing",
-                "all_subjects_discount"
-              )}
-            </div>
-          </div>
-        </div>
-        {renderSaveButton("pricing")}
-      </div>
-
-      {/* Trial Section */}
-      <div className="themed-card p-5 space-y-4">
-        <h3
-          className="font-cairo text-base font-bold flex items-center gap-2"
-          style={{ color: "var(--theme-text-primary)" }}
-        >
-          🆓 التجربة المجانية
-        </h3>
-        {renderNumberInput("أيام التجربة", "trial_days")}
-        {renderSaveButton("trial_days")}
-      </div>
-
-      {/* Chat Budget Section */}
-      <div className="themed-card p-5 space-y-4">
-        <h3
-          className="font-cairo text-base font-bold flex items-center gap-2"
-          style={{ color: "var(--theme-text-primary)" }}
-        >
-          🤖 ميزانية الـ AI Chat
-        </h3>
-        {["trial", "one_subject", "three_subjects", "all_subjects"].map(
-          (plan) => (
-            <div
-              key={plan}
-              className="p-3 rounded-xl space-y-2"
-              style={{
-                background: "var(--theme-hover-overlay)",
-                border: "1px solid var(--theme-surface-border)",
-              }}
-            >
-              <p
-                className="font-cairo text-sm font-semibold"
-                style={{ color: "var(--theme-text-primary)" }}
-              >
-                {planLabels[plan] || plan}
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="flex items-center justify-between gap-2">
-                  <label
-                    className="font-cairo text-xs"
-                    style={{ color: "var(--theme-text-secondary)" }}
-                  >
-                    رسائل يومية
-                  </label>
-                  <input
-                    type="number"
-                    className="themed-input w-24 font-cairo text-sm text-left"
-                    dir="ltr"
-                    value={
-                      chatBudget[plan]?.daily_messages ?? ""
-                    }
-                    onChange={(e) => {
-                      const updated = { ...chatBudget };
-                      if (!updated[plan]) updated[plan] = {};
-                      updated[plan].daily_messages =
-                        e.target.value === "" ? "" : Number(e.target.value);
-                      setEditValues((prev) => ({
-                        ...prev,
-                        chat_budget: updated,
-                      }));
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <label
-                    className="font-cairo text-xs"
-                    style={{ color: "var(--theme-text-secondary)" }}
-                  >
-                    توكنز يومية
-                  </label>
-                  <input
-                    type="number"
-                    className="themed-input w-24 font-cairo text-sm text-left"
-                    dir="ltr"
-                    value={
-                      chatBudget[plan]?.daily_tokens ?? ""
-                    }
-                    onChange={(e) => {
-                      const updated = { ...chatBudget };
-                      if (!updated[plan]) updated[plan] = {};
-                      updated[plan].daily_tokens =
-                        e.target.value === "" ? "" : Number(e.target.value);
-                      setEditValues((prev) => ({
-                        ...prev,
-                        chat_budget: updated,
-                      }));
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )
-        )}
-        {renderSaveButton("chat_budget")}
-      </div>
-
-      {/* Cost Config Section */}
-      <div className="themed-card p-5 space-y-4">
-        <h3
-          className="font-cairo text-base font-bold flex items-center gap-2"
-          style={{ color: "var(--theme-text-primary)" }}
-        >
-          📊 تكاليف
-        </h3>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <label
-              className="font-cairo text-sm whitespace-nowrap"
-              style={{ color: "var(--theme-text-primary)" }}
-            >
-              سعر الدولار بالجنيه
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              className="themed-input w-32 font-cairo text-sm text-left"
-              dir="ltr"
-              value={costConfig.usd_to_egp ?? ""}
-              onChange={(e) => {
-                const updated = { ...costConfig };
-                updated.usd_to_egp =
-                  e.target.value === "" ? "" : Number(e.target.value);
-                setEditValues((prev) => ({
-                  ...prev,
-                  cost_config: updated,
-                }));
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <label
-              className="font-cairo text-sm whitespace-nowrap"
-              style={{ color: "var(--theme-text-primary)" }}
-            >
-              عمولة Stripe %
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              className="themed-input w-32 font-cairo text-sm text-left"
-              dir="ltr"
-              value={costConfig.stripe_fee_percent ?? ""}
-              onChange={(e) => {
-                const updated = { ...costConfig };
-                updated.stripe_fee_percent =
-                  e.target.value === "" ? "" : Number(e.target.value);
-                setEditValues((prev) => ({
-                  ...prev,
-                  cost_config: updated,
-                }));
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <label
-              className="font-cairo text-sm whitespace-nowrap"
-              style={{ color: "var(--theme-text-primary)" }}
-            >
-              عمولة Paymob %
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              className="themed-input w-32 font-cairo text-sm text-left"
-              dir="ltr"
-              value={costConfig.paymob_fee_percent ?? ""}
-              onChange={(e) => {
-                const updated = { ...costConfig };
-                updated.paymob_fee_percent =
-                  e.target.value === "" ? "" : Number(e.target.value);
-                setEditValues((prev) => ({
-                  ...prev,
-                  cost_config: updated,
-                }));
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <label
-              className="font-cairo text-sm whitespace-nowrap"
-              style={{ color: "var(--theme-text-primary)" }}
-            >
-              تكلفة Claude/1k توكنز
-            </label>
-            <input
-              type="number"
-              step="0.0001"
-              className="themed-input w-32 font-cairo text-sm text-left"
-              dir="ltr"
-              value={costConfig.claude_cost_per_1k ?? ""}
-              onChange={(e) => {
-                const updated = { ...costConfig };
-                updated.claude_cost_per_1k =
-                  e.target.value === "" ? "" : Number(e.target.value);
-                setEditValues((prev) => ({
-                  ...prev,
-                  cost_config: updated,
-                }));
-              }}
-            />
-          </div>
-        </div>
-        {renderSaveButton("cost_config")}
-      </div>
-
-      {/* Raw settings fallback – show any keys not covered above */}
-      {settings
-        .filter(
-          (s: any) =>
-            !["pricing", "trial_days", "chat_budget", "cost_config"].includes(
-              s.key
-            )
-        )
-        .map((s: any) => (
-          <div key={s.key} className="themed-card p-5 space-y-3">
-            <h4
-              className="font-cairo text-sm font-bold"
-              style={{ color: "var(--theme-text-primary)" }}
-            >
-              {s.key}
-            </h4>
-            <textarea
-              className="themed-input w-full font-cairo text-sm min-h-[80px]"
-              dir="ltr"
-              value={
-                typeof editValues[s.key] === "object"
-                  ? JSON.stringify(editValues[s.key], null, 2)
-                  : String(editValues[s.key] ?? "")
-              }
-              onChange={(e) => {
-                let v: any = e.target.value;
-                try {
-                  v = JSON.parse(v);
-                } catch {
-                  /* keep as string */
-                }
-                setEditValues((prev) => ({ ...prev, [s.key]: v }));
-              }}
-            />
-            {renderSaveButton(s.key)}
-          </div>
-        ))}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SECRETS TAB
-// ═══════════════════════════════════════════════════════════════════════════════
-function SecretsTab() {
-  const [secrets, setSecrets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [editDesc, setEditDesc] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
-  const [newKey, setNewKey] = useState("");
-  const [newValue, setNewValue] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "error";
-  } | null>(null);
-
-  const fetchSecrets = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await adminAPI("get_secrets");
-      if (res.success) setSecrets(res.data?.secrets ?? []);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSecrets();
-  }, [fetchSecrets]);
-
-  const saveSecret = async (key: string, value: string, description?: string) => {
-    setSaving(true);
-    try {
-      const params: any = { key, value };
-      if (description !== undefined) params.description = description;
-      const res = await adminAPI("update_secret", params);
-      if (res.success) {
-        setToast({ message: "✅ تم الحفظ", type: "success" });
-        setEditingKey(null);
-        setShowAdd(false);
-        setNewKey("");
-        setNewValue("");
-        setNewDesc("");
-        fetchSecrets();
-      } else {
-        setToast({ message: res.error || "فشل الحفظ", type: "error" });
-      }
-    } catch {
-      setToast({ message: "خطأ في الاتصال", type: "error" });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) return <Spinner />;
-
-  return (
-    <div className="space-y-4">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
-
-      <div className="flex items-center justify-between">
-        <h3
-          className="font-cairo text-lg font-bold"
-          style={{ color: "var(--theme-text-primary)" }}
-        >
-          مفاتيح API ({secrets.length})
-        </h3>
-        <button
-          onClick={() => setShowAdd(!showAdd)}
-          className="themed-btn-primary px-4 py-2 rounded-xl font-cairo text-sm flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          إضافة مفتاح
-        </button>
-      </div>
-
-      {/* Add New Secret */}
-      {showAdd && (
-        <div
-          className="themed-card p-5 space-y-3"
-          style={{ border: "2px solid var(--theme-primary)" }}
-        >
-          <h4
-            className="font-cairo text-sm font-bold"
-            style={{ color: "var(--theme-text-primary)" }}
-          >
-            إضافة مفتاح جديد
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label
-                className="block font-cairo text-xs mb-1"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                المفتاح
-              </label>
-              <input
-                type="text"
-                className="themed-input w-full font-cairo text-sm"
-                dir="ltr"
-                value={newKey}
-                onChange={(e) => setNewKey(e.target.value)}
-                placeholder="API_KEY_NAME"
-              />
-            </div>
-            <div>
-              <label
-                className="block font-cairo text-xs mb-1"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                القيمة
-              </label>
-              <input
-                type="text"
-                className="themed-input w-full font-cairo text-sm"
-                dir="ltr"
-                value={newValue}
-                onChange={(e) => setNewValue(e.target.value)}
-                placeholder="sk-..."
-              />
-            </div>
-            <div>
-              <label
-                className="block font-cairo text-xs mb-1"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                الوصف
-              </label>
-              <input
-                type="text"
-                className="themed-input w-full font-cairo text-sm"
-                value={newDesc}
-                onChange={(e) => setNewDesc(e.target.value)}
-                placeholder="وصف اختياري"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2 justify-end">
-            <button
-              onClick={() => setShowAdd(false)}
-              className="themed-btn-outline px-4 py-2 rounded-xl font-cairo text-sm"
-            >
-              إلغاء
-            </button>
-            <button
-              onClick={() => saveSecret(newKey, newValue, newDesc)}
-              disabled={saving || !newKey || !newValue}
-              className="themed-btn-primary px-4 py-2 rounded-xl font-cairo text-sm flex items-center gap-2 disabled:opacity-50"
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              حفظ
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Secrets Table */}
-      {secrets.length === 0 ? (
-        <EmptyState message="لا توجد مفاتيح بعد" />
-      ) : (
-        <div className="themed-card overflow-x-auto">
-          <table className="w-full text-right">
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
             <thead>
-              <tr
-                style={{
-                  borderBottom: "1px solid var(--theme-surface-border)",
-                }}
-              >
-                {["المفتاح", "القيمة", "الوصف", "آخر تحديث", "إجراءات"].map(
-                  (h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-3 font-cairo text-xs font-semibold"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                    >
-                      {h}
-                    </th>
-                  )
-                )}
+              <tr style={{ borderBottom: '2px solid var(--theme-border)' }}>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الاسم</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الهاتف</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>المحافظة</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الحالة</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>إجراءات</th>
               </tr>
             </thead>
             <tbody>
-              {secrets.map((s: any) => (
-                <tr
-                  key={s.key}
-                  style={{
-                    borderBottom: "1px solid var(--theme-surface-border)",
-                  }}
-                >
-                  <td
-                    className="px-4 py-3 font-cairo text-sm font-mono"
-                    dir="ltr"
-                    style={{ color: "var(--theme-text-primary)" }}
-                  >
-                    {s.key}
+              {filtered.map((s: any) => (
+                <tr key={s.id} style={{ borderBottom: '1px solid var(--theme-border)' }}>
+                  <td className="p-3 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>{s.full_name}</td>
+                  <td className="p-3 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>{s.phone}</td>
+                  <td className="p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>{s.governorate || '-'}</td>
+                  <td className="p-3">
+                    <span className="px-2 py-1 rounded text-xs font-cairo" style={{
+                      backgroundColor: s.is_banned ? '#EF444420' : '#10B98120',
+                      color: s.is_banned ? '#EF4444' : '#10B981',
+                    }}>
+                      {s.is_banned ? 'محظور' : 'نشط'}
+                    </span>
                   </td>
-                  <td className="px-4 py-3">
-                    {editingKey === s.key ? (
-                      <input
-                        type="text"
-                        className="themed-input w-full font-cairo text-sm"
-                        dir="ltr"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        placeholder="أدخل القيمة الجديدة"
-                        autoFocus
-                      />
-                    ) : (
-                      <span
-                        className="font-cairo text-sm font-mono"
-                        dir="ltr"
-                        style={{ color: "var(--theme-text-secondary)" }}
-                      >
-                        {s.masked_value || "••••••••"}
-                      </span>
-                    )}
-                  </td>
-                  <td
-                    className="px-4 py-3 font-cairo text-xs"
-                    style={{ color: "var(--theme-text-secondary)" }}
-                  >
-                    {s.description || "-"}
-                  </td>
-                  <td
-                    className="px-4 py-3 font-cairo text-xs"
-                    dir="ltr"
-                    style={{ color: "var(--theme-text-secondary)" }}
-                  >
-                    {s.updated_at
-                      ? new Date(s.updated_at).toLocaleDateString("ar-EG")
-                      : "-"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {editingKey === s.key ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            saveSecret(s.key, editValue, editDesc || undefined)
-                          }
-                          disabled={saving || !editValue}
-                          className="themed-btn-primary px-3 py-1.5 rounded-lg font-cairo text-xs flex items-center gap-1 disabled:opacity-50"
-                        >
-                          {saving ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Save className="w-3 h-3" />
-                          )}
-                          حفظ
-                        </button>
-                        <button
-                          onClick={() => setEditingKey(null)}
-                          className="themed-btn-outline px-3 py-1.5 rounded-lg font-cairo text-xs"
-                        >
-                          إلغاء
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setEditingKey(s.key);
-                          setEditValue("");
-                          setEditDesc(s.description || "");
-                        }}
-                        className="themed-btn-outline px-3 py-1.5 rounded-lg font-cairo text-xs flex items-center gap-1"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                        تعديل
-                      </button>
-                    )}
+                  <td className="p-3">
+                    <button
+                      onClick={() => toggleBan(s.id, s.is_banned)}
+                      className="px-3 py-1 rounded text-xs font-cairo"
+                      style={{
+                        backgroundColor: s.is_banned ? '#10B98120' : '#EF444420',
+                        color: s.is_banned ? '#10B981' : '#EF4444',
+                      }}
+                    >
+                      {s.is_banned ? 'إلغاء الحظر' : 'حظر'}
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {filtered.length === 0 && (
+            <p className="text-center p-4 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>لا توجد نتائج</p>
+          )}
         </div>
-      )}
+      </Card>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// THEMES TAB
-// ═══════════════════════════════════════════════════════════════════════════════
-function ThemesTab() {
-  const [themes, setThemes] = useState<any[]>([]);
+// ==================== Subjects Tab ====================
+function SubjectsTab() {
+  const [subjects, setSubjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "error";
-  } | null>(null);
-  const [schedules, setSchedules] = useState<
-    Record<string, { auto_activate_at: string; auto_deactivate_at: string }>
-  >({});
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({ name_ar: '', name_en: '', description_ar: '', icon: '📘', is_published: true });
+  const [editId, setEditId] = useState<string | null>(null);
 
-  const fetchThemes = useCallback(async () => {
+  useEffect(() => { loadSubjects(); }, []);
+
+  const loadSubjects = async () => {
     setLoading(true);
     try {
-      const res = await adminAPI("get_themes");
-      if (res.success) {
-        const t = res.data?.themes ?? [];
-        setThemes(t);
-        const sched: Record<string, any> = {};
-        t.forEach((th: any) => {
-          sched[th.slug] = {
-            auto_activate_at: th.auto_activate_at
-              ? new Date(th.auto_activate_at).toISOString().slice(0, 16)
-              : "",
-            auto_deactivate_at: th.auto_deactivate_at
-              ? new Date(th.auto_deactivate_at).toISOString().slice(0, 16)
-              : "",
-          };
-        });
-        setSchedules(sched);
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchThemes();
-  }, [fetchThemes]);
-
-  const activateTheme = async (slug: string) => {
-    setSaving(slug);
-    try {
-      // Deactivate all others, activate this one
-      const res = await adminAPI("update_theme", {
-        slug,
-        updates: { is_active: true },
-      });
-      if (res.success) {
-        setToast({ message: "✅ تم التفعيل", type: "success" });
-        fetchThemes();
-      } else {
-        setToast({ message: res.error || "فشل التفعيل", type: "error" });
-      }
-    } catch {
-      setToast({ message: "خطأ في الاتصال", type: "error" });
-    } finally {
-      setSaving(null);
-    }
+      const data = await adminAPI('get_subjects');
+      setSubjects(data.subjects || data || []);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
   };
 
-  const saveSchedule = async (slug: string) => {
-    setSaving(slug + "_sched");
+  const handleSave = async () => {
     try {
-      const sched = schedules[slug] || {};
-      const updates: any = {};
-      if (sched.auto_activate_at)
-        updates.auto_activate_at = new Date(sched.auto_activate_at).toISOString();
-      else updates.auto_activate_at = null;
-      if (sched.auto_deactivate_at)
-        updates.auto_deactivate_at = new Date(sched.auto_deactivate_at).toISOString();
-      else updates.auto_deactivate_at = null;
-
-      const res = await adminAPI("update_theme", { slug, updates });
-      if (res.success) {
-        setToast({ message: "✅ تم حفظ الجدولة", type: "success" });
-        fetchThemes();
+      if (editId) {
+        await adminAPI('update_subject', { id: editId, ...formData });
       } else {
-        setToast({ message: res.error || "فشل الحفظ", type: "error" });
+        await adminAPI('create_subject', formData);
       }
-    } catch {
-      setToast({ message: "خطأ في الاتصال", type: "error" });
-    } finally {
-      setSaving(null);
-    }
+      setShowForm(false);
+      setEditId(null);
+      setFormData({ name_ar: '', name_en: '', description_ar: '', icon: '📘', is_published: true });
+      loadSubjects();
+    } catch (err) { console.error(err); }
   };
 
-  if (loading) return <Spinner />;
-  if (themes.length === 0) return <EmptyState message="لا توجد ثيمات بعد" />;
+  const togglePublish = async (id: string, current: boolean) => {
+    try {
+      await adminAPI('update_subject', { id, is_published: !current });
+      loadSubjects();
+    } catch (err) { console.error(err); }
+  };
+
+  const startEdit = (s: any) => {
+    setFormData({ name_ar: s.name_ar, name_en: s.name_en || '', description_ar: s.description_ar || '', icon: s.icon || '📘', is_published: s.is_published });
+    setEditId(s.id);
+    setShowForm(true);
+  };
+
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} /></div>;
 
   return (
     <div className="space-y-4">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
+      <div className="flex items-center justify-between">
+        <SectionTitle>📚 إدارة المواد</SectionTitle>
+        <button onClick={() => { setShowForm(true); setEditId(null); setFormData({ name_ar: '', name_en: '', description_ar: '', icon: '📘', is_published: true }); }} className="flex items-center gap-2 px-4 py-2 rounded-lg font-cairo text-sm" style={{ backgroundColor: 'var(--theme-primary)', color: '#fff' }}>
+          <Plus size={16} /> إضافة مادة
+        </button>
+      </div>
+
+      {showForm && (
+        <Card>
+          <h3 className="font-bold mb-3 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>{editId ? 'تعديل المادة' : 'إضافة مادة جديدة'}</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input placeholder="اسم المادة (عربي)" value={formData.name_ar} onChange={(e) => setFormData({ ...formData, name_ar: e.target.value })} className="p-2 rounded-lg border font-cairo" style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }} />
+            <input placeholder="اسم المادة (إنجليزي)" value={formData.name_en} onChange={(e) => setFormData({ ...formData, name_en: e.target.value })} className="p-2 rounded-lg border font-cairo" style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }} />
+            <input placeholder="الأيقونة (إيموجي)" value={formData.icon} onChange={(e) => setFormData({ ...formData, icon: e.target.value })} className="p-2 rounded-lg border font-cairo" style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }} />
+            <textarea placeholder="الوصف" value={formData.description_ar} onChange={(e) => setFormData({ ...formData, description_ar: e.target.value })} className="p-2 rounded-lg border font-cairo md:col-span-2" style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }} />
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={handleSave} className="px-4 py-2 rounded-lg font-cairo text-sm" style={{ backgroundColor: 'var(--theme-primary)', color: '#fff' }}>حفظ</button>
+            <button onClick={() => { setShowForm(false); setEditId(null); }} className="px-4 py-2 rounded-lg font-cairo text-sm" style={{ backgroundColor: 'var(--theme-bg)', color: 'var(--theme-text-primary)', border: '1px solid var(--theme-border)' }}>إلغاء</button>
+          </div>
+        </Card>
       )}
 
-      <h3
-        className="font-cairo text-lg font-bold"
-        style={{ color: "var(--theme-text-primary)" }}
-      >
-        الثيمات ({themes.length})
-      </h3>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {themes.map((theme: any) => {
-          const sched = schedules[theme.slug] || {
-            auto_activate_at: "",
-            auto_deactivate_at: "",
-          };
-          return (
-            <div
-              key={theme.id || theme.slug}
-              className="themed-card p-5 space-y-4"
-              style={
-                theme.is_active
-                  ? { border: "2px solid var(--theme-primary)" }
-                  : {}
-              }
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Palette
-                      className="w-5 h-5"
-                      style={{ color: "var(--theme-primary)" }}
-                    />
-                    <h4
-                      className="font-cairo text-base font-bold"
-                      style={{ color: "var(--theme-text-primary)" }}
-                    >
-                      {theme.name_ar || theme.slug}
-                    </h4>
-                  </div>
-                  <p
-                    className="font-cairo text-xs mt-0.5"
-                    style={{ color: "var(--theme-text-secondary)" }}
-                  >
-                    {theme.name_en || ""} · {theme.slug}
-                  </p>
-                </div>
-                {theme.is_active ? (
-                  <StatusBadge label="مفعّل" color="#10B981" />
-                ) : (
-                  <button
-                    onClick={() => activateTheme(theme.slug)}
-                    disabled={saving === theme.slug}
-                    className="themed-btn-primary px-3 py-1.5 rounded-lg font-cairo text-xs flex items-center gap-1 disabled:opacity-50"
-                  >
-                    {saving === theme.slug ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : null}
-                    تفعيل
-                  </button>
-                )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {subjects.map((s: any) => (
+          <Card key={s.id}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{s.icon || '📘'}</span>
+                <h3 className="font-bold font-cairo" style={{ color: 'var(--theme-text-primary)' }}>{s.name_ar}</h3>
               </div>
-
-              {/* Schedule */}
-              <div
-                className="p-3 rounded-xl space-y-2"
-                style={{
-                  background: "var(--theme-hover-overlay)",
-                  border: "1px solid var(--theme-surface-border)",
-                }}
-              >
-                <p
-                  className="font-cairo text-xs font-semibold"
-                  style={{ color: "var(--theme-text-secondary)" }}
-                >
-                  جدولة التفعيل / الإيقاف
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label
-                      className="block font-cairo text-xs mb-1"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                    >
-                      تفعيل تلقائي
-                    </label>
-                    <input
-                      type="datetime-local"
-                      className="themed-input w-full font-cairo text-xs"
-                      dir="ltr"
-                      value={sched.auto_activate_at}
-                      onChange={(e) =>
-                        setSchedules((prev) => ({
-                          ...prev,
-                          [theme.slug]: {
-                            ...prev[theme.slug],
-                            auto_activate_at: e.target.value,
-                          },
-                        }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label
-                      className="block font-cairo text-xs mb-1"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                    >
-                      إيقاف تلقائي
-                    </label>
-                    <input
-                      type="datetime-local"
-                      className="themed-input w-full font-cairo text-xs"
-                      dir="ltr"
-                      value={sched.auto_deactivate_at}
-                      onChange={(e) =>
-                        setSchedules((prev) => ({
-                          ...prev,
-                          [theme.slug]: {
-                            ...prev[theme.slug],
-                            auto_deactivate_at: e.target.value,
-                          },
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={() => saveSchedule(theme.slug)}
-                  disabled={saving === theme.slug + "_sched"}
-                  className="themed-btn-outline px-3 py-1.5 rounded-lg font-cairo text-xs flex items-center gap-1 disabled:opacity-50 mt-1"
-                >
-                  {saving === theme.slug + "_sched" ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Save className="w-3 h-3" />
-                  )}
-                  حفظ الجدولة
-                </button>
-              </div>
+              <span className="px-2 py-1 rounded text-xs font-cairo" style={{
+                backgroundColor: s.is_published ? '#10B98120' : '#EF444420',
+                color: s.is_published ? '#10B981' : '#EF4444',
+              }}>
+                {s.is_published ? 'منشور' : 'مخفي'}
+              </span>
             </div>
-          );
-        })}
+            <p className="text-sm mb-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>{s.description_ar || 'بدون وصف'}</p>
+            <div className="flex gap-2">
+              <button onClick={() => startEdit(s)} className="px-3 py-1 rounded text-xs font-cairo" style={{ backgroundColor: 'var(--theme-primary)' + '20', color: 'var(--theme-primary)' }}>
+                <Edit size={14} />
+              </button>
+              <button onClick={() => togglePublish(s.id, s.is_published)} className="px-3 py-1 rounded text-xs font-cairo" style={{ backgroundColor: s.is_published ? '#EF444420' : '#10B98120', color: s.is_published ? '#EF4444' : '#10B981' }}>
+                {s.is_published ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </Card>
+        ))}
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MAIN ADMIN PANEL
-// ═══════════════════════════════════════════════════════════════════════════════
-export default function AdminPanel() {
-  const { user, isAuthenticated } = useAuthStore();
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+// ==================== Exams Tab ====================
+function ExamsTab() {
+  const [exams, setExams] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // ── Auth guard ────────────────────────────────────────────────────────────
-  if (!isAuthenticated || user?.role !== "admin") {
-    return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center p-6 font-cairo"
-        dir="rtl"
-      >
-        <Shield
-          className="w-16 h-16 mb-4"
-          style={{ color: "var(--theme-text-secondary)", opacity: 0.4 }}
-        />
-        <h2
-          className="text-xl font-bold mb-2"
-          style={{ color: "var(--theme-text-primary)" }}
-        >
-          لوحة التحكم للمشرفين فقط
-        </h2>
-        <p
-          className="text-sm mb-6"
-          style={{ color: "var(--theme-text-secondary)" }}
-        >
-          يجب تسجيل الدخول بحساب مشرف للوصول لهذه الصفحة
-        </p>
+  useEffect(() => { loadExams(); }, []);
+
+  const loadExams = async () => {
+    setLoading(true);
+    try {
+      const data = await adminAPI('get_exams');
+      setExams(data.exams || data || []);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} /></div>;
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle>📝 الامتحانات</SectionTitle>
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--theme-border)' }}>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الطالب</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>المادة</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الدرجة</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>التاريخ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {exams.map((e: any, i: number) => (
+                <tr key={i} style={{ borderBottom: '1px solid var(--theme-border)' }}>
+                  <td className="p-3 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>{e.user_name || e.user_id?.substring(0, 8)}</td>
+                  <td className="p-3 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>{e.subject_name || '-'}</td>
+                  <td className="p-3">
+                    <span className="px-2 py-1 rounded text-xs font-bold" style={{
+                      backgroundColor: (e.score_percent || 0) >= 70 ? '#10B98120' : '#EF444420',
+                      color: (e.score_percent || 0) >= 70 ? '#10B981' : '#EF4444',
+                    }}>
+                      {e.score_percent || 0}%
+                    </span>
+                  </td>
+                  <td className="p-3 font-cairo text-sm" style={{ color: 'var(--theme-text-secondary)' }}>{e.created_at ? new Date(e.created_at).toLocaleDateString('ar-EG') : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {exams.length === 0 && <p className="text-center p-4 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>لا توجد امتحانات بعد</p>}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ==================== Questions Tab ====================
+function QuestionsTab() {
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { loadQuestions(); }, []);
+
+  const loadQuestions = async () => {
+    setLoading(true);
+    try {
+      const data = await adminAPI('get_questions');
+      setQuestions(data.questions || data || []);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} /></div>;
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle>❓ بنك الأسئلة</SectionTitle>
+      <Card>
+        <p className="font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>إجمالي الأسئلة: {questions.length}</p>
+        <div className="mt-4 space-y-3">
+          {questions.slice(0, 20).map((q: any, i: number) => (
+            <div key={i} className="p-3 rounded-lg" style={{ backgroundColor: 'var(--theme-bg)', border: '1px solid var(--theme-border)' }}>
+              <p className="font-cairo text-sm" style={{ color: 'var(--theme-text-primary)' }}>{q.question_text || q.text || '-'}</p>
+              <p className="font-cairo text-xs mt-1" style={{ color: 'var(--theme-text-secondary)' }}>النوع: {q.question_type || '-'} | الصعوبة: {q.difficulty || '-'}</p>
+            </div>
+          ))}
+          {questions.length === 0 && <p className="text-center font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>لا توجد أسئلة</p>}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ==================== Settings Tab ====================
+function SettingsTab() {
+  const [settings, setSettings] = useState<any>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => { loadSettings(); }, []);
+
+  const loadSettings = async () => {
+    setLoading(true);
+    try {
+      const data = await adminAPI('get_settings');
+      setSettings(data.settings || data || {});
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      await adminAPI('update_settings', { settings });
+      setMessage('تم حفظ الإعدادات بنجاح ✅');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      setMessage('خطأ في حفظ الإعدادات ❌');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} /></div>;
+
+  const settingFields = [
+    { key: 'price_per_subject', label: 'سعر المادة شهرياً (ج.م)', type: 'number' },
+    { key: 'discount_3_subjects', label: 'خصم 3 مواد أو أكثر (%)', type: 'number' },
+    { key: 'discount_all_subjects', label: 'خصم جميع المواد (%)', type: 'number' },
+    { key: 'whatsapp_number', label: 'رقم واتساب الدعم', type: 'text' },
+    { key: 'exam_questions_count', label: 'عدد أسئلة الامتحان', type: 'number' },
+    { key: 'exam_time_minutes', label: 'وقت الامتحان (دقيقة)', type: 'number' },
+    { key: 'passing_score', label: 'درجة النجاح (%)', type: 'number' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle>⚙️ الإعدادات</SectionTitle>
+      {message && (
+        <div className="p-3 rounded-lg text-center font-cairo text-sm" style={{ backgroundColor: message.includes('✅') ? '#10B98120' : '#EF444420', color: message.includes('✅') ? '#10B981' : '#EF4444' }}>
+          {message}
+        </div>
+      )}
+      <Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {settingFields.map((field) => (
+            <div key={field.key}>
+              <label className="block text-sm mb-1 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>{field.label}</label>
+              <input
+                type={field.type}
+                value={settings[field.key] || ''}
+                onChange={(e) => setSettings({ ...settings, [field.key]: field.type === 'number' ? Number(e.target.value) : e.target.value })}
+                className="w-full p-2 rounded-lg border font-cairo"
+                style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }}
+              />
+            </div>
+          ))}
+        </div>
         <button
-          onClick={() => router.push("/login")}
-          className="themed-btn-primary px-6 py-3 rounded-xl font-cairo text-sm"
+          onClick={saveSettings}
+          disabled={saving}
+          className="mt-4 px-6 py-2 rounded-lg font-cairo text-sm flex items-center gap-2"
+          style={{ backgroundColor: 'var(--theme-primary)', color: '#fff', opacity: saving ? 0.6 : 1 }}
         >
-          تسجيل الدخول
+          {saving ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
+          حفظ الإعدادات
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+// ==================== Notifications Admin Tab ====================
+function NotificationsAdminTab() {
+  return <AdminNotifications />;
+}
+
+// ==================== Coupons Tab ====================
+function CouponsTab() {
+  const [coupons, setCoupons] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({
+    code: '',
+    discount_percent: 10,
+    max_uses: 100,
+    expires_at: '',
+    description_ar: '',
+  });
+  const [message, setMessage] = useState('');
+
+  useEffect(() => { loadCoupons(); }, []);
+
+  const loadCoupons = async () => {
+    setLoading(true);
+    try {
+      const data = await adminAPI('get_coupons');
+      setCoupons(data.coupons || data || []);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  const createCoupon = async () => {
+    try {
+      await adminAPI('create_coupon', formData);
+      setShowForm(false);
+      setFormData({ code: '', discount_percent: 10, max_uses: 100, expires_at: '', description_ar: '' });
+      setMessage('تم إنشاء الكوبون بنجاح ✅');
+      setTimeout(() => setMessage(''), 3000);
+      loadCoupons();
+    } catch (err: any) {
+      setMessage('خطأ: ' + (err.message || 'فشل الإنشاء') + ' ❌');
+    }
+  };
+
+  const toggleCoupon = async (id: string, isActive: boolean) => {
+    try {
+      await adminAPI('update_coupon', { id, is_active: !isActive });
+      loadCoupons();
+    } catch (err) { console.error(err); }
+  };
+
+  const deleteCoupon = async (id: string) => {
+    if (!confirm('هل تريد حذف هذا الكوبون؟')) return;
+    try {
+      await adminAPI('delete_coupon', { id });
+      loadCoupons();
+    } catch (err) { console.error(err); }
+  };
+
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <SectionTitle>🏷️ إدارة الكوبونات</SectionTitle>
+        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg font-cairo text-sm" style={{ backgroundColor: 'var(--theme-primary)', color: '#fff' }}>
+          <Plus size={16} /> كوبون جديد
         </button>
       </div>
-    );
-  }
 
-  // ── Tab rendering ─────────────────────────────────────────────────────────
-  const renderTab = () => {
-    switch (activeTab) {
-      case "overview":
-        return <OverviewTab />;
-      case "students":
-        return <StudentsTab />;
-      case "subscriptions":
-        return <SubscriptionsTab />;
-      case "subjects":
-        return <SubjectsTab />;
-      case "payments":
-        return <PaymentsTab />;
-      case "settings":
-        return <SettingsTab />;
-      case "secrets":
-        return <SecretsTab />;
-      case "themes":
-        return <ThemesTab />;
-      default:
-        return null;
+      {message && (
+        <div className="p-3 rounded-lg text-center font-cairo text-sm" style={{ backgroundColor: message.includes('✅') ? '#10B98120' : '#EF444420', color: message.includes('✅') ? '#10B981' : '#EF4444' }}>
+          {message}
+        </div>
+      )}
+
+      {showForm && (
+        <Card>
+          <h3 className="font-bold mb-3 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>إنشاء كوبون جديد</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm mb-1 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>كود الخصم</label>
+              <input value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })} placeholder="مثال: STUDENT50" className="w-full p-2 rounded-lg border font-cairo" style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>نسبة الخصم (%)</label>
+              <input type="number" value={formData.discount_percent} onChange={(e) => setFormData({ ...formData, discount_percent: Number(e.target.value) })} className="w-full p-2 rounded-lg border font-cairo" style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الحد الأقصى للاستخدام</label>
+              <input type="number" value={formData.max_uses} onChange={(e) => setFormData({ ...formData, max_uses: Number(e.target.value) })} className="w-full p-2 rounded-lg border font-cairo" style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>تاريخ الانتهاء</label>
+              <input type="date" value={formData.expires_at} onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })} className="w-full p-2 rounded-lg border font-cairo" style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm mb-1 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الوصف</label>
+              <input value={formData.description_ar} onChange={(e) => setFormData({ ...formData, description_ar: e.target.value })} placeholder="وصف الكوبون..." className="w-full p-2 rounded-lg border font-cairo" style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }} />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={createCoupon} className="px-4 py-2 rounded-lg font-cairo text-sm" style={{ backgroundColor: 'var(--theme-primary)', color: '#fff' }}>إنشاء</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg font-cairo text-sm" style={{ backgroundColor: 'var(--theme-bg)', color: 'var(--theme-text-primary)', border: '1px solid var(--theme-border)' }}>إلغاء</button>
+          </div>
+        </Card>
+      )}
+
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--theme-border)' }}>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الكود</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الخصم</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الاستخدام</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الحالة</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>الانتهاء</th>
+                <th className="text-right p-3 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coupons.map((c: any) => (
+                <tr key={c.id} style={{ borderBottom: '1px solid var(--theme-border)' }}>
+                  <td className="p-3 font-cairo font-bold" style={{ color: 'var(--theme-primary)' }}>{c.code}</td>
+                  <td className="p-3 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>{c.discount_percent}%</td>
+                  <td className="p-3 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>{c.used_count || 0} / {c.max_uses || '∞'}</td>
+                  <td className="p-3">
+                    <span className="px-2 py-1 rounded text-xs font-cairo" style={{
+                      backgroundColor: c.is_active ? '#10B98120' : '#EF444420',
+                      color: c.is_active ? '#10B981' : '#EF4444',
+                    }}>
+                      {c.is_active ? 'نشط' : 'معطل'}
+                    </span>
+                  </td>
+                  <td className="p-3 font-cairo text-sm" style={{ color: 'var(--theme-text-secondary)' }}>{c.expires_at ? new Date(c.expires_at).toLocaleDateString('ar-EG') : 'بدون'}</td>
+                  <td className="p-3 flex gap-2">
+                    <button onClick={() => toggleCoupon(c.id, c.is_active)} className="p-1 rounded" style={{ color: c.is_active ? '#EF4444' : '#10B981' }}>
+                      {c.is_active ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                    </button>
+                    <button onClick={() => deleteCoupon(c.id)} className="p-1 rounded" style={{ color: '#EF4444' }}>
+                      <Trash2 size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {coupons.length === 0 && <p className="text-center p-4 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>لا توجد كوبونات</p>}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ==================== Grades Tab ====================
+function GradesTab() {
+  const [grades, setGrades] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => { loadGrades(); }, []);
+
+  const loadGrades = async () => {
+    setLoading(true);
+    try {
+      const data = await adminAPI('get_grades');
+      setGrades(data.grades || data || []);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  const updateGrade = async (id: string, field: string, value: boolean) => {
+    try {
+      await adminAPI('update_grade', { id, [field]: value });
+      setMessage('تم التحديث ✅');
+      setTimeout(() => setMessage(''), 2000);
+      loadGrades();
+    } catch (err) { console.error(err); }
+  };
+
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} /></div>;
+
+  const gradeLabels: Record<number, string> = { 1: 'الصف الأول الثانوي', 2: 'الصف الثاني الثانوي', 3: 'الصف الثالث الثانوي' };
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle>📋 المراحل الدراسية</SectionTitle>
+      {message && (
+        <div className="p-3 rounded-lg text-center font-cairo text-sm" style={{ backgroundColor: '#10B98120', color: '#10B981' }}>{message}</div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {grades.map((g: any) => (
+          <Card key={g.id}>
+            <h3 className="font-bold mb-4 font-cairo text-lg" style={{ color: 'var(--theme-text-primary)' }}>
+              {gradeLabels[g.level] || `الصف ${g.level}`}
+            </h3>
+            <div className="space-y-3">
+              {[
+                { key: 'is_published', label: 'منشور' },
+                { key: 'has_terms', label: 'يحتوي على ترمات' },
+                { key: 'term1_published', label: 'الترم الأول منشور' },
+                { key: 'term2_published', label: 'الترم الثاني منشور' },
+              ].map((field) => (
+                <div key={field.key} className="flex items-center justify-between">
+                  <span className="font-cairo text-sm" style={{ color: 'var(--theme-text-primary)' }}>{field.label}</span>
+                  <button
+                    onClick={() => updateGrade(g.id, field.key, !g[field.key])}
+                    style={{ color: g[field.key] ? '#10B981' : '#9CA3AF' }}
+                  >
+                    {g[field.key] ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+        {grades.length === 0 && (
+          <p className="col-span-3 text-center p-8 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>لا توجد مراحل دراسية</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ==================== Content Tab ====================
+function ContentTab() {
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [lessons, setLessons] = useState<any[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [selectedLesson, setSelectedLesson] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    const loadSubjects = async () => {
+      try {
+        const data = await adminAPI('get_subjects');
+        setSubjects(data.subjects || data || []);
+      } catch (err) { console.error(err); }
+    };
+    loadSubjects();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSubject) { setLessons([]); return; }
+    const loadLessons = async () => {
+      try {
+        const data = await adminAPI('get_lessons', { subject_id: selectedSubject });
+        setLessons(data.lessons || data || []);
+      } catch (err) { console.error(err); }
+    };
+    loadLessons();
+  }, [selectedSubject]);
+
+  const generateContent = async () => {
+    if (!selectedSubject || !selectedLesson) {
+      setMessage('اختر المادة والدرس أولاً ❌');
+      return;
+    }
+    setGenerating(true);
+    setMessage('');
+    try {
+      const data = await adminAPI('generate_content', { subject_id: selectedSubject, lesson_id: selectedLesson });
+      setResult(data);
+      setMessage('تم توليد المحتوى بنجاح! ✅');
+    } catch (err: any) {
+      setMessage('خطأ في التوليد: ' + (err.message || '') + ' ❌');
+    } finally {
+      setGenerating(false);
     }
   };
 
   return (
-    <div
-      className="min-h-screen font-cairo"
-      dir="rtl"
-      style={{ background: "var(--theme-surface-bg)" }}
-    >
-      {/* Header */}
-      <div
-        className="sticky top-0 z-50 px-4 py-3"
-        style={{
-          background: "var(--theme-surface-bg)",
-          borderBottom: "1px solid var(--theme-surface-border)",
-          backdropFilter: "blur(12px)",
-        }}
-      >
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "var(--theme-cta-gradient)" }}
-              >
-                <Settings className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1
-                  className="text-lg font-bold"
-                  style={{ color: "var(--theme-text-primary)" }}
-                >
-                  لوحة التحكم
-                </h1>
-                <p
-                  className="text-xs"
-                  style={{ color: "var(--theme-text-secondary)" }}
-                >
-                  إدارة منصة منهج AI
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => router.push("/")}
-              className="themed-btn-outline px-3 py-1.5 rounded-lg text-xs flex items-center gap-1"
-            >
-              العودة للرئيسية
-            </button>
-          </div>
+    <div className="space-y-4">
+      <SectionTitle>📄 توليد المحتوى بالذكاء الاصطناعي</SectionTitle>
 
-          {/* Tab Navigation */}
-          <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide">
-            <div className="flex items-center gap-1 min-w-max pb-1">
-              {TABS.map((tab) => {
-                const isActive = activeTab === tab.key;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`px-4 py-2 rounded-xl text-xs font-medium transition-all whitespace-nowrap ${
-                      isActive ? "text-white shadow-lg" : ""
-                    }`}
-                    style={
-                      isActive
-                        ? { background: "var(--theme-cta-gradient)" }
-                        : {
-                            color: "var(--theme-text-secondary)",
-                            background: "transparent",
-                          }
-                    }
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
+      {message && (
+        <div className="p-3 rounded-lg text-center font-cairo text-sm" style={{ backgroundColor: message.includes('✅') ? '#10B98120' : '#EF444420', color: message.includes('✅') ? '#10B981' : '#EF4444' }}>
+          {message}
+        </div>
+      )}
+
+      <Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm mb-1 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>اختر المادة</label>
+            <select
+              value={selectedSubject}
+              onChange={(e) => { setSelectedSubject(e.target.value); setSelectedLesson(''); }}
+              className="w-full p-2 rounded-lg border font-cairo"
+              style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }}
+            >
+              <option value="">-- اختر المادة --</option>
+              {subjects.map((s: any) => (
+                <option key={s.id} value={s.id}>{s.name_ar}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm mb-1 font-cairo" style={{ color: 'var(--theme-text-secondary)' }}>اختر الدرس</label>
+            <select
+              value={selectedLesson}
+              onChange={(e) => setSelectedLesson(e.target.value)}
+              className="w-full p-2 rounded-lg border font-cairo"
+              style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-primary)' }}
+              disabled={!selectedSubject}
+            >
+              <option value="">-- اختر الدرس --</option>
+              {lessons.map((l: any) => (
+                <option key={l.id} value={l.id}>{l.title_ar || l.title}</option>
+              ))}
+            </select>
           </div>
         </div>
-      </div>
 
-      {/* Tab Content */}
-      <div className="max-w-7xl mx-auto p-4 md:p-6">{renderTab()}</div>
+        <div className="flex gap-3 mt-4">
+          <button className="flex items-center gap-2 px-4 py-2 rounded-lg font-cairo text-sm" style={{ backgroundColor: 'var(--theme-bg)', color: 'var(--theme-text-primary)', border: '1px solid var(--theme-border)' }}>
+            <Upload size={16} /> رفع ملف PDF
+          </button>
+          <button
+            onClick={generateContent}
+            disabled={generating || !selectedSubject || !selectedLesson}
+            className="flex items-center gap-2 px-6 py-2 rounded-lg font-cairo text-sm"
+            style={{ backgroundColor: 'var(--theme-primary)', color: '#fff', opacity: generating ? 0.6 : 1 }}
+          >
+            {generating ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}
+            {generating ? 'جاري التوليد...' : 'توليد المحتوى بالذكاء الاصطناعي'}
+          </button>
+        </div>
+      </Card>
+
+      {result && (
+        <Card>
+          <h3 className="font-bold mb-3 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>📝 نتائج التوليد</h3>
+          <div className="space-y-2">
+            <p className="font-cairo text-sm" style={{ color: 'var(--theme-text-secondary)' }}>
+              عدد الملخصات: {result.summaries_count || 0}
+            </p>
+            <p className="font-cairo text-sm" style={{ color: 'var(--theme-text-secondary)' }}>
+              عدد الأسئلة: {result.questions_count || 0}
+            </p>
+            {result.summary_preview && (
+              <div className="p-3 rounded-lg mt-2" style={{ backgroundColor: 'var(--theme-bg)' }}>
+                <p className="font-cairo text-sm" style={{ color: 'var(--theme-text-primary)' }}>{result.summary_preview}</p>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ==================== Reports Tab ====================
+function ReportsTab() {
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadReport = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch('/api/admin/reports');
+      if (!res.ok) throw new Error('فشل تحميل التقرير');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `manhaj-ai-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('فشل تحميل التقرير');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle>📊 التقارير</SectionTitle>
+      <Card>
+        <div className="text-center py-8">
+          <div className="text-6xl mb-4">📊</div>
+          <h3 className="text-xl font-bold mb-2 font-cairo" style={{ color: 'var(--theme-text-primary)' }}>
+            تقرير شامل - Excel
+          </h3>
+          <p className="font-cairo text-sm mb-6" style={{ color: 'var(--theme-text-secondary)' }}>
+            تقرير كامل يحتوي على 5 أوراق عمل:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 mb-6 max-w-3xl mx-auto">
+            {[
+              { icon: '👥', label: 'الطلاب' },
+              { icon: '💰', label: 'الملخص المالي' },
+              { icon: '📚', label: 'تحليل المواد' },
+              { icon: '⚠️', label: 'طلاب معرضين للخطر' },
+              { icon: '💎', label: 'أكثر الطلاب ربحية' },
+            ].map((sheet, i) => (
+              <div key={i} className="p-3 rounded-lg" style={{ backgroundColor: 'var(--theme-bg)', border: '1px solid var(--theme-border)' }}>
+                <span className="text-2xl">{sheet.icon}</span>
+                <p className="font-cairo text-xs mt-1" style={{ color: 'var(--theme-text-primary)' }}>{sheet.label}</p>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={downloadReport}
+            disabled={downloading}
+            className="inline-flex items-center gap-2 px-8 py-3 rounded-xl font-cairo text-lg"
+            style={{ backgroundColor: 'var(--theme-primary)', color: '#fff', opacity: downloading ? 0.6 : 1 }}
+          >
+            {downloading ? <Loader2 className="animate-spin" size={20} /> : <Download size={20} />}
+            {downloading ? 'جاري التحميل...' : '📥 تحميل تقرير Excel كامل'}
+          </button>
+        </div>
+      </Card>
     </div>
   );
 }

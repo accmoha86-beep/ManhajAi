@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Globe, BookOpen, CheckSquare, Users, Award,
-  Home, Shield, ChevronLeft,
+  Home, Shield, ChevronLeft, AlertTriangle, Bell, CreditCard,
 } from 'lucide-react';
 
 interface NavItem {
@@ -24,10 +24,13 @@ const studentNav: NavItem[] = [
   { key: 'exams', href: '/exams', label: 'الامتحانات', icon: CheckSquare },
   { key: 'leaderboard', href: '/leaderboard', label: 'المتصدرين', icon: Users },
   { key: 'certificates', href: '/certificates', label: 'الشهادات', icon: Award },
+  { key: 'emergency', href: '/emergency', label: 'وضع الطوارئ 🚨', icon: AlertTriangle },
+  { key: 'notifications', href: '/notifications', label: 'الإشعارات', icon: Bell },
 ];
 
 const siteNav: NavItem[] = [
   { key: 'dashboard', href: '/dashboard', label: 'لوحة الطالب', icon: Home },
+  { key: 'subscribe', href: '/subscribe', label: 'الاشتراك', icon: CreditCard },
   { key: 'admin', href: '/admin', label: 'لوحة الإدارة', icon: Shield, adminOnly: true },
 ];
 
