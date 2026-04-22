@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Update last login
-    await supabase.rpc('update_user_last_login', { p_user_id: user.id }).catch(() => {});
+    try { await supabase.rpc('update_user_last_login', { p_user_id: user.id }); } catch { /* ignore */ }
 
     return NextResponse.json({
       success: true,
