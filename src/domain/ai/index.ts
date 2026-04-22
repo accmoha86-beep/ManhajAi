@@ -1,4 +1,4 @@
-// domain/ai/index.ts — Pure business logic for AI features
+// domain/ai/index.ts — Pure business logic for AI features (Enhanced with 200+ question batch system)
 import type { Result } from '@/lib/result';
 import { ok, err } from '@/lib/result';
 
@@ -81,66 +81,171 @@ ${pdfText}
 أجب بصيغة JSON فقط بدون أي نص إضافي.`;
 }
 
+// =============================================================================
+// 200+ QUESTION BATCH GENERATION SYSTEM
+// =============================================================================
+
+export interface QuestionRound {
+  id: number;
+  name: string;
+  focus: string;
+  types: { mcq: number; trueFalse: number; essay: number };
+}
+
 /**
- * Build a prompt for generating a question bank from a lesson summary.
- * Generates: 15 MCQ + 10 True/False + 5 Essay questions.
+ * 5 rounds of question generation with different cognitive focuses.
+ * Each round: ~30 MCQ + 10 T/F + 5 Essay = ~45 questions
+ * Total: 5 rounds × 45 = 225+ unique questions
+ */
+export const QUESTION_ROUNDS: QuestionRound[] = [
+  {
+    id: 1,
+    name: 'التذكر والاسترجاع',
+    focus: 'recall',
+    types: { mcq: 30, trueFalse: 10, essay: 5 },
+  },
+  {
+    id: 2,
+    name: 'الفهم والاستيعاب',
+    focus: 'understanding',
+    types: { mcq: 30, trueFalse: 10, essay: 5 },
+  },
+  {
+    id: 3,
+    name: 'التطبيق والحل',
+    focus: 'application',
+    types: { mcq: 30, trueFalse: 10, essay: 5 },
+  },
+  {
+    id: 4,
+    name: 'التحليل والتقييم',
+    focus: 'analysis',
+    types: { mcq: 30, trueFalse: 10, essay: 5 },
+  },
+  {
+    id: 5,
+    name: 'أسئلة على نمط الامتحان',
+    focus: 'exam_style',
+    types: { mcq: 30, trueFalse: 10, essay: 5 },
+  },
+];
+
+const FOCUS_INSTRUCTIONS: Record<string, string> = {
+  recall: `ركز على أسئلة التذكر والاسترجاع:
+- تعريفات ومصطلحات أساسية
+- حقائق ومعلومات مباشرة
+- تواريخ وأرقام وأسماء مهمة
+- قوانين وقواعد أساسية`,
+  understanding: `ركز على أسئلة الفهم والاستيعاب:
+- شرح المفاهيم بالكلمات الخاصة
+- المقارنة بين المفاهيم المتشابهة
+- تفسير الظواهر والعلاقات
+- إعادة صياغة المعلومات`,
+  application: `ركز على أسئلة التطبيق والحل:
+- مسائل عملية تحتاج تطبيق القوانين
+- أمثلة من الحياة الواقعية
+- حل مشكلات باستخدام المعرفة المكتسبة
+- تطبيق النظريات على حالات جديدة`,
+  analysis: `ركز على أسئلة التحليل والتقييم:
+- تحليل النصوص والبيانات
+- استنتاج العلاقات غير المباشرة
+- تقييم الحلول المختلفة
+- نقد ومقارنة الآراء والنظريات`,
+  exam_style: `ركز على أسئلة بنمط امتحانات الثانوية العامة المصرية:
+- أسئلة مشابهة لأسئلة الامتحانات الفعلية
+- مستوى صعوبة متنوع (سهل، متوسط، صعب)
+- أسئلة تقيس الفهم العميق
+- أسئلة مركبة تجمع بين عدة مفاهيم`,
+};
+
+/**
+ * Build a prompt for generating a batch of questions with anti-duplication.
+ * Output format matches DB columns: question_ar, options (string[]), correct_answer (0-based index), explanation_ar, difficulty
+ */
+export function buildQuestionBatchPrompt(
+  lessonTitle: string,
+  content: string,
+  round: QuestionRound,
+  previousQuestions: string[] = []
+): string {
+  const focusInstructions = FOCUS_INSTRUCTIONS[round.focus] || FOCUS_INSTRUCTIONS.recall;
+  const prevSection = previousQuestions.length > 0
+    ? `\n## ⚠️ أسئلة سابقة يجب عدم تكرارها:\n${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nيجب أن تكون جميع الأسئلة الجديدة مختلفة تمامًا عن الأسئلة السابقة.\n`
+    : '';
+
+  return `أنت خبير في إعداد بنوك الأسئلة للمنهج المصري — الجولة ${round.id}: ${round.name}.
+
+## عنوان الدرس: ${lessonTitle}
+
+## محتوى الدرس:
+${content}
+
+## التركيز المطلوب:
+${focusInstructions}
+${prevSection}
+## المطلوب إنشاؤه:
+1. **${round.types.mcq} سؤال اختيار من متعدد (MCQ)** — 4 خيارات لكل سؤال
+   - ${Math.floor(round.types.mcq * 0.3)} أسئلة سهلة
+   - ${Math.floor(round.types.mcq * 0.4)} أسئلة متوسطة
+   - ${round.types.mcq - Math.floor(round.types.mcq * 0.3) - Math.floor(round.types.mcq * 0.4)} أسئلة صعبة
+
+2. **${round.types.trueFalse} أسئلة صح أو خطأ (true_false)** — مع تصحيح العبارات الخاطئة
+
+3. **${round.types.essay} أسئلة مقالية (essay)** — مع نقاط الإجابة النموذجية
+
+## صيغة الإخراج (JSON) — يجب الالتزام بهذه الصيغة بالضبط:
+{
+  "questions": [
+    {
+      "question_ar": "نص السؤال",
+      "type": "mcq",
+      "options": ["الخيار أ", "الخيار ب", "الخيار ج", "الخيار د"],
+      "correct_answer": 0,
+      "explanation_ar": "شرح الإجابة الصحيحة",
+      "difficulty": "easy"
+    },
+    {
+      "question_ar": "نص عبارة الصح والخطأ",
+      "type": "true_false",
+      "options": ["صح", "خطأ"],
+      "correct_answer": 0,
+      "explanation_ar": "التصحيح والشرح",
+      "difficulty": "medium"
+    },
+    {
+      "question_ar": "نص السؤال المقالي",
+      "type": "essay",
+      "options": [],
+      "correct_answer": 0,
+      "explanation_ar": "الإجابة النموذجية ونقاط الإجابة",
+      "difficulty": "hard"
+    }
+  ]
+}
+
+## ملاحظات مهمة:
+- correct_answer هو رقم الفهرس (يبدأ من 0) للخيار الصحيح
+- options هي مصفوفة من النصوص (string[])
+- difficulty: "easy" أو "medium" أو "hard"
+- type: "mcq" أو "true_false" أو "essay"
+- كل سؤال يجب أن يكون فريدًا ومختلفًا
+
+أجب بصيغة JSON فقط بدون أي نص إضافي.`;
+}
+
+/**
+ * Legacy compatibility — calls buildQuestionBatchPrompt with round 1
  */
 export function buildQuestionBankPrompt(
   lessonTitle: string,
   summaryContent: object
 ): string {
-  return `أنت خبير في إعداد بنوك الأسئلة للمنهج المصري.
-
-## المطلوب:
-قم بإنشاء بنك أسئلة شامل بناءً على ملخص الدرس التالي.
-
-## عنوان الدرس: ${lessonTitle}
-
-## ملخص الدرس:
-${JSON.stringify(summaryContent, null, 2)}
-
-## المطلوب إنشاؤه:
-1. **15 سؤال اختيار من متعدد (MCQ)** — 4 خيارات لكل سؤال
-   - 5 أسئلة سهلة
-   - 5 أسئلة متوسطة
-   - 5 أسئلة صعبة
-
-2. **10 أسئلة صح أو خطأ (True/False)**
-   - مع تصحيح العبارات الخاطئة
-
-3. **5 أسئلة مقالية (Essay)**
-   - مع نقاط الإجابة النموذجية
-
-## صيغة الإخراج (JSON):
-{
-  "mcq": [
-    {
-      "question": "نص السؤال",
-      "options": ["أ) ...", "ب) ...", "ج) ...", "د) ..."],
-      "correctAnswer": "أ) ...",
-      "difficulty": "easy|medium|hard",
-      "explanation": "شرح الإجابة"
-    }
-  ],
-  "trueFalse": [
-    {
-      "question": "نص العبارة",
-      "correctAnswer": "true|false",
-      "correction": "التصحيح إذا كانت خاطئة",
-      "explanation": "شرح"
-    }
-  ],
-  "essay": [
-    {
-      "question": "نص السؤال",
-      "keyPoints": ["نقطة 1", "نقطة 2"],
-      "modelAnswer": "الإجابة النموذجية",
-      "difficulty": "easy|medium|hard"
-    }
-  ]
-}
-
-أجب بصيغة JSON فقط بدون أي نص إضافي.`;
+  return buildQuestionBatchPrompt(
+    lessonTitle,
+    JSON.stringify(summaryContent, null, 2),
+    QUESTION_ROUNDS[0],
+    []
+  );
 }
 
 /**
@@ -174,12 +279,11 @@ export function estimateCost(
   inputTokens: number,
   outputTokens: number
 ): number {
-  // Claude 3.5 Sonnet pricing (per million tokens)
-  const INPUT_COST_PER_MILLION = 3.0; // $3 per 1M input tokens
-  const OUTPUT_COST_PER_MILLION = 15.0; // $15 per 1M output tokens
+  const INPUT_COST_PER_MILLION = 3.0;
+  const OUTPUT_COST_PER_MILLION = 15.0;
 
   const inputCost = (inputTokens / 1_000_000) * INPUT_COST_PER_MILLION;
   const outputCost = (outputTokens / 1_000_000) * OUTPUT_COST_PER_MILLION;
 
-  return Math.round((inputCost + outputCost) * 1_000_000) / 1_000_000; // 6 decimal places
+  return Math.round((inputCost + outputCost) * 1_000_000) / 1_000_000;
 }
