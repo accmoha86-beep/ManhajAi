@@ -32,7 +32,7 @@ function maskSecret(value: string): string {
 }
 
 async function verifyAdmin(req: NextRequest): Promise<{ valid: true; userId: string } | { valid: false; response: NextResponse }> {
-  const token = req.cookies.get('token')?.value;
+  const token = req.cookies.get('auth-token')?.value;
   if (!token) {
     return { valid: false, response: err('Not authenticated', 401) };
   }

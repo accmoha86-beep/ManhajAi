@@ -38,6 +38,7 @@ async function adminAPI(action: string, params?: Record<string, any>) {
   const res = await fetch("/api/admin/data", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ action, ...params }),
   });
   return res.json();
