@@ -29,9 +29,15 @@ export default function TopBar() {
       {/* Brand Logo - RIGHT side (RTL) */}
       <Link href="/" className="flex items-center gap-2">
         <div className="theme-logo flex items-center" style={{ height: '3.4rem' }}>
-          <span className="text-2xl font-extrabold text-white tracking-tight">
-            📚 منهج AI
-          </span>
+          <img
+            src="/logo-horizontal.png"
+            alt="منهج AI"
+            style={{
+              height: '2.4rem',
+              width: 'auto',
+              filter: 'var(--theme-logo-filter, brightness(0) invert(1) drop-shadow(0 2px 4px rgba(0,0,0,0.3)))',
+            }}
+          />
         </div>
       </Link>
 

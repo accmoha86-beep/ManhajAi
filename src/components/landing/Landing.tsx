@@ -445,8 +445,12 @@ export default function Landing() {
 
       {/* ═══ FOOTER ═══ */}
       <footer className="py-8 px-6 text-center" style={{ background: 'var(--theme-footer-bg)', color: 'var(--theme-footer-text)' }}>
-        <div className="text-lg font-bold mb-2" style={{ color: 'var(--theme-footer-heading)' }}>
-          📚 منهج AI
+        <div className="flex justify-center mb-2">
+          <img
+            src="/logo-horizontal.png"
+            alt="منهج AI"
+            style={{ height: '2rem', width: 'auto', filter: 'brightness(0) invert(1)' }}
+          />
         </div>
         <p className="text-sm mb-4">منصة تعليمية ذكية لطلاب الثانوية العامة في مصر</p>
         <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
