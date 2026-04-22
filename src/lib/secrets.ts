@@ -21,7 +21,7 @@ export async function getSecret(key: string): Promise<string | null> {
     const supabase = getSupabase();
     if (!supabase) return null;
     
-    const { data, error } = await supabase.rpc('get_system_secret', { secret_key: key });
+    const { data, error } = await supabase.rpc('get_system_secret', { p_key: key });
     if (error || !data) return null;
     
     // Cache the value
