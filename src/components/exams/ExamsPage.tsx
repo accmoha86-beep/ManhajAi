@@ -18,7 +18,7 @@ interface ExamQuestion {
   id: string;
   question_text: string;
   type: string;
-  options: { text: string; is_correct: boolean }[] | null;
+  options: string[] | null;
   correct_answer: string | null;
   explanation: string | null;
   difficulty: string;
@@ -333,12 +333,13 @@ export default function ExamsPage() {
             {currentQuestion.options && (
               <div className="space-y-3">
                 {currentQuestion.options.map((opt, i) => {
-                  const isSelected = answers[currentQuestion.id] === opt.text;
+                  const optText = typeof opt === 'string' ? opt : (opt as { text: string }).text;
+                  const isSelected = answers[currentQuestion.id] === optText;
                   const labels = ["أ", "ب", "ج", "د"];
                   return (
                     <button
                       key={i}
-                      onClick={() => selectAnswer(currentQuestion.id, opt.text)}
+                      onClick={() => selectAnswer(currentQuestion.id, optText)}
                       className="w-full p-4 rounded-xl flex items-center gap-3 text-right transition-all cursor-pointer"
                       style={{
                         background: isSelected ? "var(--theme-hover-overlay)" : "transparent",
@@ -355,7 +356,7 @@ export default function ExamsPage() {
                         {labels[i] || (i + 1).toString()}
                       </div>
                       <span className="text-sm font-bold" style={{ color: "var(--theme-text-primary)" }}>
-                        {opt.text}
+                        {optText}
                       </span>
                       {isSelected && (
                         <CheckCircle2 size={18} className="mr-auto" style={{ color: "var(--theme-primary)" }} />
