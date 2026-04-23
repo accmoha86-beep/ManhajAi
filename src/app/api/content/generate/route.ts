@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json({ error: 'مفتاح AI غير مهيأ' }, { status: 500 });
     }
-    const model = contentModel || DEFAULT_CONTENT_MODEL;
+    const model = contentModel || 'claude-sonnet-4-6';
 
     // Build the file content block for Claude Vision API
     const fileBlock = isPdf

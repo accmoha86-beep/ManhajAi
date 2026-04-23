@@ -332,7 +332,7 @@ export default function ParentDashboard() {
                 borderColor: "var(--theme-info-border, #bfdbfe)",
               }}
             >
-              <Shield className="w-5 h-5 flex-shrink-0" style={{ color: "var(--theme-primary)" }} mt-0.5" />
+              <Shield className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: "var(--theme-primary)" }} />
               <p className="text-xs leading-relaxed" style={{ color: "var(--theme-text-secondary)" }}>
                 للحصول على كود الوصول، اطلب من ابنك/بنتك الدخول على الإعدادات واختيار &quot;لوحة ولي الأمر&quot;
               </p>
