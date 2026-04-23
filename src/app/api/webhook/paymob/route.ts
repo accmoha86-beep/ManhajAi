@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     const hmac = request.nextUrl.searchParams.get('hmac') ?? '';
 
     // Verify HMAC signature
-    if (!verifyCallback(hmac, body.obj)) {
+    if (!(await verifyCallback(hmac, body.obj))) {
       console.error('[PaymobWebhook] HMAC verification failed');
       return NextResponse.json(
         { error: 'Invalid HMAC' },

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify and construct event
-    const eventResult = constructWebhookEvent(body, signature);
+    const eventResult = await constructWebhookEvent(body, signature);
     if (!eventResult.ok) {
       console.error('[StripeWebhook] Verification failed:', eventResult.error);
       return NextResponse.json(

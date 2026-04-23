@@ -282,17 +282,17 @@ export async function POST(request: NextRequest) {
       }
 
       case 'update_coupon': {
-        const updates: any = {};
-        if (params.is_active !== undefined) updates.is_active = params.is_active;
-        if (params.discount_percent !== undefined) updates.discount_percent = params.discount_percent;
-        if (params.max_uses !== undefined) updates.max_uses = params.max_uses;
-        if (params.expires_at !== undefined) updates.expires_at = params.expires_at;
-        if (params.description_ar !== undefined) updates.description_ar = params.description_ar;
-        if (params.code !== undefined) updates.code = params.code.toUpperCase();
+        const couponUpdates: Record<string, unknown> = {};
+        if (params.is_active !== undefined) couponUpdates.is_active = params.is_active;
+        if (params.discount_percent !== undefined) couponUpdates.discount_percent = params.discount_percent;
+        if (params.max_uses !== undefined) couponUpdates.max_uses = params.max_uses;
+        if (params.expires_at !== undefined) couponUpdates.expires_at = params.expires_at;
+        if (params.description_ar !== undefined) couponUpdates.description_ar = params.description_ar;
+        if (params.code !== undefined) couponUpdates.code = params.code.toUpperCase();
 
         const { data, error } = await sb
           .from('coupons')
-          .update(updates)
+          .update(couponUpdates)
           .eq('id', params.id || params.coupon_id)
           .select()
           .single();
@@ -320,15 +320,15 @@ export async function POST(request: NextRequest) {
       }
 
       case 'update_grade': {
-        const updates: any = {};
-        if (params.is_published !== undefined) updates.is_published = params.is_published;
-        if (params.has_terms !== undefined) updates.has_terms = params.has_terms;
-        if (params.term1_published !== undefined) updates.term1_published = params.term1_published;
-        if (params.term2_published !== undefined) updates.term2_published = params.term2_published;
+        const gradeUpdates: Record<string, unknown> = {};
+        if (params.is_published !== undefined) gradeUpdates.is_published = params.is_published;
+        if (params.has_terms !== undefined) gradeUpdates.has_terms = params.has_terms;
+        if (params.term1_published !== undefined) gradeUpdates.term1_published = params.term1_published;
+        if (params.term2_published !== undefined) gradeUpdates.term2_published = params.term2_published;
 
         const { data, error } = await sb
           .from('grade_levels')
-          .update(updates)
+          .update(gradeUpdates)
           .eq('id', params.id || params.grade_id)
           .select()
           .single();
@@ -338,7 +338,6 @@ export async function POST(request: NextRequest) {
 
       // ===== CONTENT GENERATION =====
       case 'generate_content': {
-        // Trigger content generation
         try {
           const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
           const contentRes = await fetch(`${baseUrl}/api/content/generate`, {
@@ -354,14 +353,164 @@ export async function POST(request: NextRequest) {
           });
           const contentData = await contentRes.json();
           return ok(contentData);
-        } catch (e: any) {
-          return err(e.message || 'فشل في توليد المحتوى');
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'فشل في توليد المحتوى';
+          return err(msg);
         }
       }
 
       // ===== DOWNLOAD REPORT =====
       case 'download_report': {
         return ok({ redirect_url: '/api/admin/reports' });
+      }
+
+      // ===== PAYMENT CONFIG =====
+      case 'get_payment_config': {
+        const { data: secrets } = await sb.rpc('admin_list_secrets', { p_admin_id: aid });
+        const paymentSecretKeys = [
+          'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PUBLISHABLE_KEY',
+          'PAYMOB_API_KEY', 'PAYMOB_VODAFONE_INTEGRATION_ID', 'PAYMOB_FAWRY_INTEGRATION_ID',
+          'PAYMOB_INSTAPAY_INTEGRATION_ID', 'PAYMOB_IFRAME_ID', 'PAYMOB_HMAC_SECRET'
+        ];
+        const paymentSecrets = (secrets || []).filter((s: Record<string, unknown>) =>
+          paymentSecretKeys.includes(s.key as string)
+        );
+        const { data: settings } = await sb.rpc('admin_list_settings', { p_admin_id: aid });
+        const paymentSettings = (settings || []).filter((s: Record<string, unknown>) => {
+          const k = s.key as string;
+          return k?.startsWith('payment_') || k?.startsWith('stripe_') || k?.startsWith('paymob_');
+        });
+        return ok({ secrets: paymentSecrets, settings: paymentSettings });
+      }
+
+      case 'update_payment_config': {
+        if (params.secret_key && params.secret_value !== undefined) {
+          const { error } = await sb.rpc('admin_update_secret', {
+            p_admin_id: aid,
+            p_key: params.secret_key,
+            p_value: params.secret_value,
+            p_description: params.description || null
+          });
+          if (error) return err(error.message);
+        }
+        if (params.setting_key && params.setting_value !== undefined) {
+          const { error } = await sb.rpc('admin_update_setting', {
+            p_admin_id: aid,
+            p_key: params.setting_key,
+            p_value: String(params.setting_value)
+          });
+          if (error) return err(error.message);
+        }
+        return ok({ success: true });
+      }
+
+      // ===== SUBSCRIPTION PLANS =====
+      case 'get_plans': {
+        const { data, error } = await sb
+          .from('subscription_plans')
+          .select('*')
+          .order('max_subjects', { ascending: true });
+        if (error) return err(error.message);
+        return ok({ plans: data || [] });
+      }
+
+      case 'create_plan': {
+        const { data, error } = await sb
+          .from('subscription_plans')
+          .insert({
+            name_ar: params.name_ar,
+            name_en: params.name_en || null,
+            max_subjects: params.max_subjects || 1,
+            price_monthly: params.price_monthly || 89,
+            price_term: params.price_term || null,
+            price_annual: params.price_annual || null,
+            discount_percent: params.discount_percent || 0,
+            features_ar: params.features_ar || [],
+            is_active: params.is_active !== false,
+          })
+          .select()
+          .single();
+        if (error) return err(error.message);
+        return ok({ plan: data });
+      }
+
+      case 'update_plan': {
+        const planUpdates: Record<string, unknown> = {};
+        ['name_ar', 'name_en', 'max_subjects', 'price_monthly', 'price_term', 'price_annual',
+         'discount_percent', 'features_ar', 'is_active'].forEach(key => {
+          if (params[key] !== undefined) planUpdates[key] = params[key];
+        });
+        const { data, error } = await sb
+          .from('subscription_plans')
+          .update(planUpdates)
+          .eq('id', params.id || params.plan_id)
+          .select()
+          .single();
+        if (error) return err(error.message);
+        return ok({ plan: data });
+      }
+
+      case 'delete_plan': {
+        const { error } = await sb
+          .from('subscription_plans')
+          .delete()
+          .eq('id', params.id || params.plan_id);
+        if (error) return err(error.message);
+        return ok({ success: true });
+      }
+
+      // ===== EXAMS (admin) =====
+      case 'get_exams': {
+        const { data, error } = await sb
+          .from('exam_results')
+          .select('*, users!inner(full_name), subjects!inner(name_ar)')
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (error) {
+          const { data: d2, error: e2 } = await sb
+            .from('exam_results')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+          if (e2) return err(e2.message);
+          return ok({ exams: d2 || [] });
+        }
+        return ok({ exams: (data || []).map((e: Record<string, unknown>) => ({
+          ...e,
+          user_name: (e.users as Record<string, unknown>)?.full_name,
+          subject_name: (e.subjects as Record<string, unknown>)?.name_ar,
+        }))});
+      }
+
+      case 'get_questions': {
+        const { data, error } = await sb
+          .from('questions')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(200);
+        if (error) return err(error.message);
+        return ok({ questions: data || [] });
+      }
+
+      // Ban/Unban shortcuts
+      case 'ban_student': {
+        const { error } = await sb.rpc('admin_update_student', {
+          p_admin_id: aid,
+          p_student_id: params.user_id || params.student_id,
+          p_updates: JSON.stringify({ is_banned: true })
+        });
+        if (error) return err(error.message);
+        return ok({ success: true });
+      }
+
+      case 'unban_student': {
+        const { error } = await sb.rpc('admin_update_student', {
+          p_admin_id: aid,
+          p_student_id: params.user_id || params.student_id,
+          p_updates: JSON.stringify({ is_banned: false })
+        });
+        if (error) return err(error.message);
+        return ok({ success: true });
       }
 
       default:

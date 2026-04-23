@@ -1,16 +1,21 @@
-// infrastructure/stripe/client.ts — Stripe payment client
+// infrastructure/stripe/client.ts — Stripe payment client (DB secrets)
 import Stripe from 'stripe';
 import type { Result } from '@/lib/result';
 import { ok, err } from '@/lib/result';
+import { getSecret } from '@/lib/secrets';
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
-  typescript: true,
-});
+let stripeInstance: Stripe | null = null;
 
-/**
- * Create a Stripe Checkout session for a subscription payment.
- */
+async function getStripe(): Promise<Stripe | null> {
+  if (stripeInstance) return stripeInstance;
+  const key = await getSecret('STRIPE_SECRET_KEY');
+  if (!key) return null;
+  stripeInstance = new Stripe(key, { apiVersion: '2024-06-20', typescript: true });
+  return stripeInstance;
+}
+
+const NOT_CONFIGURED_MSG = 'مفتاح Stripe غير مهيأ — أضف المفتاح من لوحة التحكم';
+
 export async function createCheckoutSession(params: {
   userId: string;
   planId: string;
@@ -21,6 +26,9 @@ export async function createCheckoutSession(params: {
   cancelUrl: string;
 }): Promise<Result<{ sessionId: string; url: string }>> {
   try {
+    const stripe = await getStripe();
+    if (!stripe) return err(NOT_CONFIGURED_MSG);
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -37,7 +45,7 @@ export async function createCheckoutSession(params: {
                 period: params.period,
               },
             },
-            unit_amount: Math.round(params.amount * 100), // Stripe uses piasters
+            unit_amount: Math.round(params.amount * 100),
           },
           quantity: 1,
         },
@@ -56,24 +64,20 @@ export async function createCheckoutSession(params: {
       return err('فشل في إنشاء رابط الدفع');
     }
 
-    return ok({
-      sessionId: session.id,
-      url: session.url,
-    });
+    return ok({ sessionId: session.id, url: session.url });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'خطأ غير معروف';
+    const message = error instanceof Error ? error.message : 'خطأ غير معروف';
     return err(`فشل في إنشاء جلسة الدفع: ${message}`);
   }
 }
 
-/**
- * Create a Stripe Customer Portal session for managing subscriptions.
- */
 export async function createPortalSession(
   customerId: string
 ): Promise<Result<{ url: string }>> {
   try {
+    const stripe = await getStripe();
+    if (!stripe) return err(NOT_CONFIGURED_MSG);
+
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
@@ -81,58 +85,50 @@ export async function createPortalSession(
 
     return ok({ url: session.url });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'خطأ غير معروف';
+    const message = error instanceof Error ? error.message : 'خطأ غير معروف';
     return err(`فشل في إنشاء بوابة الإدارة: ${message}`);
   }
 }
 
-/**
- * Cancel a Stripe subscription.
- */
 export async function cancelSubscription(
   subscriptionId: string
 ): Promise<Result<void>> {
   try {
+    const stripe = await getStripe();
+    if (!stripe) return err(NOT_CONFIGURED_MSG);
+
     await stripe.subscriptions.cancel(subscriptionId);
     return ok(undefined);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'خطأ غير معروف';
+    const message = error instanceof Error ? error.message : 'خطأ غير معروف';
     return err(`فشل في إلغاء الاشتراك: ${message}`);
   }
 }
 
-/**
- * Construct a Stripe webhook event from the raw body and signature.
- */
-export function constructWebhookEvent(
+export async function constructWebhookEvent(
   body: string | Buffer,
   signature: string
-): Result<Stripe.Event> {
+): Promise<Result<Stripe.Event>> {
   try {
-    const event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET!
-    );
+    const stripe = await getStripe();
+    if (!stripe) return err(NOT_CONFIGURED_MSG);
+
+    const webhookSecret = await getSecret('STRIPE_WEBHOOK_SECRET');
+    if (!webhookSecret) return err('مفتاح Webhook غير مهيأ — أضف المفتاح من لوحة التحكم');
+
+    const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
     return ok(event);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'خطأ غير معروف';
+    const message = error instanceof Error ? error.message : 'خطأ غير معروف';
     return err(`فشل في التحقق من webhook: ${message}`);
   }
 }
 
 function getPeriodLabel(period: string): string {
   switch (period) {
-    case 'monthly':
-      return 'شهري';
-    case 'term':
-      return 'ترم دراسي';
-    case 'annual':
-      return 'سنوي';
-    default:
-      return period;
+    case 'monthly': return 'شهري';
+    case 'term': return 'ترم دراسي';
+    case 'annual': return 'سنوي';
+    default: return period;
   }
 }
