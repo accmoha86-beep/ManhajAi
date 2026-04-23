@@ -1,12 +1,18 @@
-// app/api/webhook/stripe/route.ts — Stripe webhook handler
+// app/api/webhook/stripe/route.ts — Stripe webhook handler (RPC-based)
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
-import { createServiceRoleClient } from '@/infrastructure/supabase/service-role';
+import { createClient } from '@supabase/supabase-js';
 import { constructWebhookEvent } from '@/infrastructure/stripe/client';
 import type Stripe from 'stripe';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,21 +31,52 @@ export async function POST(request: NextRequest) {
     }
 
     const event = eventResult.data;
-    const supabase = createServiceRoleClient();
+    const supabase = getSupabase();
 
     switch (event.type) {
       case 'checkout.session.completed': {
-        await handleCheckoutCompleted(supabase, event.data.object as Stripe.Checkout.Session);
+        const session = event.data.object as Stripe.Checkout.Session;
+        const period = session.metadata?.period ?? 'monthly';
+        
+        const { data, error } = await supabase.rpc('activate_subscription_by_stripe_session', {
+          p_stripe_session_id: session.id,
+          p_stripe_customer_id: (session.customer as string) || '',
+          p_period: period,
+        });
+
+        if (error) {
+          console.error('[StripeWebhook] Activate RPC error:', error);
+        } else {
+          console.log('[StripeWebhook] ✅ Activated:', data);
+        }
         break;
       }
-      case 'invoice.payment_failed': {
-        await handlePaymentFailed(supabase, event.data.object as Stripe.Invoice);
+
+      case 'invoice.payment_failed':
+      case 'payment_intent.payment_failed': {
+        const obj = event.data.object as { customer?: string };
+        const customerId = obj.customer;
+        if (customerId) {
+          await supabase.rpc('mark_subscription_payment_failed', {
+            p_stripe_customer_id: customerId,
+          });
+          console.log('[StripeWebhook] ⚠️ Payment failed for:', customerId);
+        }
         break;
       }
+
       case 'customer.subscription.deleted': {
-        await handleSubscriptionDeleted(supabase, event.data.object as Stripe.Subscription);
+        const subscription = event.data.object as Stripe.Subscription;
+        const customerId = subscription.customer as string;
+        if (customerId) {
+          await supabase.rpc('cancel_stripe_subscription', {
+            p_stripe_customer_id: customerId,
+          });
+          console.log('[StripeWebhook] ❌ Subscription cancelled for:', customerId);
+        }
         break;
       }
+
       default:
         console.log(`[StripeWebhook] Unhandled: ${event.type}`);
     }
@@ -49,76 +86,4 @@ export async function POST(request: NextRequest) {
     console.error('[StripeWebhook] Error:', error);
     return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 });
   }
-}
-
-async function handleCheckoutCompleted(supabase: SupabaseClient, session: Stripe.Checkout.Session) {
-  const userId = session.metadata?.userId;
-  const period = session.metadata?.period ?? 'monthly';
-
-  if (!userId) {
-    console.error('[StripeWebhook] Missing userId in metadata');
-    return;
-  }
-
-  const now = new Date();
-  const expiresAt = new Date(now);
-  switch (period) {
-    case 'monthly': expiresAt.setMonth(expiresAt.getMonth() + 1); break;
-    case 'term': expiresAt.setMonth(expiresAt.getMonth() + 4); break;
-    case 'annual': expiresAt.setFullYear(expiresAt.getFullYear() + 1); break;
-  }
-
-  const { error } = await supabase
-    .from('subscriptions')
-    .update({
-      status: 'active',
-      paid_at: now.toISOString(),
-      stripe_customer_id: session.customer as string,
-      starts_at: now.toISOString(),
-      expires_at: expiresAt.toISOString(),
-      current_period_start: now.toISOString(),
-      current_period_end: expiresAt.toISOString(),
-      activated_at: now.toISOString(),
-    })
-    .eq('stripe_session_id', session.id);
-
-  if (error) {
-    console.error('[StripeWebhook] Activate failed:', error);
-    return;
-  }
-
-  // Increment coupon usage
-  const { data: sub } = await supabase
-    .from('subscriptions')
-    .select('coupon_code')
-    .eq('stripe_session_id', session.id)
-    .single();
-
-  if (sub?.coupon_code) {
-    await supabase.rpc('increment_coupon_usage', { p_code: sub.coupon_code });
-  }
-
-  console.log(`[StripeWebhook] ✅ Activated for user ${userId}`);
-}
-
-async function handlePaymentFailed(supabase: SupabaseClient, invoice: Stripe.Invoice) {
-  const customerId = invoice.customer as string;
-  if (!customerId) return;
-
-  await supabase
-    .from('subscriptions')
-    .update({ status: 'expired', payment_failed_at: new Date().toISOString() })
-    .eq('stripe_customer_id', customerId)
-    .eq('status', 'active');
-}
-
-async function handleSubscriptionDeleted(supabase: SupabaseClient, subscription: Stripe.Subscription) {
-  const customerId = subscription.customer as string;
-  if (!customerId) return;
-
-  await supabase
-    .from('subscriptions')
-    .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-    .eq('stripe_customer_id', customerId)
-    .in('status', ['active', 'pending']);
 }
