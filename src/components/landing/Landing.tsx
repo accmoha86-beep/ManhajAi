@@ -114,7 +114,14 @@ export default function Landing() {
   useEffect(() => {
     fetch("/api/subscription/plans")
       .then((r) => r.json())
-      .then((d) => setPlans(d.plans || []))
+      .then((d) => setPlans((d.plans || d || []).map((p: any) => ({
+  id: p.id,
+  name: p.name_ar || p.name || '',
+  price: p.price_monthly || p.price || 0,
+  period: 'شهر',
+  features: Array.isArray(p.features) ? p.features : [],
+  popular: p.is_popular || p.popular || false,
+}))))
       .catch(() => {})
       .finally(() => setPlansLoading(false));
   }, []);
@@ -309,7 +316,7 @@ export default function Landing() {
                         {plan.price}
                       </span>
                       <span className="text-base" style={{ color: "var(--theme-text-secondary)" }}>
-                         / {plan.period || "شهر"}
+                        ج.م / {plan.period || "شهر"}
                       </span>
                     </div>
                     <ul className="flex flex-col gap-3 mb-8 flex-1">
@@ -509,9 +516,9 @@ export default function Landing() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
             {/* brand */}
             <div className="flex flex-col gap-4">
-              <span className="text-2xl font-extrabold text-white">
-                منهج AI 🎓
-              </span>
+              <div className="flex items-center gap-2">
+                <img src="/logo-horizontal.png" alt="منهج AI" style={{ height: '2rem', filter: 'brightness(0) invert(1)' }} />
+              </div>
               <p className="text-sm leading-relaxed" style={{ color: "#9ca3af" }}>
                 منصة تعليمية ذكية مصممة لطلاب الثانوية العامة في مصر. بنستخدم الذكاء الاصطناعي عشان نساعدك تذاكر بذكاء وتحقق أعلى الدرجات.
               </p>

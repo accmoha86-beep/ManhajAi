@@ -15,11 +15,13 @@ interface Certificate {
   id: string;
   subject_name: string;
   subject_icon: string;
-  score: number;
-  total_questions: number;
-  correct_answers: number;
-  created_at: string;
-  exam_id: string;
+  score_percent: number;
+  title_ar?: string;
+  description_ar?: string;
+  certificate_type?: string;
+  issued_at: string;
+  share_code?: string;
+  created_at?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -44,8 +46,7 @@ function scoreToStars(score: number): number {
 }
 
 function scorePercent(cert: Certificate): number {
-  // score is already the percentage value from backend
-  return Math.round(cert.score);
+  return Math.round(cert.score_percent || 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -159,7 +160,7 @@ async function drawCertificate(
   // ── Date ──
   ctx.fillStyle = "#78716c";
   ctx.font = "22px Cairo, Tajawal, sans-serif";
-  ctx.fillText(formatArabicDate(cert.created_at), W / 2, 640);
+  ctx.fillText(formatArabicDate(cert.issued_at || cert.created_at || ''), W / 2, 640);
 
   // ── Manhaj AI branding ──
   ctx.fillStyle = "#d97706";
@@ -419,11 +420,11 @@ export default function CertificatesPage() {
                 <div className="flex items-center justify-between text-sm" style={{ color: "var(--theme-text-secondary)" }}>
                   <span className="flex items-center gap-1">
                     <CheckCircle2 className="w-4 h-4 text-green-500" />
-                    {cert.correct_answers}/{cert.total_questions} صحيحة
+                    {pct}% نسبة النجاح
                   </span>
                   <span className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
-                    {formatArabicDate(cert.created_at)}
+                    {formatArabicDate(cert.issued_at || cert.created_at || '')}
                   </span>
                 </div>
 
@@ -544,7 +545,7 @@ export default function CertificatesPage() {
 
               <div className="flex items-center justify-center gap-2 text-sm" style={{ color: "var(--theme-text-secondary)" }}>
                 <Calendar className="w-4 h-4" />
-                {formatArabicDate(selectedCert.created_at)}
+                {formatArabicDate(selectedCert.issued_at || selectedCert.created_at || '')}
               </div>
 
               <p className="text-xs text-amber-600 font-medium pt-2">

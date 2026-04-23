@@ -1519,11 +1519,15 @@ function SettingsTab() {
       <div className="space-y-3">
         {settings.map((s, i) => {
           const key = (s.key as string) || (s.name as string) || "";
-          const val = (s.value as string) || "";
+          const rawValue = s.value;
+          const val = typeof rawValue === 'object' && rawValue !== null 
+            ? JSON.stringify(rawValue, null, 2) 
+            : String(rawValue ?? '');
           const isEditing = editKey === key;
-          const isBool = val === "true" || val === "false";
+          const isBool = rawValue === true || rawValue === false || val === "true" || val === "false";
+          const boolChecked = rawValue === true || val === "true";
           return (
-            <div key={i} className="rounded-xl p-4 flex items-center justify-between gap-4" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
+            <div key={i} className="rounded-xl p-4 flex items-center justify-between gap-4" style={{ background: "var(--theme-page-bg)", border: "1px solid var(--theme-surface-border)" }}>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm" style={{ color: "var(--theme-text-primary)" }}>{(s.label as string) || key}</p>
                 {s.description && <p className="text-xs mt-0.5" style={{ color: "var(--theme-text-secondary)" }}>{s.description as string}</p>}
@@ -1534,7 +1538,7 @@ function SettingsTab() {
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {isBool ? (
-                  <ToggleSwitch checked={val === "true"} onChange={async (v) => {
+                  <ToggleSwitch checked={boolChecked} onChange={async (v) => {
                     try { await adminAPI("update_setting", { key, value: String(v) }); load(); } catch { load(); }
                   }} />
                 ) : isEditing ? (
@@ -1546,7 +1550,7 @@ function SettingsTab() {
                   </>
                 ) : (
                   <>
-                    <span className="text-xs truncate max-w-[120px]" style={{ color: "var(--theme-text-secondary)" }}>{val || "(فارغ)"}</span>
+                    <span className="text-xs truncate max-w-[200px]" title={val} style={{ color: "var(--theme-text-secondary)" }}>{val.length > 50 ? val.substring(0, 50) + '...' : val || "(فارغ)"}</span>
                     <button onClick={() => { setEditKey(key); setEditValue(val); }} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={14} /></button>
                   </>
                 )}

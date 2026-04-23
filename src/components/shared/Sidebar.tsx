@@ -40,6 +40,10 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   const isAdmin = user?.role === 'admin';
+
+  // Hide sidebar for non-authenticated users
+  if (!user) return null;
+
   const sidebarWidth = sidebarCollapsed ? '3.75rem' : '15rem';
 
   const isActive = (href: string) => {
