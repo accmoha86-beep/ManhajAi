@@ -2,9 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createCheckoutSession } from '@/infrastructure/stripe/client';
-import { createPayment } from '@/infrastructure/paymob/client';
 import { getAuthUser } from '@/lib/auth';
-import { createServiceRoleClient } from '@/infrastructure/supabase/service-role';
+import { createServerSupabaseClient } from '@/infrastructure/supabase/server';
 
 const CreateSubscriptionSchema = z.object({
   planId: z.string().uuid('معرف الخطة غير صالح'),
@@ -34,28 +33,27 @@ export async function POST(request: NextRequest) {
     }
 
     const { planId, subjects, period, paymentMethod, couponCode } = parsed.data;
-    const supabase = createServiceRoleClient();
+    const supabase = await createServerSupabaseClient();
 
-    // Fetch subscription plan
-    const { data: plan, error: planError } = await supabase
-      .from('subscription_plans')
-      .select('*')
-      .eq('id', planId)
-      .eq('is_active', true)
-      .single();
+    // Fetch subscription plan via RPC (bypasses RLS)
+    const { data: plansData } = await supabase.rpc('get_subscription_plans');
+    const plans = Array.isArray(plansData) ? plansData : (plansData?.plans || []);
+    const plan = plans.find((p: Record<string, unknown>) => p.id === planId && p.is_active);
 
-    if (planError || !plan) {
+    if (!plan) {
       return NextResponse.json({ error: 'الخطة غير موجودة أو غير متاحة' }, { status: 404 });
     }
 
-    // If no specific subjects, get all published subjects
+    // Get subjects — if none selected, get all published
     let subjectIds = subjects;
     if (subjectIds.length === 0) {
-      const { data: allSubjects } = await supabase
-        .from('subjects')
-        .select('id')
-        .eq('is_published', true);
-      subjectIds = (allSubjects || []).map(s => s.id);
+      const { data: pubSubjects } = await supabase.rpc('get_published_subjects');
+      const subList = Array.isArray(pubSubjects) ? pubSubjects : (pubSubjects?.subjects || []);
+      subjectIds = subList.map((s: Record<string, unknown>) => s.id as string);
+    }
+
+    if (subjectIds.length === 0) {
+      return NextResponse.json({ error: 'يجب اختيار مادة واحدة على الأقل' }, { status: 400 });
     }
 
     // Limit subjects to plan's max
@@ -65,35 +63,31 @@ export async function POST(request: NextRequest) {
 
     // Calculate price based on period
     let basePrice = plan.price_monthly || 89;
-    let periodMultiplier = 1;
     switch (period) {
-      case 'term': periodMultiplier = 4; break;
-      case 'annual': periodMultiplier = 10; break; // 10 months price for 12 months
+      case 'term': basePrice *= 4; break;
+      case 'annual': basePrice *= 10; break;
     }
-    basePrice = basePrice * periodMultiplier;
 
     // Apply plan discount
     let discountPercent = plan.discount_percent || 0;
 
     // Check coupon if provided
     if (couponCode) {
-      const { data: coupon } = await supabase
+      const { data: coupons } = await supabase
         .from('coupons')
         .select('*')
         .eq('code', couponCode.toUpperCase())
-        .eq('is_active', true)
-        .single();
+        .eq('is_active', true);
+
+      const coupon = coupons && coupons.length > 0 ? coupons[0] : null;
 
       if (coupon) {
-        // Check usage limit
         if (coupon.max_uses && coupon.used_count >= coupon.max_uses) {
           return NextResponse.json({ error: 'كود الخصم تم استخدامه بالكامل' }, { status: 400 });
         }
-        // Check expiry — actual DB column is valid_until
         if (coupon.valid_until && new Date(coupon.valid_until) < new Date()) {
           return NextResponse.json({ error: 'كود الخصم منتهي الصلاحية' }, { status: 400 });
         }
-        // Add coupon discount (capped at 50% total)
         discountPercent = Math.min(discountPercent + (coupon.discount_percent || 0), 50);
       } else {
         return NextResponse.json({ error: 'كود الخصم غير صالح' }, { status: 400 });
@@ -112,40 +106,33 @@ export async function POST(request: NextRequest) {
       case 'annual': expiresAt.setFullYear(expiresAt.getFullYear() + 1); break;
     }
 
-    // Create pending subscription in DB
-    const { data: subscription, error: subError } = await supabase
-      .from('subscriptions')
-      .insert({
-        user_id: user.id,
-        subject_ids: subjectIds,
-        subjects: subjectIds, // jsonb copy
-        status: 'pending',
-        plan_type: period,
-        price_egp: finalPrice,
-        discount_percent: discountPercent,
-        period,
-        base_price: basePrice,
-        discount: discountAmount,
-        final_price: finalPrice,
-        coupon_code: couponCode?.toUpperCase() || null,
-        payment_method: paymentMethod,
-        starts_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        auto_renew: false,
-      })
-      .select('id')
-      .single();
+    // Create pending subscription via RPC (SECURITY DEFINER — bypasses RLS)
+    const { data: subId, error: subError } = await supabase.rpc('create_pending_subscription', {
+      p_user_id: user.id,
+      p_subject_ids: subjectIds,
+      p_plan_type: period,
+      p_price_egp: finalPrice,
+      p_discount_percent: discountPercent,
+      p_period: period,
+      p_base_price: basePrice,
+      p_discount: discountAmount,
+      p_final_price: finalPrice,
+      p_coupon_code: couponCode?.toUpperCase() || null,
+      p_payment_method: paymentMethod,
+      p_starts_at: now.toISOString(),
+      p_expires_at: expiresAt.toISOString(),
+    });
 
-    if (subError || !subscription) {
-      console.error('[Subscription] Create failed:', subError);
+    if (subError || !subId) {
+      console.error('[Subscription] Create RPC failed:', subError);
       return NextResponse.json({ error: 'فشل في إنشاء الاشتراك' }, { status: 500 });
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://manhaj-ai.com';
-    const successUrl = `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}&sub_id=${subscription.id}`;
-    const cancelUrl = `${appUrl}/subscription/cancel?sub_id=${subscription.id}`;
+    const successUrl = `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}&sub_id=${subId}`;
+    const cancelUrl = `${appUrl}/subscription/cancel?sub_id=${subId}`;
 
-    // Route to payment provider
+    // Route to Stripe
     if (paymentMethod === 'stripe') {
       const sessionResult = await createCheckoutSession({
         userId: user.id,
@@ -161,43 +148,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: sessionResult.error }, { status: 500 });
       }
 
-      // Update subscription with Stripe session ID
-      await supabase
-        .from('subscriptions')
-        .update({ stripe_session_id: sessionResult.data.sessionId })
-        .eq('id', subscription.id);
+      // Update subscription with Stripe session ID via RPC
+      await supabase.rpc('update_subscription_stripe', {
+        p_sub_id: subId,
+        p_stripe_session_id: sessionResult.data.sessionId,
+      });
 
       return NextResponse.json({
         success: true,
-        subscriptionId: subscription.id,
+        subscriptionId: subId,
         url: sessionResult.data.url,
         pricing: { basePrice, discount: discountAmount, finalPrice, discountPercent },
       });
     }
 
-    // Paymob payment methods
-    const paymentResult = await createPayment({
-      amount: Math.round(finalPrice * 100),
-      userId: user.id,
-      method: paymentMethod as 'vodafone' | 'fawry' | 'instapay',
-      phone: user.phone,
-    });
-
-    if (!paymentResult.ok) {
-      return NextResponse.json({ error: paymentResult.error }, { status: 500 });
-    }
-
-    await supabase
-      .from('subscriptions')
-      .update({ paymob_order_id: paymentResult.data.orderId })
-      .eq('id', subscription.id);
-
-    return NextResponse.json({
-      success: true,
-      subscriptionId: subscription.id,
-      url: paymentResult.data.paymentUrl,
-      pricing: { basePrice, discount: discountAmount, finalPrice, discountPercent },
-    });
+    // TODO: Paymob integration (when keys are configured)
+    return NextResponse.json({ error: 'طريقة الدفع غير متاحة حالياً' }, { status: 400 });
   } catch (error) {
     console.error('[Subscription] Error:', error);
     const msg = error instanceof Error ? error.message : String(error);
