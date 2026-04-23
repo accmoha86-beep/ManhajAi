@@ -95,11 +95,6 @@ async function handleCheckoutCompleted(supabase: SupabaseClient, session: Stripe
     .single();
 
   if (sub?.coupon_code) {
-    await supabase
-      .from('coupons')
-      .update({ used_count: supabase.rpc ? undefined : 0 })
-      .eq('code', sub.coupon_code);
-    // Direct increment
     await supabase.rpc('increment_coupon_usage', { p_code: sub.coupon_code });
   }
 
