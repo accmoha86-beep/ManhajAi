@@ -148,7 +148,10 @@ export default function SubscribePage() {
   };
 
   const handleSubscribe = async () => {
-    if (!selectedPlan || !user) return;
+    if (!selectedPlan || !user) {
+      if (!user) window.location.href = '/login';
+      return;
+    }
     const plan = plans.find(p => p.id === selectedPlan);
     if (!plan) return;
 
@@ -157,13 +160,12 @@ export default function SubscribePage() {
       const res = await fetch('/api/subscription/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
-          plan_id: plan.id,
+          planId: plan.id,
           period: selectedPeriod,
-          amount: getFinalPrice(plan, selectedPeriod),
-          original_amount: getPrice(plan, selectedPeriod),
-          coupon_id: appliedCoupon?.coupon_id || null,
-          coupon_code: appliedCoupon?.code || null,
+          paymentMethod: 'stripe',
+          couponCode: appliedCoupon?.code || undefined,
           subjects: [],
         }),
       });
@@ -174,7 +176,7 @@ export default function SubscribePage() {
         alert(data.error);
       }
     } catch {
-      alert('فشل في إنشاء جلسة الدفع');
+      alert('فشل في إنشاء جلسة الدفع — تأكد من تسجيل الدخول');
     } finally {
       setProcessing(false);
     }

@@ -1,39 +1,30 @@
-// app/api/subscription/create/route.ts — Create a new subscription
+// app/api/subscription/create/route.ts — Create subscription + redirect to payment
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerSupabaseClient } from '@/infrastructure/supabase/server';
-import { calculatePrice } from '@/domain/subscription';
 import { createCheckoutSession } from '@/infrastructure/stripe/client';
 import { createPayment } from '@/infrastructure/paymob/client';
 import { getAuthUser } from '@/lib/auth';
+import { createServiceRoleClient } from '@/infrastructure/supabase/service-role';
 
 const CreateSubscriptionSchema = z.object({
   planId: z.string().uuid('معرف الخطة غير صالح'),
-  subjects: z.array(z.string().uuid()).min(1, 'يجب اختيار مادة واحدة على الأقل'),
+  subjects: z.array(z.string().uuid()).optional().default([]),
   period: z.enum(['monthly', 'term', 'annual'], {
     errorMap: () => ({ message: 'فترة الاشتراك غير صالحة' }),
   }),
-  paymentMethod: z.enum(['stripe', 'vodafone', 'fawry', 'instapay'], {
-    errorMap: () => ({ message: 'طريقة الدفع غير صالحة' }),
-  }),
+  paymentMethod: z.enum(['stripe', 'vodafone', 'fawry', 'instapay']).default('stripe'),
   couponCode: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate user
     const authResult = await getAuthUser(request);
     if (!authResult.ok) {
-      return NextResponse.json(
-        { error: authResult.error },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
     const user = authResult.data;
 
     const body = await request.json();
-
-    // Validate input
     const parsed = CreateSubscriptionSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -43,45 +34,48 @@ export async function POST(request: NextRequest) {
     }
 
     const { planId, subjects, period, paymentMethod, couponCode } = parsed.data;
+    const supabase = createServiceRoleClient();
 
-    const supabase = await createServerSupabaseClient();
-
-    // Fetch subscription plans
-    const { data: plans, error: plansError } = await supabase
+    // Fetch subscription plan
+    const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
       .select('*')
+      .eq('id', planId)
       .eq('is_active', true)
-      .order('max_subjects', { ascending: true });
+      .single();
 
-    if (plansError || !plans?.length) {
-      return NextResponse.json(
-        { error: 'لا توجد خطط اشتراك متاحة حاليًا' },
-        { status: 404 }
-      );
+    if (planError || !plan) {
+      return NextResponse.json({ error: 'الخطة غير موجودة أو غير متاحة' }, { status: 404 });
     }
 
-    // Validate selected subjects exist
-    const { data: validSubjects, error: subjectsError } = await supabase
-      .from('subjects')
-      .select('id')
-      .in('id', subjects);
-
-    if (subjectsError || !validSubjects) {
-      return NextResponse.json(
-        { error: 'فشل في التحقق من المواد المختارة' },
-        { status: 400 }
-      );
+    // If no specific subjects, get all published subjects
+    let subjectIds = subjects;
+    if (subjectIds.length === 0) {
+      const { data: allSubjects } = await supabase
+        .from('subjects')
+        .select('id')
+        .eq('is_published', true);
+      subjectIds = (allSubjects || []).map(s => s.id);
     }
 
-    if (validSubjects.length !== subjects.length) {
-      return NextResponse.json(
-        { error: 'بعض المواد المختارة غير موجودة' },
-        { status: 400 }
-      );
+    // Limit subjects to plan's max
+    if (plan.max_subjects && plan.max_subjects < 99) {
+      subjectIds = subjectIds.slice(0, plan.max_subjects);
     }
+
+    // Calculate price based on period
+    let basePrice = plan.price_monthly || 89;
+    let periodMultiplier = 1;
+    switch (period) {
+      case 'term': periodMultiplier = 4; break;
+      case 'annual': periodMultiplier = 10; break; // 10 months price for 12 months
+    }
+    basePrice = basePrice * periodMultiplier;
+
+    // Apply plan discount
+    let discountPercent = plan.discount_percent || 0;
 
     // Check coupon if provided
-    let couponDiscount = 0;
     if (couponCode) {
       const { data: coupon } = await supabase
         .from('coupons')
@@ -90,69 +84,64 @@ export async function POST(request: NextRequest) {
         .eq('is_active', true)
         .single();
 
-      if (!coupon) {
-        return NextResponse.json(
-          { error: 'كود الخصم غير صالح أو منتهي الصلاحية' },
-          { status: 400 }
-        );
+      if (coupon) {
+        // Check usage limit
+        if (coupon.max_uses && coupon.used_count >= coupon.max_uses) {
+          return NextResponse.json({ error: 'كود الخصم تم استخدامه بالكامل' }, { status: 400 });
+        }
+        // Check expiry — actual DB column is valid_until
+        if (coupon.valid_until && new Date(coupon.valid_until) < new Date()) {
+          return NextResponse.json({ error: 'كود الخصم منتهي الصلاحية' }, { status: 400 });
+        }
+        // Add coupon discount (capped at 50% total)
+        discountPercent = Math.min(discountPercent + (coupon.discount_percent || 0), 50);
+      } else {
+        return NextResponse.json({ error: 'كود الخصم غير صالح' }, { status: 400 });
       }
-
-      // Check usage limit
-      if (coupon.max_uses && coupon.used_count >= coupon.max_uses) {
-        return NextResponse.json(
-          { error: 'كود الخصم تم استخدامه بالكامل' },
-          { status: 400 }
-        );
-      }
-
-      // Check expiry
-      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
-        return NextResponse.json(
-          { error: 'كود الخصم منتهي الصلاحية' },
-          { status: 400 }
-        );
-      }
-
-      couponDiscount = coupon.discount_percent ?? 0;
     }
 
-    // Calculate price
-    const pricing = calculatePrice({
-      subjects: subjects.length,
-      plans,
-      period,
-      couponDiscount,
-    });
+    const discountAmount = Math.round(basePrice * (discountPercent / 100));
+    const finalPrice = Math.max(basePrice - discountAmount, 0);
 
-    // Create pending subscription record
+    // Calculate period dates
+    const now = new Date();
+    const expiresAt = new Date(now);
+    switch (period) {
+      case 'monthly': expiresAt.setMonth(expiresAt.getMonth() + 1); break;
+      case 'term': expiresAt.setMonth(expiresAt.getMonth() + 4); break;
+      case 'annual': expiresAt.setFullYear(expiresAt.getFullYear() + 1); break;
+    }
+
+    // Create pending subscription in DB
     const { data: subscription, error: subError } = await supabase
       .from('subscriptions')
       .insert({
         user_id: user.id,
-        plan_id: planId,
-        subjects: subjects,
+        subject_ids: subjectIds,
+        subjects: subjectIds, // jsonb copy
+        status: 'pending',
+        plan_type: period,
+        price_egp: finalPrice,
+        discount_percent: discountPercent,
         period,
-        base_price: pricing.basePrice,
-        discount: pricing.discount,
-        final_price: pricing.finalPrice,
-        discount_percent: pricing.discountPercent,
+        base_price: basePrice,
+        discount: discountAmount,
+        final_price: finalPrice,
         coupon_code: couponCode?.toUpperCase() || null,
         payment_method: paymentMethod,
-        status: 'pending',
-        created_at: new Date().toISOString(),
+        starts_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        auto_renew: false,
       })
       .select('id')
       .single();
 
     if (subError || !subscription) {
       console.error('[Subscription] Create failed:', subError);
-      return NextResponse.json(
-        { error: 'فشل في إنشاء الاشتراك' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'فشل في إنشاء الاشتراك' }, { status: 500 });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://manhaj-ai.com';
     const successUrl = `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}&sub_id=${subscription.id}`;
     const cancelUrl = `${appUrl}/subscription/cancel?sub_id=${subscription.id}`;
 
@@ -161,18 +150,15 @@ export async function POST(request: NextRequest) {
       const sessionResult = await createCheckoutSession({
         userId: user.id,
         planId,
-        subjects,
+        subjects: subjectIds,
         period,
-        amount: pricing.finalPrice,
+        amount: finalPrice,
         successUrl,
         cancelUrl,
       });
 
       if (!sessionResult.ok) {
-        return NextResponse.json(
-          { error: sessionResult.error },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: sessionResult.error }, { status: 500 });
       }
 
       // Update subscription with Stripe session ID
@@ -182,43 +168,38 @@ export async function POST(request: NextRequest) {
         .eq('id', subscription.id);
 
       return NextResponse.json({
+        success: true,
         subscriptionId: subscription.id,
-        paymentUrl: sessionResult.data.url,
-        pricing,
+        url: sessionResult.data.url,
+        pricing: { basePrice, discount: discountAmount, finalPrice, discountPercent },
       });
     }
 
-    // Paymob payment methods (vodafone, fawry, instapay)
+    // Paymob payment methods
     const paymentResult = await createPayment({
-      amount: Math.round(pricing.finalPrice * 100), // Convert to piasters
+      amount: Math.round(finalPrice * 100),
       userId: user.id,
       method: paymentMethod as 'vodafone' | 'fawry' | 'instapay',
       phone: user.phone,
     });
 
     if (!paymentResult.ok) {
-      return NextResponse.json(
-        { error: paymentResult.error },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: paymentResult.error }, { status: 500 });
     }
 
-    // Update subscription with Paymob order ID
     await supabase
       .from('subscriptions')
       .update({ paymob_order_id: paymentResult.data.orderId })
       .eq('id', subscription.id);
 
     return NextResponse.json({
+      success: true,
       subscriptionId: subscription.id,
-      paymentUrl: paymentResult.data.paymentUrl,
-      pricing,
+      url: paymentResult.data.paymentUrl,
+      pricing: { basePrice, discount: discountAmount, finalPrice, discountPercent },
     });
   } catch (error) {
-    console.error('[Subscription] Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى' },
-      { status: 500 }
-    );
+    console.error('[Subscription] Error:', error);
+    return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });
   }
 }
