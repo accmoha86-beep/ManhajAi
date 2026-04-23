@@ -296,17 +296,22 @@ export default function SubscribePage() {
               <div className="text-xs mb-3" style={{ color: 'var(--theme-text-muted)' }}>
                 {plan.max_subjects >= 99 ? 'جميع المواد' : `حتى ${plan.max_subjects} ${plan.max_subjects === 1 ? 'مادة' : 'مواد'}`}
               </div>
-              <div className="mb-4">
-                {appliedCoupon && (
-                  <span className="text-lg line-through ml-2" style={{ color: 'var(--theme-text-muted)' }}>
-                    {price}
+              <div className="mb-4 flex flex-col items-center gap-1">
+                <div className="flex items-baseline justify-center gap-1.5 flex-wrap">
+                  {appliedCoupon && (
+                    <span className="text-lg line-through" style={{ color: 'var(--theme-text-muted)' }}>
+                      {price}
+                    </span>
+                  )}
+                  <span className="text-4xl font-extrabold" style={{ color: 'var(--theme-primary)' }}>
+                    {finalPrice}
                   </span>
-                )}
-                <span className="text-3xl font-extrabold" style={{ color: 'var(--theme-primary)' }}>
-                  {finalPrice} ج.م
-                </span>
-                <span className="text-sm mr-1" style={{ color: 'var(--theme-text-muted)' }}>
-                   ج.م / {periodLabels[selectedPeriod]}
+                  <span className="text-lg font-bold" style={{ color: 'var(--theme-primary)' }}>
+                    ج.م
+                  </span>
+                </div>
+                <span className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+                  / {periodLabels[selectedPeriod]}
                 </span>
               </div>
               <div className="space-y-2">
@@ -415,10 +420,10 @@ export default function SubscribePage() {
             </span>
           </div>
           <div className="text-xl font-extrabold mb-1" style={{ color: 'var(--theme-text-primary)' }}>
-            {currentPlan.name_ar} — {getFinalPrice(currentPlan, selectedPeriod)} $
+            {currentPlan.name_ar} — {getFinalPrice(currentPlan, selectedPeriod)} ج.م
             {appliedCoupon && (
               <span className="text-sm line-through mr-2" style={{ color: 'var(--theme-text-muted)' }}>
-                {getPrice(currentPlan, selectedPeriod)} $
+                {getPrice(currentPlan, selectedPeriod)} ج.م
               </span>
             )}
           </div>
