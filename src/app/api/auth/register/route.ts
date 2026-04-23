@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     // Auto-login (generate JWT)
     const token = await new SignJWT({
-      sub: data.user_id,
+      userId: data.user_id,
       phone: phone,
       role: 'student',
     })
