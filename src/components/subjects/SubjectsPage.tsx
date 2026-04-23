@@ -413,9 +413,9 @@ export default function SubjectsPage() {
       dir="rtl"
       style={{ height: "calc(100vh - 4rem)" }}
     >
-      {/* ============ RIGHT: Content (62%) ============ */}
+      {/* ============ RIGHT: Content (50%) ============ */}
       <div
-        className="w-full lg:w-[62%] overflow-y-auto p-4 md:p-6"
+        className="w-full lg:w-[50%] overflow-y-auto p-4 md:p-6"
         style={{ height: "calc(100vh - 4rem)" }}
       >
         {/* Back + Header */}
@@ -858,9 +858,9 @@ export default function SubjectsPage() {
         )}
       </div>
 
-      {/* ============ LEFT: AI Chat (38%) ============ */}
+      {/* ============ LEFT: AI Chat (50%) ============ */}
       <div
-        className="w-full lg:w-[38%] lg:border-r"
+        className="w-full lg:w-[50%] lg:border-r"
         style={{
           borderColor: "var(--theme-surface-border)",
           height: "calc(100vh - 4rem)",
