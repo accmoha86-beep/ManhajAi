@@ -42,10 +42,12 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: userId,
         status: 'trial',
-        plan_name: 'تجربة مجانية',
+        plan_type: 'trial',
+        subject_ids: '{}',
+        price_egp: 0,
+        auto_renew: false,
         starts_at: new Date().toISOString(),
         expires_at: trialEnds.toISOString(),
-        amount_egp: 0,
       })
       .select('id')
       .single();
