@@ -65,6 +65,9 @@ export default function RegisterPage() {
     checkOtpSetting();
   }, []);
 
+  // OTP is active only if BOTH: admin enabled it AND Firebase is configured
+  const otpActive = otpEnabledByAdmin && firebaseConfigured;
+
   // OTP timer countdown
   useEffect(() => {
     if (step !== 2 || !otpActive) return;
@@ -97,9 +100,6 @@ export default function RegisterPage() {
       setOtpSending(false);
     }
   }, [phone]);
-
-  // OTP is active only if BOTH: admin enabled it AND Firebase is configured
-  const otpActive = otpEnabledByAdmin && firebaseConfigured;
 
   // Auto-send OTP when entering step 2
   useEffect(() => {
