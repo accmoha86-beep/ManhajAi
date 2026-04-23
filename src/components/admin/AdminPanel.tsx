@@ -398,8 +398,8 @@ function SubscriptionsTab() {
         <tbody>
           {subs.map((s, i) => (
             <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
-              <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.student_name as string) || (s.user_name as string) || "—"}</td>
-              <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(s.plan_name as string) || (s.plan as string) || "—"}</td>
+              <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.full_name as string) || "—"}</td>
+              <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(s.plan_type as string) === "monthly" ? "شهري" : (s.plan_type as string) === "term" ? "ترم" : (s.plan_type as string) === "annual" ? "سنوي" : (s.plan_type as string) === "trial" ? "تجريبي" : (s.plan_type as string) || "—"}</td>
               <td className="py-3 px-3">
                 <span className={`px-2 py-1 rounded-lg text-xs font-medium ${s.status === "active" ? "bg-green-100 text-green-600" : s.status === "cancelled" ? "bg-red-100 text-red-600" : "bg-yellow-100 text-yellow-600"}`}>
                   {s.status === "active" ? "نشط" : s.status === "cancelled" ? "ملغي" : s.status === "expired" ? "منتهي" : (s.status as string) || "—"}
