@@ -10,64 +10,24 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createServerSupabaseClient();
-    const userId = authResult.data.id;
+    const { data, error } = await supabase.rpc('create_trial_subscription', {
+      p_user_id: authResult.data.id,
+    });
 
-    // Check if user already has an active subscription or trial
-    const { data: existingSub } = await supabase
-      .from('subscriptions')
-      .select('id, status')
-      .eq('user_id', userId)
-      .in('status', ['active', 'trial'])
-      .limit(1)
-      .single();
-
-    if (existingSub) {
-      return NextResponse.json({ error: 'لديك اشتراك نشط بالفعل' }, { status: 400 });
-    }
-
-    // Get trial days from settings
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'trial_days')
-      .single();
-    
-    const trialDays = settings?.value?.value || 2;
-    const trialEnds = new Date();
-    trialEnds.setDate(trialEnds.getDate() + trialDays);
-
-    // Create trial subscription
-    const { data: sub, error: subError } = await supabase
-      .from('subscriptions')
-      .insert({
-        user_id: userId,
-        status: 'trial',
-        plan_type: 'trial',
-        subject_ids: '{}',
-        price_egp: 0,
-        auto_renew: false,
-        starts_at: new Date().toISOString(),
-        expires_at: trialEnds.toISOString(),
-      })
-      .select('id')
-      .single();
-
-    if (subError) {
-      console.error('[Trial] Create error:', subError);
+    if (error) {
+      console.error('[Trial] RPC error:', error);
       return NextResponse.json({ error: 'فشل في تفعيل التجربة المجانية' }, { status: 500 });
     }
 
-    // Update user trial_ends_at
-    await supabase
-      .from('users')
-      .update({ trial_ends_at: trialEnds.toISOString() })
-      .eq('id', userId);
+    if (data?.error) {
+      return NextResponse.json({ error: data.error }, { status: 400 });
+    }
 
     return NextResponse.json({
       success: true,
-      message: `تم تفعيل التجربة المجانية لمدة ${trialDays} أيام 🎉`,
-      trial_ends_at: trialEnds.toISOString(),
-      subscription_id: sub.id,
+      message: data.message,
+      trial_ends_at: data.trial_ends_at,
+      subscription_id: data.subscription_id,
     });
   } catch (error) {
     console.error('[Trial] Error:', error);
