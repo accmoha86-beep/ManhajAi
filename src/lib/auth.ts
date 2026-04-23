@@ -38,13 +38,13 @@ export async function getAuthUser(
     const secret = await getJwtSecret();
     const { payload } = await jwtVerify(token, secret);
 
-    if (!payload.sub) {
+    if (!payload.userId) {
       return err('رمز المصادقة غير صالح');
     }
 
     const supabase = await createServerSupabaseClient();
     const { data: userData, error } = await supabase.rpc('get_auth_user', {
-      p_user_id: payload.sub,
+      p_user_id: payload.userId as string,
     });
 
     if (error || !userData) {
