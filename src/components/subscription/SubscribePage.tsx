@@ -133,6 +133,39 @@ export default function SubscribePage() {
         </p>
       </div>
 
+      {/* Free Trial CTA */}
+      <div className="themed-card p-5 mb-8 text-center max-w-lg mx-auto" style={{ border: '2px solid var(--theme-primary)', background: 'var(--theme-surface-bg)' }}>
+        <div className="text-3xl mb-2">🎁</div>
+        <h3 className="text-lg font-extrabold mb-1" style={{ color: 'var(--theme-primary)' }}>
+          جرّب مجانًا — بدون بطاقة دفع!
+        </h3>
+        <p className="text-sm mb-3" style={{ color: 'var(--theme-text-secondary)' }}>
+          ابدأ بتجربة مجانية لمدة يومين وشوف المنصة بنفسك
+        </p>
+        <button
+          onClick={async () => {
+            if (!user) { window.location.href = '/register'; return; }
+            setProcessing(true);
+            try {
+              const res = await fetch('/api/subscription/trial', { method: 'POST', credentials: 'include' });
+              const data = await res.json();
+              if (data.success) {
+                alert(data.message);
+                window.location.href = '/dashboard';
+              } else {
+                alert(data.error || 'فشل في تفعيل التجربة');
+              }
+            } catch { alert('فشل في الاتصال'); }
+            setProcessing(false);
+          }}
+          disabled={processing}
+          className="px-8 py-3 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 mx-auto"
+          style={{ background: 'var(--theme-cta-gradient)' }}
+        >
+          {processing ? <Loader2 className="animate-spin" size={18} /> : <><Zap size={18} /> ابدأ التجربة المجانية</>}
+        </button>
+      </div>
+
       {/* Period Selector */}
       <div className="flex justify-center gap-2 mb-8">
         {(['monthly', 'term', 'annual'] as Period[]).map(period => (
