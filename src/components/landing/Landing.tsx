@@ -1,467 +1,585 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-
-import { useUIStore } from '@/store/ui-store';
-import Link from 'next/link';
+"use client";
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
-  Bot, FileText, ClipboardCheck, Trophy, Zap, Award,
-  Calculator, Atom, FlaskConical, BookOpen,
-  Star, Check, GraduationCap, Sparkles, Brain, Timer,
-} from 'lucide-react';
+  BookOpen, Brain, BarChart3, Trophy, Zap,
+  AlertTriangle, CheckCircle, ArrowRight, Star,
+  Users, Clock, Shield, Rocket, ChevronDown,
+  Mail, Phone, Heart, Award, Target,
+} from "lucide-react";
 
-/* ============================================================
-   THEME HERO ILLUSTRATIONS
-   ============================================================ */
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+interface Plan {
+  id: string;
+  name: string;
+  price: number;
+  period?: string;
+  features: string[];
+  popular?: boolean;
+}
 
-const DefaultHero = () => (
-  <div className="relative w-full max-w-[520px] mx-auto rounded-[20px] overflow-hidden"
-    style={{
-      height: '440px',
-      background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f172a 100%)',
-      boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 80px rgba(99,102,241,0.2)',
-    }}>
-    <div className="absolute top-[15%] right-[10%] w-[220px] h-[220px] rounded-full"
-      style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.4), transparent 70%)', filter: 'blur(40px)' }} />
-    <div className="absolute bottom-[20%] left-[5%] w-[180px] h-[180px] rounded-full"
-      style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.3), transparent 70%)', filter: 'blur(35px)' }} />
-    {/* Dashboard mockup */}
-    <div className="absolute top-8 right-6 w-[55%] rounded-xl p-4"
-      style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)' }}>
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-          <GraduationCap size={16} color="#fff" />
-        </div>
-        <div>
-          <div className="text-white/90 text-xs font-bold">لوحة التحكم</div>
-          <div className="text-white/40 text-[0.6rem]">أدائك هذا الأسبوع</div>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        {[{ v: '92%', l: 'المعدل' }, { v: '47', l: 'امتحان' }, { v: '🔥 12', l: 'يوم متتالي' }, { v: '⭐ 850', l: 'نقطة' }].map((s, i) => (
-          <div key={i} className="rounded-lg p-2 text-center" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <div className="text-white font-extrabold text-sm">{s.v}</div>
-            <div className="text-white/50 text-[0.55rem]">{s.l}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-    {/* AI Chat mockup */}
-    <div className="absolute bottom-6 left-6 w-[50%] rounded-xl overflow-hidden"
-      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)' }}>
-      <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <Bot size={14} className="text-indigo-400" />
-        <span className="text-white/80 text-[0.65rem] font-bold">أستاذك الذكي</span>
-        <span className="mr-auto w-2 h-2 rounded-full bg-green-400" />
-      </div>
-      <div className="p-3 space-y-2">
-        <div className="rounded-lg px-3 py-1.5 text-[0.6rem] text-white/80 max-w-[85%] mr-auto" style={{ background: 'rgba(99,102,241,0.3)' }}>
-          اشرحلي قانون نيوتن الثالث 🤔
-        </div>
-        <div className="rounded-lg px-3 py-1.5 text-[0.6rem] text-white/80 max-w-[85%]" style={{ background: 'rgba(255,255,255,0.08)' }}>
-          لكل فعل رد فعل مساوٍ في المقدار ومعاكس في الاتجاه ✨
-        </div>
-      </div>
-    </div>
-    {/* Floating elements */}
-    <div className="absolute top-4 left-4 text-2xl anim-float">🎓</div>
-    <div className="absolute bottom-4 right-4 text-xl anim-float" style={{ animationDelay: '2s' }}>⚡</div>
-  </div>
-);
-
-const GoldenHero = () => (
-  <div className="relative w-full max-w-[520px] mx-auto rounded-[20px] overflow-hidden"
-    style={{
-      height: '440px',
-      background: 'linear-gradient(135deg, #0D1F0D 0%, #1B3A1B 50%, #0A1A0A 100%)',
-      boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 60px rgba(212,160,23,0.2)',
-    }}>
-    <div className="absolute top-[10%] right-[15%] w-[200px] h-[200px] rounded-full"
-      style={{ background: 'radial-gradient(circle, rgba(212,160,23,0.35), transparent 70%)', filter: 'blur(40px)' }} />
-    <div className="absolute bottom-[15%] left-[10%] w-[160px] h-[160px] rounded-full"
-      style={{ background: 'radial-gradient(circle, rgba(250,204,21,0.25), transparent 70%)', filter: 'blur(35px)' }} />
-    {/* Islamic pattern */}
-    <svg className="absolute inset-0 w-full h-full opacity-[0.08]" viewBox="0 0 520 440">
-      <path d="M260 60L290 110H350L305 145L320 200L260 168L200 200L215 145L170 110H230Z" fill="none" stroke="#D4A017" strokeWidth="1" />
-      <circle cx="260" cy="130" r="50" fill="none" stroke="#FACC15" strokeWidth="0.5" opacity="0.5" />
-    </svg>
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-      <div className="text-6xl mb-4">☪️</div>
-      <div className="text-[#FACC15] text-2xl font-extrabold mb-2">تعلّم بنور المعرفة</div>
-      <div className="text-[#C8D6A0] text-sm">منصة تعليمية ذهبية</div>
-    </div>
-    <div className="absolute top-4 right-8 text-3xl anim-float" style={{ animationDuration: '8s' }}>🏮</div>
-    <div className="absolute bottom-6 left-8 text-2xl anim-float" style={{ animationDuration: '10s', animationDelay: '2s' }}>🌙</div>
-  </div>
-);
-
-const ExamsHero = () => (
-  <div className="relative w-full max-w-[520px] mx-auto rounded-[20px] overflow-hidden"
-    style={{
-      height: '440px',
-      background: 'linear-gradient(135deg, #1C1917 0%, #292524 50%, #1C1917 100%)',
-      boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 60px rgba(220,38,38,0.2)',
-    }}>
-    <div className="absolute top-[15%] right-[10%] w-[200px] h-[200px] rounded-full"
-      style={{ background: 'radial-gradient(circle, rgba(220,38,38,0.35), transparent 70%)', filter: 'blur(40px)' }} />
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-      <div className="text-5xl mb-4">⏰</div>
-      <div className="text-[#FCA5A5] text-2xl font-extrabold mb-2">وقت الامتحانات</div>
-      <div className="text-white/60 text-sm mb-4">استعد مع أقوى بنك أسئلة</div>
-      <div className="flex gap-3 justify-center">
-        {['فيزياء', 'كيمياء', 'رياضيات'].map((s, i) => (
-          <div key={i} className="rounded-lg px-3 py-2 text-sm font-bold text-white"
-            style={{ background: 'rgba(220,38,38,0.3)', border: '1px solid rgba(220,38,38,0.4)' }}>
-            {s}
-          </div>
-        ))}
-      </div>
-    </div>
-    <div className="absolute top-6 left-6 text-2xl">📝</div>
-    <div className="absolute bottom-6 right-6 text-2xl">✅</div>
-  </div>
-);
-
-const GraduationHero = () => (
-  <div className="relative w-full max-w-[520px] mx-auto rounded-[20px] overflow-hidden"
-    style={{
-      height: '440px',
-      background: 'linear-gradient(135deg, #14532D 0%, #166534 50%, #14532D 100%)',
-      boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 60px rgba(5,150,105,0.2)',
-    }}>
-    <div className="absolute top-[15%] right-[15%] w-[200px] h-[200px] rounded-full"
-      style={{ background: 'radial-gradient(circle, rgba(5,150,105,0.35), transparent 70%)', filter: 'blur(40px)' }} />
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-      <div className="text-6xl mb-4">🎓</div>
-      <div className="text-[#6EE7B7] text-2xl font-extrabold mb-2">مبروك التخرج!</div>
-      <div className="text-white/60 text-sm mb-4">رحلة النجاح تبدأ من هنا</div>
-      <div className="flex gap-2 justify-center flex-wrap">
-        {['🏅', '🎉', '⭐', '🎊'].map((e, i) => (
-          <span key={i} className="text-3xl anim-float" style={{ animationDelay: `${i * 0.5}s` }}>{e}</span>
-        ))}
-      </div>
-    </div>
-  </div>
-);
-
-const DarkHero = () => (
-  <div className="relative w-full max-w-[520px] mx-auto rounded-[20px] overflow-hidden"
-    style={{
-      height: '440px',
-      background: 'linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #0F172A 100%)',
-      boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 80px rgba(99,102,241,0.15)',
-    }}>
-    {/* Stars */}
-    {Array.from({ length: 20 }, (_, i) => (
-      <div key={i} className="absolute rounded-full bg-white"
-        style={{
-          width: Math.random() * 3 + 1 + 'px',
-          height: Math.random() * 3 + 1 + 'px',
-          top: Math.random() * 100 + '%',
-          left: Math.random() * 100 + '%',
-          opacity: Math.random() * 0.5 + 0.2,
-          animation: `typing ${2 + Math.random() * 3}s ease-in-out infinite`,
-          animationDelay: `${Math.random() * 2}s`,
-        }} />
-    ))}
-    <div className="absolute top-[10%] right-[20%] w-[250px] h-[250px] rounded-full"
-      style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.2), transparent 70%)', filter: 'blur(60px)' }} />
-    <div className="absolute bottom-[10%] left-[10%] w-[200px] h-[200px] rounded-full"
-      style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.2), transparent 70%)', filter: 'blur(50px)' }} />
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-      <div className="text-5xl mb-4">🌌</div>
-      <div className="text-[#A5B4FC] text-2xl font-extrabold mb-2">الوضع الليلي</div>
-      <div className="text-white/50 text-sm">ادرس براحة في أي وقت</div>
-    </div>
-  </div>
-);
-
-const heroMap: Record<string, React.FC> = {
-  default: DefaultHero,
-  golden: GoldenHero,
-  exams: ExamsHero,
-  graduation: GraduationHero,
-  dark: DarkHero,
-};
-
-/* ============================================================
-   LANDING FEATURES & DATA
-   ============================================================ */
-
-const features = [
-  { icon: Bot, title: 'أستاذك الذكي', desc: 'ذكاء اصطناعي يفهم المنهج المصري ويشرحلك بأسلوب بسيط' },
-  { icon: FileText, title: 'ملخصات ذكية', desc: 'ملخصات مُنشأة بالذكاء الاصطناعي لكل درس' },
-  { icon: ClipboardCheck, title: 'بنك أسئلة', desc: 'آلاف الأسئلة مع إجابات نموذجية وشرح مفصل' },
-  { icon: Trophy, title: 'تنافس وتحفيز', desc: 'لوحة متصدرين وشهادات إنجاز' },
-  { icon: Zap, title: 'سرعة وأداء', desc: 'منصة سريعة تعمل على جميع الأجهزة' },
-  { icon: Award, title: 'متابعة مستمرة', desc: 'تقارير أداء مفصلة لمتابعة تقدمك' },
-];
-
-const subjects = [
-  { name: 'الرياضيات', icon: Calculator, color: '#3B82F6' },
-  { name: 'الفيزياء', icon: Atom, color: '#8B5CF6' },
-  { name: 'الكيمياء', icon: FlaskConical, color: '#10B981' },
-];
-
-const stats = [
-  { value: '+1,200', label: 'طالب مسجل' },
-  { value: '+5,000', label: 'سؤال في بنك الأسئلة' },
-  { value: '+200', label: 'ملخص ذكي' },
-  { value: '95%', label: 'نسبة رضا الطلاب' },
-];
-
-const defaultPlans = [
-  { name: 'مادة واحدة', price: '89', period: 'شهرياً', features: ['مادة واحدة', 'ملخصات ذكية', 'بنك أسئلة', '50 سؤال AI يومياً'], popular: false },
-  { name: 'كل المواد', price: '349', period: 'شهرياً', features: ['كل المواد', 'ملخصات ذكية', 'بنك أسئلة', '50 سؤال AI يومياً', 'تقارير أداء', 'شهادات إنجاز'], popular: true },
-  { name: '3 مواد', price: '219', period: 'شهرياً', features: ['3 مواد', 'ملخصات ذكية', 'بنك أسئلة', '50 سؤال AI يومياً', 'تقارير أداء'], popular: false },
-];
-
-/* ============================================================
-   LANDING COMPONENT
-   ============================================================ */
-
-export default function Landing() {
-  const theme = useUIStore((s: any) => s.theme);
-  const HeroIllustration = heroMap[theme] || DefaultHero;
-  const [plans, setPlans] = useState(defaultPlans);
+/* ------------------------------------------------------------------ */
+/*  Animated Counter Hook                                              */
+/* ------------------------------------------------------------------ */
+function useCountUp(target: number, duration = 2000) {
+  const [count, setCount] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const started = useRef(false);
 
   useEffect(() => {
-    fetch('/api/subscription/plans')
-      .then(r => r.json())
-      .then(data => {
-        if (data.plans?.length) {
-          const mapped = data.plans.map((p: any) => ({
-            name: p.name_ar || p.name,
-            price: String(p.price_monthly || 0),
-            period: 'شهرياً',
-            features: p.features || [],
-            popular: p.is_popular || false,
-          }));
-          // Sort: cheapest first, popular middle
-          mapped.sort((a: any, b: any) => Number(a.price) - Number(b.price));
-          setPlans(mapped);
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !started.current) {
+          started.current = true;
+          const start = performance.now();
+          const step = (now: number) => {
+            const progress = Math.min((now - start) / duration, 1);
+            setCount(Math.floor(progress * target));
+            if (progress < 1) requestAnimationFrame(step);
+          };
+          requestAnimationFrame(step);
         }
-      })
-      .catch(() => {/* use defaults */});
+      },
+      { threshold: 0.3 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [target, duration]);
+
+  return { count, ref };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Scroll‑reveal wrapper                                              */
+/* ------------------------------------------------------------------ */
+function Reveal({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+      { threshold: 0.15 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   return (
-    <div className="font-cairo" style={{ color: 'var(--theme-text-primary)' }}>
-      {/* ═══ HERO SECTION ═══ */}
-      <section
-        className="themed-hero-bg relative overflow-hidden"
-        style={{ padding: '5rem 2rem 4rem', minHeight: '85vh', display: 'flex', alignItems: 'center' }}
+    <div
+      ref={ref}
+      className={`transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"} ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Stat Card                                                          */
+/* ------------------------------------------------------------------ */
+function StatCard({ target, suffix, label, icon: Icon }: { target: number; suffix: string; label: string; icon: React.ElementType }) {
+  const { count, ref } = useCountUp(target);
+  return (
+    <div ref={ref} className="flex flex-col items-center gap-3 p-6">
+      <div
+        className="w-14 h-14 rounded-2xl flex items-center justify-center"
+        style={{ background: "var(--theme-cta-gradient)" }}
       >
-        <div className="max-w-[1200px] mx-auto w-full flex flex-col lg:flex-row items-center gap-12">
-          {/* Text - Right side (RTL) */}
-          <div className="flex-1 text-center lg:text-right">
-            <div className="inline-flex items-center gap-2 rounded-full px-4 py-2 mb-6 text-sm font-bold text-white/90"
-              style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)' }}>
-              <Sparkles size={16} />
-              <span>منصة #1 للثانوية العامة</span>
-            </div>
+        <Icon className="w-7 h-7 text-white" />
+      </div>
+      <span className="text-4xl md:text-5xl font-bold" style={{ color: "var(--theme-text-primary)" }}>
+        {count}{suffix}
+      </span>
+      <span className="text-base" style={{ color: "var(--theme-text-secondary)" }}>{label}</span>
+    </div>
+  );
+}
 
-            <h1 className="text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-6">
-              ادرس بذكاء مع
-              <span className="block mt-2" style={{ color: 'var(--theme-topbar-accent)', textShadow: '0 2px 20px rgba(255,255,255,0.2)' }}>
-                أستاذك الذكي 🤖
+/* ================================================================== */
+/*  MAIN COMPONENT                                                     */
+/* ================================================================== */
+export default function Landing() {
+  /* ---- pricing plans ---- */
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/subscription/plans")
+      .then((r) => r.json())
+      .then((d) => setPlans(d.plans || []))
+      .catch(() => {})
+      .finally(() => setPlansLoading(false));
+  }, []);
+
+  /* ---- features ---- */
+  const features = [
+    { icon: BookOpen, emoji: "📚", title: "شرح المنهج كامل", desc: "كل الدروس والملخصات في مكان واحد" },
+    { icon: Brain,    emoji: "🤖", title: "أستاذك الذكي",    desc: "AI بيفهمك ويشرحلك بأسلوب مصري" },
+    { icon: Target,   emoji: "📝", title: "بنك أسئلة ضخم",   desc: "200+ سؤال لكل مادة من كل المستويات" },
+    { icon: BarChart3, emoji: "📊", title: "تقارير أداء",     desc: "تعرف نقاط قوتك وضعفك كل أسبوع" },
+    { icon: Trophy,   emoji: "🏆", title: "المتصدرين",       desc: "نافس زملاءك على مستوى المحافظة ومصر كلها" },
+    { icon: Zap,      emoji: "🚨", title: "وضع الطوارئ",     desc: "مراجعة سريعة قبل الامتحان مباشرة" },
+  ];
+
+  /* ---- steps ---- */
+  const steps = [
+    { num: 1, title: "سجّل حسابك",   desc: "اسم + رقم + باسورد" },
+    { num: 2, title: "اختر موادك",   desc: "اختر المواد اللي محتاجها" },
+    { num: 3, title: "ابدأ ذاكر",    desc: "شرح + ملخصات + أسئلة" },
+    { num: 4, title: "حقق نتيجتك",  desc: "امتحانات + تقارير أداء" },
+  ];
+
+  /* ---- quick links ---- */
+  const quickLinks = [
+    { label: "الرئيسية", href: "/" },
+    { label: "المواد", href: "/subjects" },
+    { label: "الامتحانات", href: "/exams" },
+    { label: "الأسعار", href: "#pricing" },
+  ];
+
+  /* ================================================================ */
+  /*  RENDER                                                           */
+  /* ================================================================ */
+  return (
+    <div dir="rtl" className="min-h-screen overflow-x-hidden" style={{ fontFamily: "Cairo, sans-serif", color: "var(--theme-text-primary)", background: "var(--theme-page-bg, #f9fafb)" }}>
+
+      {/* ============================================================ */}
+      {/*  1. HERO                                                      */}
+      {/* ============================================================ */}
+      <section
+        className="relative w-full min-h-[92vh] flex items-center justify-center px-4 py-20 overflow-hidden"
+        style={{ background: "var(--theme-hero-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%))" }}
+      >
+        {/* pattern overlay */}
+        <div
+          className="absolute inset-0 opacity-10 pointer-events-none"
+          style={{
+            backgroundImage: "var(--theme-bg-pattern, url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\"))",
+            backgroundSize: "60px 60px",
+          }}
+        />
+
+        {/* glow circles */}
+        <div className="absolute top-10 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-300/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 max-w-4xl mx-auto text-center flex flex-col items-center gap-8">
+          {/* floating badges – top */}
+          <div className="flex flex-wrap justify-center gap-3 mb-2">
+            {["200+ سؤال لكل مادة", "15 مادة", "أستاذ AI 24/7"].map((t) => (
+              <span
+                key={t}
+                className="px-4 py-1.5 rounded-full text-sm font-semibold backdrop-blur-md bg-white/15 text-white border border-white/20 shadow-lg animate-pulse-slow"
+              >
+                {t}
               </span>
-            </h1>
+            ))}
+          </div>
 
-            <p className="text-lg text-white/70 leading-relaxed mb-8 max-w-[500px] lg:max-w-none">
-              منصة تعليمية مدعومة بالذكاء الاصطناعي مصممة خصيصاً لطلاب الثانوية العامة في مصر.
-              ملخصات ذكية، بنك أسئلة ضخم، وأستاذ AI يشرحلك 24/7
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold text-white leading-tight drop-shadow-lg">
+            مستقبلك يبدأ هنا 🚀
+          </h1>
+          <p className="text-xl sm:text-2xl text-white/90 font-medium max-w-2xl">
+            منصة تعليمية ذكية لطلاب الثانوية العامة في مصر
+          </p>
+          <p className="text-base sm:text-lg text-white/75 max-w-xl">
+            ذاكر بذكاء مع أستاذك الذكي — شرح، ملخصات، أسئلة، وامتحانات
+          </p>
+
+          {/* CTA buttons */}
+          <div className="flex flex-wrap gap-4 justify-center mt-2">
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl text-lg font-bold text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300"
+              style={{ background: "var(--theme-cta-gradient, linear-gradient(135deg, #f97316, #ef4444))" }}
+            >
+              ابدأ مجاناً
+              <Rocket className="w-5 h-5" />
+            </Link>
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl text-lg font-bold text-white border-2 border-white/40 hover:bg-white/10 transition-all duration-300"
+            >
+              تسجيل الدخول
+              <ArrowRight className="w-5 h-5 rotate-180" />
+            </Link>
+          </div>
+
+          {/* scroll hint */}
+          <div className="mt-8 animate-bounce">
+            <ChevronDown className="w-8 h-8 text-white/60" />
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================================ */}
+      {/*  2. FEATURES                                                  */}
+      {/* ============================================================ */}
+      <section className="py-20 px-4" style={{ background: "var(--theme-page-bg, #f9fafb)" }}>
+        <div className="max-w-6xl mx-auto">
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-center mb-4" style={{ color: "var(--theme-text-primary)" }}>
+              ليه منهج AI؟ 🤔
+            </h2>
+            <p className="text-center text-lg mb-14" style={{ color: "var(--theme-text-secondary)" }}>
+              كل اللي محتاجه عشان تجيب أعلى الدرجات
             </p>
+          </Reveal>
 
-            <div className="flex flex-wrap gap-4 justify-center lg:justify-start">
-              <Link
-                href="/register"
-                className="themed-btn-primary text-lg px-8 py-4 flex items-center gap-2"
-              >
-                <Zap size={20} />
-                ابدأ مجاناً — يومين تجربة
-              </Link>
-              <Link
-                href="/subjects"
-                className="themed-btn-outline text-lg px-8 py-4 flex items-center gap-2 text-white border-white/40 hover:bg-white/20"
-              >
-                <BookOpen size={20} />
-                تصفح المواد
-              </Link>
-            </div>
-
-            {/* Stats row */}
-            <div className="flex flex-wrap gap-6 mt-10 justify-center lg:justify-start">
-              {stats.map((s, i) => (
-                <div key={i} className="text-center">
-                  <div className="text-2xl font-extrabold" style={{ color: 'var(--theme-topbar-accent)' }}>{s.value}</div>
-                  <div className="text-white/50 text-sm">{s.label}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {features.map((f, i) => (
+              <Reveal key={i}>
+                <div
+                  className="rounded-2xl p-6 border hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-full"
+                  style={{
+                    background: "var(--theme-surface-bg, #fff)",
+                    borderColor: "var(--theme-surface-border, #e5e7eb)",
+                  }}
+                >
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl mb-4"
+                    style={{ background: "var(--theme-primary-light, #ede9fe)" }}
+                  >
+                    {f.emoji}
+                  </div>
+                  <h3 className="text-xl font-bold mb-2" style={{ color: "var(--theme-text-primary)" }}>
+                    {f.title}
+                  </h3>
+                  <p className="text-base leading-relaxed" style={{ color: "var(--theme-text-secondary)" }}>
+                    {f.desc}
+                  </p>
                 </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================================ */}
+      {/*  3. PRICING                                                   */}
+      {/* ============================================================ */}
+      <section id="pricing" className="py-20 px-4" style={{ background: "var(--theme-surface-bg, #fff)" }}>
+        <div className="max-w-5xl mx-auto">
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-center mb-4" style={{ color: "var(--theme-text-primary)" }}>
+              الاشتراكات والأسعار 💰
+            </h2>
+            <p className="text-center text-lg mb-14" style={{ color: "var(--theme-text-secondary)" }}>
+              اختار الخطة المناسبة ليك
+            </p>
+          </Reveal>
+
+          {plansLoading ? (
+            <div className="flex justify-center py-16">
+              <div className="w-10 h-10 border-4 rounded-full animate-spin" style={{ borderColor: "var(--theme-surface-border, #e5e7eb)", borderTopColor: "var(--theme-primary, #6366f1)" }} />
+            </div>
+          ) : plans.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+              {plans.map((plan) => (
+                <Reveal key={plan.id}>
+                  <div
+                    className={`relative rounded-2xl p-7 border-2 flex flex-col h-full transition-all duration-300 hover:shadow-xl ${plan.popular ? "scale-[1.03] shadow-lg" : ""}`}
+                    style={{
+                      background: "var(--theme-surface-bg, #fff)",
+                      borderColor: plan.popular ? "transparent" : "var(--theme-surface-border, #e5e7eb)",
+                      borderImage: plan.popular ? "var(--theme-cta-gradient, linear-gradient(135deg, #f97316, #ef4444)) 1" : undefined,
+                    }}
+                  >
+                    {plan.popular && (
+                      <span
+                        className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold text-white shadow-md"
+                        style={{ background: "var(--theme-cta-gradient, linear-gradient(135deg, #f97316, #ef4444))" }}
+                      >
+                        ⭐ الأكثر شعبية
+                      </span>
+                    )}
+                    <h3 className="text-xl font-bold mb-2 mt-2" style={{ color: "var(--theme-text-primary)" }}>
+                      {plan.name}
+                    </h3>
+                    <div className="flex items-baseline gap-1 mb-6">
+                      <span className="text-4xl font-extrabold" style={{ color: "var(--theme-primary, #6366f1)" }}>
+                        {plan.price}
+                      </span>
+                      <span className="text-base" style={{ color: "var(--theme-text-secondary)" }}>
+                        ج.م / {plan.period || "شهر"}
+                      </span>
+                    </div>
+                    <ul className="flex flex-col gap-3 mb-8 flex-1">
+                      {(plan.features || []).map((feat, fi) => (
+                        <li key={fi} className="flex items-start gap-2 text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                          <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--theme-success, #22c55e)" }} />
+                          {feat}
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      href="/subscribe"
+                      className={`w-full text-center py-3 rounded-xl font-bold text-base transition-all duration-300 hover:scale-[1.03] ${plan.popular ? "text-white shadow-md" : ""}`}
+                      style={{
+                        background: plan.popular ? "var(--theme-cta-gradient, linear-gradient(135deg, #f97316, #ef4444))" : "var(--theme-surface-hover, #f3f4f6)",
+                        color: plan.popular ? "#fff" : "var(--theme-text-primary)",
+                      }}
+                    >
+                      اشترك الآن
+                    </Link>
+                  </div>
+                </Reveal>
               ))}
             </div>
-          </div>
-
-          {/* Hero Illustration - Left side (RTL) */}
-          <div className="flex-1 flex justify-center">
-            <HeroIllustration />
-          </div>
-        </div>
-      </section>
-
-      {/* ═══ SUBJECTS BAR ═══ */}
-      <section className="py-12 px-6" style={{ background: 'var(--theme-surface-bg)', borderBottom: '1px solid var(--theme-surface-border)' }}>
-        <div className="max-w-[1200px] mx-auto">
-          <h2 className="text-2xl font-extrabold text-center mb-8" style={{ color: 'var(--theme-text-primary)' }}>
-            📚 المواد المتاحة
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {subjects.map((s, i) => {
-              const Icon = s.icon;
-              return (
-                <div key={i} className="themed-card p-6 text-center cursor-pointer">
-                  <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-                    style={{ background: `${s.color}15` }}>
-                    <Icon size={32} style={{ color: s.color }} />
+          ) : (
+            /* fallback static cards when API returns nothing */
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+              {[
+                { name: "المجانية", price: 0, features: ["مادة واحدة", "5 أسئلة يومياً", "ملخصات محدودة"], popular: false },
+                { name: "الأساسية", price: 49, features: ["3 مواد", "أسئلة غير محدودة", "ملخصات كاملة", "تقارير أداء"], popular: true },
+                { name: "المميزة", price: 99, features: ["كل المواد", "أسئلة غير محدودة", "أستاذ AI مخصص", "تقارير متقدمة", "وضع الطوارئ"], popular: false },
+              ].map((plan, idx) => (
+                <Reveal key={idx}>
+                  <div
+                    className={`relative rounded-2xl p-7 border-2 flex flex-col h-full transition-all duration-300 hover:shadow-xl ${plan.popular ? "scale-[1.03] shadow-lg" : ""}`}
+                    style={{
+                      background: "var(--theme-surface-bg, #fff)",
+                      borderColor: plan.popular ? "transparent" : "var(--theme-surface-border, #e5e7eb)",
+                      borderImage: plan.popular ? "var(--theme-cta-gradient, linear-gradient(135deg, #f97316, #ef4444)) 1" : undefined,
+                    }}
+                  >
+                    {plan.popular && (
+                      <span
+                        className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold text-white shadow-md"
+                        style={{ background: "var(--theme-cta-gradient, linear-gradient(135deg, #f97316, #ef4444))" }}
+                      >
+                        ⭐ الأكثر شعبية
+                      </span>
+                    )}
+                    <h3 className="text-xl font-bold mb-2 mt-2" style={{ color: "var(--theme-text-primary)" }}>
+                      {plan.name}
+                    </h3>
+                    <div className="flex items-baseline gap-1 mb-6">
+                      <span className="text-4xl font-extrabold" style={{ color: "var(--theme-primary, #6366f1)" }}>
+                        {plan.price === 0 ? "مجاناً" : plan.price}
+                      </span>
+                      {plan.price > 0 && (
+                        <span className="text-base" style={{ color: "var(--theme-text-secondary)" }}>ج.م / شهر</span>
+                      )}
+                    </div>
+                    <ul className="flex flex-col gap-3 mb-8 flex-1">
+                      {plan.features.map((feat, fi) => (
+                        <li key={fi} className="flex items-start gap-2 text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                          <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--theme-success, #22c55e)" }} />
+                          {feat}
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      href="/subscribe"
+                      className={`w-full text-center py-3 rounded-xl font-bold text-base transition-all duration-300 hover:scale-[1.03] ${plan.popular ? "text-white shadow-md" : ""}`}
+                      style={{
+                        background: plan.popular ? "var(--theme-cta-gradient, linear-gradient(135deg, #f97316, #ef4444))" : "var(--theme-surface-hover, #f3f4f6)",
+                        color: plan.popular ? "#fff" : "var(--theme-text-primary)",
+                      }}
+                    >
+                      اشترك الآن
+                    </Link>
                   </div>
-                  <h3 className="text-xl font-extrabold" style={{ color: 'var(--theme-text-primary)' }}>{s.name}</h3>
-                </div>
-              );
-            })}
-          </div>
+                </Reveal>
+              ))}
+            </div>
+          )}
+
+          <Reveal>
+            <p className="text-center mt-8 text-sm" style={{ color: "var(--theme-text-tertiary, #9ca3af)" }}>
+              🎁 تجربة مجانية يومين — بدون بطاقة ائتمان
+            </p>
+          </Reveal>
         </div>
       </section>
 
-      {/* ═══ FEATURES GRID ═══ */}
-      <section className="py-16 px-6" style={{ background: 'var(--theme-page-bg)' }}>
-        <div className="max-w-[1200px] mx-auto">
-          <h2 className="text-3xl font-extrabold text-center mb-4" style={{ color: 'var(--theme-text-primary)' }}>
-            ✨ ليه منهج AI؟
-          </h2>
-          <p className="text-center mb-12" style={{ color: 'var(--theme-text-secondary)', maxWidth: '600px', margin: '0 auto 3rem' }}>
-            مميزات تخلي دراستك أسهل وأذكى
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <div key={i} className="themed-card p-6">
-                  <div className="w-12 h-12 rounded-xl mb-4 flex items-center justify-center"
-                    style={{ background: 'var(--theme-hover-overlay)' }}>
-                    <Icon size={24} style={{ color: 'var(--theme-primary)' }} />
+      {/* ============================================================ */}
+      {/*  4. HOW IT WORKS                                              */}
+      {/* ============================================================ */}
+      <section className="py-20 px-4" style={{ background: "var(--theme-page-bg, #f9fafb)" }}>
+        <div className="max-w-4xl mx-auto">
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-center mb-4" style={{ color: "var(--theme-text-primary)" }}>
+              إزاي تبدأ؟ 🤷‍♂️
+            </h2>
+            <p className="text-center text-lg mb-14" style={{ color: "var(--theme-text-secondary)" }}>
+              4 خطوات بس وهتبدأ رحلتك
+            </p>
+          </Reveal>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {steps.map((s, i) => (
+              <Reveal key={i}>
+                <div className="flex flex-col items-center text-center gap-4">
+                  <div
+                    className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-extrabold text-white shadow-lg"
+                    style={{ background: "var(--theme-cta-gradient, linear-gradient(135deg, #f97316, #ef4444))" }}
+                  >
+                    {s.num}
                   </div>
-                  <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--theme-text-primary)' }}>{f.title}</h3>
-                  <p className="text-sm leading-relaxed" style={{ color: 'var(--theme-text-secondary)' }}>{f.desc}</p>
+                  {/* connector line on desktop */}
+                  {i < steps.length - 1 && (
+                    <div className="hidden lg:block absolute" />
+                  )}
+                  <h3 className="text-lg font-bold" style={{ color: "var(--theme-text-primary)" }}>
+                    {s.title}
+                  </h3>
+                  <p className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
+                    {s.desc}
+                  </p>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ═══ HOW IT WORKS ═══ */}
-      <section className="py-16 px-6" style={{ background: 'var(--theme-surface-bg)', borderTop: '1px solid var(--theme-surface-border)' }}>
-        <div className="max-w-[1200px] mx-auto">
-          <h2 className="text-3xl font-extrabold text-center mb-12" style={{ color: 'var(--theme-text-primary)' }}>
-            🚀 ازاي تبدأ؟
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
-            {[
-              { step: '1', icon: '📝', title: 'سجل حسابك', desc: 'في أقل من دقيقة' },
-              { step: '2', icon: '📚', title: 'اختار موادك', desc: 'ابدأ بتجربة مجانية يومين' },
-              { step: '3', icon: '🤖', title: 'ادرس مع AI', desc: 'ملخصات وامتحانات وأسئلة ذكية' },
-            ].map((s, i) => (
-              <div key={i} className="text-center">
-                <div className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl"
-                  style={{ background: 'var(--theme-cta-gradient)', boxShadow: 'var(--theme-btn-shadow)' }}>
-                  {s.icon}
-                </div>
-                <div className="text-sm font-bold mb-2" style={{ color: 'var(--theme-primary)' }}>الخطوة {s.step}</div>
-                <h3 className="text-lg font-bold mb-1" style={{ color: 'var(--theme-text-primary)' }}>{s.title}</h3>
-                <p className="text-sm" style={{ color: 'var(--theme-text-secondary)' }}>{s.desc}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ═══ PRICING ═══ */}
-      <section className="py-16 px-6" style={{ background: 'var(--theme-page-bg)' }}>
-        <div className="max-w-[1200px] mx-auto">
-          <h2 className="text-3xl font-extrabold text-center mb-4" style={{ color: 'var(--theme-text-primary)' }}>
-            💰 خطط الاشتراك
-          </h2>
-          <p className="text-center mb-12" style={{ color: 'var(--theme-text-secondary)' }}>
-            ابدأ بتجربة مجانية يومين بدون بطاقة
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-[900px] mx-auto">
-            {plans.map((plan, i) => (
-              <div key={i} className="themed-card p-6 text-center relative"
-                style={plan.popular ? { border: `2px solid var(--theme-primary)`, transform: 'scale(1.05)' } : {}}>
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold text-white"
-                    style={{ background: 'var(--theme-cta-gradient)' }}>
-                    ⭐ الأكثر شعبية
-                  </div>
-                )}
-                <h3 className="text-xl font-bold mb-4" style={{ color: 'var(--theme-text-primary)' }}>{plan.name}</h3>
-                <div className="mb-6">
-                  <span className="text-4xl font-extrabold" style={{ color: 'var(--theme-primary)' }}>{plan.price}</span>
-                  <span className="text-sm mr-1" style={{ color: 'var(--theme-text-muted)' }}>ج.م / {plan.period}</span>
-                </div>
-                <ul className="space-y-3 mb-8 text-right">
-                  {plan.features.map((f, j) => (
-                    <li key={j} className="flex items-center gap-2 text-sm" style={{ color: 'var(--theme-text-secondary)' }}>
-                      <Check size={16} style={{ color: 'var(--theme-primary)', flexShrink: 0 }} />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  href="/register"
-                  className={plan.popular ? 'themed-btn-primary w-full' : 'themed-btn-outline w-full'}
-                  style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
-                >
-                  ابدأ الآن
-                </Link>
-              </div>
-            ))}
+      {/* ============================================================ */}
+      {/*  5. STATS                                                     */}
+      {/* ============================================================ */}
+      <section className="py-20 px-4" style={{ background: "var(--theme-surface-bg, #fff)" }}>
+        <div className="max-w-5xl mx-auto">
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-center mb-14" style={{ color: "var(--theme-text-primary)" }}>
+              أرقام بتتكلم 📊
+            </h2>
+          </Reveal>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <Reveal><StatCard target={15}   suffix="+"   label="مادة دراسية"  icon={BookOpen} /></Reveal>
+            <Reveal><StatCard target={200}  suffix="+"   label="سؤال لكل مادة" icon={Target} /></Reveal>
+            <Reveal><StatCard target={1000} suffix="+"   label="طالب مشترك"   icon={Users} /></Reveal>
+            <Reveal><StatCard target={24}   suffix="/7"  label="دعم AI"       icon={Clock} /></Reveal>
           </div>
         </div>
       </section>
 
-      {/* ═══ CTA ═══ */}
-      <section className="themed-hero-bg py-16 px-6 text-center relative overflow-hidden">
-        <div className="relative z-10 max-w-[600px] mx-auto">
-          <h2 className="text-3xl font-extrabold text-white mb-4">
-            جاهز تبدأ رحلة النجاح؟ 🚀
-          </h2>
-          <p className="text-white/70 mb-8">
-            انضم لآلاف الطلاب اللي بيدرسوا بذكاء مع منهج AI
-          </p>
-          <Link
-            href="/register"
-            className="themed-btn-primary text-lg px-10 py-4 inline-flex items-center gap-2"
+      {/* ============================================================ */}
+      {/*  6. CTA                                                       */}
+      {/* ============================================================ */}
+      <section className="py-16 px-4">
+        <Reveal>
+          <div
+            className="max-w-4xl mx-auto rounded-3xl py-16 px-8 text-center shadow-2xl relative overflow-hidden"
+            style={{ background: "var(--theme-hero-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%))" }}
           >
-            <Star size={20} />
-            سجل الآن مجاناً
-          </Link>
-        </div>
+            {/* glow */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col items-center gap-6">
+              <h2 className="text-3xl md:text-4xl font-extrabold text-white">
+                جاهز تبدأ؟ 🎓
+              </h2>
+              <p className="text-lg text-white/80 max-w-md">
+                انضم لآلاف الطلاب اللي بيذاكروا بذكاء مع منهج AI
+              </p>
+              <Link
+                href="/register"
+                className="inline-flex items-center gap-2 px-10 py-4 rounded-xl text-lg font-bold text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300"
+                style={{ background: "var(--theme-cta-gradient, linear-gradient(135deg, #f97316, #ef4444))" }}
+              >
+                ابدأ تجربتك المجانية الآن
+                <Rocket className="w-5 h-5" />
+              </Link>
+              <p className="text-sm text-white/60">
+                بدون بطاقة ائتمان • يومين مجاناً
+              </p>
+            </div>
+          </div>
+        </Reveal>
       </section>
 
-      {/* ═══ FOOTER ═══ */}
-      <footer className="py-8 px-6 text-center" style={{ background: 'var(--theme-footer-bg)', color: 'var(--theme-footer-text)' }}>
-        <div className="flex justify-center mb-2">
-          <img
-            src="/logo-horizontal.png"
-            alt="منهج AI"
-            style={{ height: '2rem', width: 'auto', filter: 'brightness(0) invert(1)' }}
-          />
+      {/* ============================================================ */}
+      {/*  7. FOOTER                                                    */}
+      {/* ============================================================ */}
+      <footer
+        className="pt-16 pb-8 px-4"
+        style={{ background: "var(--theme-footer-bg, #111827)", color: "#d1d5db" }}
+      >
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
+            {/* brand */}
+            <div className="flex flex-col gap-4">
+              <span className="text-2xl font-extrabold text-white">
+                منهج AI 🎓
+              </span>
+              <p className="text-sm leading-relaxed" style={{ color: "#9ca3af" }}>
+                منصة تعليمية ذكية مصممة لطلاب الثانوية العامة في مصر. بنستخدم الذكاء الاصطناعي عشان نساعدك تذاكر بذكاء وتحقق أعلى الدرجات.
+              </p>
+            </div>
+
+            {/* quick links */}
+            <div className="flex flex-col gap-4">
+              <span className="text-lg font-bold text-white">روابط سريعة</span>
+              <ul className="flex flex-col gap-2">
+                {quickLinks.map((link) => (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      className="text-sm hover:text-white transition-colors"
+                      style={{ color: "#9ca3af" }}
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* contact */}
+            <div className="flex flex-col gap-4">
+              <span className="text-lg font-bold text-white">تواصل معنا</span>
+              <div className="flex items-center gap-2 text-sm" style={{ color: "#9ca3af" }}>
+                <Mail className="w-4 h-4" />
+                <a href="mailto:support@manhaj-ai.com" className="hover:text-white transition-colors">
+                  support@manhaj-ai.com
+                </a>
+              </div>
+              {/* social icons */}
+              <div className="flex gap-3 mt-2">
+                {["فيسبوك", "تويتر", "يوتيوب", "إنستغرام"].map((social) => (
+                  <button
+                    key={social}
+                    aria-label={social}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold transition-colors"
+                    style={{ background: "#1f2937", color: "#9ca3af" }}
+                  >
+                    {social.charAt(0)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* bottom bar */}
+          <div
+            className="border-t pt-6 text-center text-sm"
+            style={{ borderColor: "#1f2937", color: "#6b7280" }}
+          >
+            © 2025 منهج AI — جميع الحقوق محفوظة ❤️
+          </div>
         </div>
-        <p className="text-sm mb-4">منصة تعليمية ذكية لطلاب الثانوية العامة في مصر</p>
-        <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
-          © 2025 منهج AI — جميع الحقوق محفوظة
-        </p>
       </footer>
+
+      {/* ---- global utility styles ---- */}
+      <style jsx global>{`
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.75; }
+        }
+        .animate-pulse-slow {
+          animation: pulse-slow 3s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 }

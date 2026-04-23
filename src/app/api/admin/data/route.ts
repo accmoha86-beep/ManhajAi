@@ -319,6 +319,18 @@ export async function POST(request: NextRequest) {
         return ok({ grades: data || [] });
       }
 
+      case 'toggle_grade': {
+        const gradeUpd: Record<string, unknown> = {};
+        if (params.published !== undefined) gradeUpd.is_published = params.published;
+        const { data: gData, error: gErr } = await sb
+          .from('grade_levels')
+          .update(gradeUpd)
+          .eq('id', params.grade_id || params.id)
+          .select()
+          .single();
+        if (gErr) return err(gErr.message);
+        return ok({ grade: gData });
+      }
       case 'update_grade': {
         const gradeUpdates: Record<string, unknown> = {};
         if (params.is_published !== undefined) gradeUpdates.is_published = params.is_published;

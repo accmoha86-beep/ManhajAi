@@ -1,812 +1,531 @@
 "use client";
-
 import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "@/store/auth-store";
 import { useUIStore } from "@/store/ui-store";
 import {
   BarChart3, Users, CreditCard, BookOpen, GraduationCap,
-  Palette, TrendingUp, DollarSign, Eye, Check,
+  Palette, TrendingUp, DollarSign, Eye,
   Shield, Plus, Edit, Trash2, Search, Loader2, Save,
   Settings, Package, Key, ToggleLeft, ToggleRight, X,
-  CheckCircle, XCircle, RefreshCw,
+  CheckCircle, XCircle, RefreshCw, Bell, Tag, ChevronDown,
+  Send, Filter, Calendar, Hash, Percent, AlertCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { ThemeSlug as Theme } from "@/store/ui-store";
 
-// ===== ADMIN API HELPER =====
+/* ───────── Types ───────── */
+interface StatCard { title: string; value: string | number; icon: React.ReactNode; color: string }
+interface ModalProps { open: boolean; onClose: () => void; title: string; children: React.ReactNode; onSave?: () => void; saving?: boolean }
+
+/* ───────── Admin API ───────── */
 async function adminAPI(action: string, params: Record<string, unknown> = {}) {
-  const res = await fetch('/api/admin/data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const res = await fetch("/api/admin/data", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ action, ...params }),
   });
   const data = await res.json();
-  if (!data.success) throw new Error(data.error || 'فشل في العملية');
+  if (!data.success) throw new Error(data.error || "فشل في العملية");
   return data.data;
 }
 
-// ===== TABS =====
-const tabs = [
-  { key: "overview", label: "نظرة عامة", icon: BarChart3 },
-  { key: "subscriptions", label: "الاشتراكات", icon: CreditCard },
-  { key: "grades", label: "الصفوف", icon: GraduationCap },
-  { key: "subjects", label: "المواد", icon: BookOpen },
-  { key: "payments", label: "المدفوعات", icon: DollarSign },
-  { key: "themes", label: "الثيمات", icon: Palette },
-  { key: "payment_config", label: "💳 إعدادات الدفع", icon: Settings },
-  { key: "plans", label: "📦 الخطط", icon: Package },
-];
-
-// ===== STATIC DATA (for tabs that still use mock data) =====
-const overviewStats = [
-  { label: "إجمالي الطلاب", value: "1,247", change: "+12%", icon: Users, color: "#6366F1" },
-  { label: "اشتراكات نشطة", value: "856", change: "+8%", icon: CreditCard, color: "#10B981" },
-  { label: "الإيرادات الشهرية", value: "85,200 ج.م", change: "+15%", icon: DollarSign, color: "#F59E0B" },
-  { label: "نسبة التحويل", value: "68%", change: "+3%", icon: TrendingUp, color: "#8B5CF6" },
-];
-
-const subscriptionsList = [
-  { id: 1, student: "أحمد محمد", phone: "01012345678", plan: "كل المواد", status: "نشط", amount: "249 ج.م", date: "2025-03-01" },
-  { id: 2, student: "فاطمة علي", phone: "01098765432", plan: "مادة واحدة", status: "نشط", amount: "99 ج.م", date: "2025-03-05" },
-  { id: 3, student: "محمد حسن", phone: "01234567890", plan: "الترم كامل", status: "نشط", amount: "1,299 ج.م", date: "2025-02-15" },
-  { id: 4, student: "مريم أحمد", phone: "01112223344", plan: "كل المواد", status: "تجربة", amount: "0 ج.م", date: "2025-03-10" },
-  { id: 5, student: "عمر خالد", phone: "01556677889", plan: "مادة واحدة", status: "منتهي", amount: "99 ج.م", date: "2025-01-20" },
-];
-
-const gradesList = [
-  { id: "3sec", name: "الصف الثالث الثانوي", students: 520, subjects: 3 },
-  { id: "2sec", name: "الصف الثاني الثانوي", students: 380, subjects: 3 },
-  { id: "1sec", name: "الصف الأول الثانوي", students: 347, subjects: 3 },
-];
-
-const subjectsList = [
-  { id: "math", name: "الرياضيات", icon: "📐", grades: ["3sec", "2sec", "1sec"], lessons: 24, students: 890 },
-  { id: "physics", name: "الفيزياء", icon: "⚛️", grades: ["3sec", "2sec"], lessons: 20, students: 650 },
-  { id: "chemistry", name: "الكيمياء", icon: "🧪", grades: ["3sec", "2sec", "1sec"], lessons: 18, students: 720 },
-];
-
-const paymentsList = [
-  { id: 1, student: "أحمد محمد", method: "فودافون كاش", amount: "249 ج.م", status: "مكتمل", date: "2025-03-01" },
-  { id: 2, student: "فاطمة علي", method: "فوري", amount: "99 ج.م", status: "مكتمل", date: "2025-03-05" },
-  { id: 3, student: "محمد حسن", method: "بطاقة ائتمان", amount: "1,299 ج.م", status: "مكتمل", date: "2025-02-15" },
-  { id: 4, student: "نور الدين", method: "إنستا باي", amount: "99 ج.م", status: "معلق", date: "2025-03-12" },
-  { id: 5, student: "سارة محمود", method: "فودافون كاش", amount: "249 ج.م", status: "فاشل", date: "2025-03-11" },
-];
-
-const themeOptions: { key: Theme; name: string; desc: string; emoji: string; colors: string[] }[] = [
-  { key: "default", name: "الافتراضي", desc: "أزرق كلاسيكي", emoji: "💎", colors: ["#6366F1", "#8B5CF6"] },
-  { key: "golden", name: "الذهبي", desc: "ذهبي إسلامي", emoji: "☪️", colors: ["#D4A017", "#1B5E20"] },
-  { key: "exams", name: "الامتحانات", desc: "أحمر تحفيزي", emoji: "📝", colors: ["#DC2626", "#B91C1C"] },
-  { key: "graduation", name: "التخرج", desc: "أخضر نجاح", emoji: "🎓", colors: ["#059669", "#047857"] },
-  { key: "dark", name: "الليلي", desc: "وضع ليلي", emoji: "🌙", colors: ["#6366F1", "#4F46E5"] },
-];
-
-const statusColors: Record<string, string> = {
-  "نشط": "#10B981",
-  "تجربة": "#F59E0B",
-  "منتهي": "#EF4444",
-  "مكتمل": "#10B981",
-  "معلق": "#F59E0B",
-  "فاشل": "#EF4444",
-};
-
-// ═══════════════════════════════════════════
-// PaymentsConfigTab Component
-// ═══════════════════════════════════════════
-const STRIPE_KEYS = [
-  { key: 'STRIPE_SECRET_KEY', label: 'المفتاح السري (Secret Key)' },
-  { key: 'STRIPE_PUBLISHABLE_KEY', label: 'المفتاح العام (Publishable Key)' },
-  { key: 'STRIPE_WEBHOOK_SECRET', label: 'مفتاح Webhook' },
-];
-
-const PAYMOB_KEYS = [
-  { key: 'PAYMOB_API_KEY', label: 'مفتاح API' },
-  { key: 'PAYMOB_VODAFONE_INTEGRATION_ID', label: 'معرف تكامل فودافون كاش' },
-  { key: 'PAYMOB_FAWRY_INTEGRATION_ID', label: 'معرف تكامل فوري' },
-  { key: 'PAYMOB_INSTAPAY_INTEGRATION_ID', label: 'معرف تكامل إنستاباي' },
-  { key: 'PAYMOB_IFRAME_ID', label: 'معرف iFrame' },
-  { key: 'PAYMOB_HMAC_SECRET', label: 'مفتاح HMAC' },
-];
-
-const PAYMENT_METHODS = [
-  { key: 'payment_stripe_enabled', label: 'بطاقة بنكية (Stripe)', icon: '💳' },
-  { key: 'payment_vodafone_enabled', label: 'فودافون كاش', icon: '📱' },
-  { key: 'payment_fawry_enabled', label: 'فوري', icon: '🏪' },
-  { key: 'payment_instapay_enabled', label: 'إنستاباي', icon: '🏦' },
-];
-
-function PaymentsConfigTab() {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
-  const [configuredKeys, setConfiguredKeys] = useState<Set<string>>(new Set());
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [secretValues, setSecretValues] = useState<Record<string, string>>({});
-  const [methodToggles, setMethodToggles] = useState<Record<string, boolean>>({});
-
-  const loadConfig = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await adminAPI('get_payment_config');
-      const configured = new Set<string>();
-      (data.secrets || []).forEach((s: Record<string, unknown>) => {
-        if (s.has_value) configured.add(s.key as string);
-      });
-      setConfiguredKeys(configured);
-      const toggles: Record<string, boolean> = {};
-      (data.settings || []).forEach((s: Record<string, unknown>) => {
-        toggles[s.key as string] = s.value === 'true';
-      });
-      setMethodToggles(toggles);
-    } catch {
-      setMessage('فشل في تحميل الإعدادات');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadConfig(); }, [loadConfig]);
-
-  const saveSecret = async (key: string, value: string) => {
-    if (!value.trim()) return;
-    setSaving(true);
-    try {
-      await adminAPI('update_payment_config', { secret_key: key, secret_value: value });
-      const next = new Set(Array.from(configuredKeys)); next.add(key); setConfiguredKeys(next);
-      setEditingKey(null);
-      setSecretValues(prev => ({ ...prev, [key]: '' }));
-      setMessage('تم حفظ المفتاح بنجاح ✅');
-    } catch (e: unknown) {
-      setMessage(e instanceof Error ? e.message : 'فشل في الحفظ');
-    } finally {
-      setSaving(false);
-      setTimeout(() => setMessage(''), 3000);
-    }
-  };
-
-  const toggleMethod = async (key: string, val: boolean) => {
-    try {
-      await adminAPI('update_payment_config', { setting_key: key, setting_value: String(val) });
-      setMethodToggles(prev => ({ ...prev, [key]: val }));
-    } catch {
-      setMessage('فشل في تحديث الإعداد');
-    }
-  };
-
-  if (loading) return (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} />
+/* ───────── Shared UI ───────── */
+function Modal({ open, onClose, title, children, onSave, saving }: ModalProps) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl p-6 max-h-[85vh] overflow-y-auto" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold" style={{ color: "var(--theme-text-primary)" }}>{title}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:opacity-70"><X size={20} style={{ color: "var(--theme-text-secondary)" }} /></button>
+        </div>
+        {children}
+        {onSave && (
+          <div className="flex gap-2 mt-4">
+            <button onClick={onSave} disabled={saving} className="flex-1 py-2 px-4 rounded-xl text-white font-medium flex items-center justify-center gap-2" style={{ background: "var(--theme-cta-gradient)" }}>
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} حفظ
+            </button>
+            <button onClick={onClose} className="px-4 py-2 rounded-xl font-medium" style={{ background: "var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}>إلغاء</button>
+          </div>
+        )}
+      </div>
     </div>
   );
+}
 
-  const renderSecretRow = (item: { key: string; label: string }) => {
-    const isConfigured = configuredKeys.has(item.key);
-    const isEditing = editingKey === item.key;
-    return (
-      <div key={item.key} className="flex items-center gap-3 py-3" style={{ borderBottom: '1px solid var(--theme-surface-border)' }}>
-        <div className="flex-1">
-          <div className="text-sm font-bold" style={{ color: 'var(--theme-text-primary)' }}>{item.label}</div>
-          <div className="text-xs font-mono" style={{ color: 'var(--theme-text-muted)' }}>{item.key}</div>
-        </div>
-        {isConfigured && !isEditing && (
-          <span className="flex items-center gap-1 text-xs font-bold" style={{ color: '#10B981' }}>
-            <CheckCircle size={14} /> مهيأ
-          </span>
-        )}
-        {!isConfigured && !isEditing && (
-          <span className="flex items-center gap-1 text-xs font-bold" style={{ color: '#EF4444' }}>
-            <XCircle size={14} /> غير مهيأ
-          </span>
-        )}
-        {isEditing ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              className="themed-input text-xs py-1 px-2"
-              style={{ width: '220px', fontFamily: 'monospace' }}
-              placeholder="أدخل القيمة..."
-              value={secretValues[item.key] || ''}
-              onChange={e => setSecretValues(prev => ({ ...prev, [item.key]: e.target.value }))}
-            />
-            <button
-              onClick={() => saveSecret(item.key, secretValues[item.key] || '')}
-              disabled={saving}
-              className="themed-btn-primary px-3 py-1 text-xs flex items-center gap-1"
-            >
-              {saving ? <Loader2 className="animate-spin" size={12} /> : <Save size={12} />}
-              حفظ
-            </button>
-            <button onClick={() => setEditingKey(null)} className="p-1 rounded" style={{ color: 'var(--theme-text-muted)' }}>
-              <X size={14} />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setEditingKey(item.key)}
-            className="themed-btn-outline px-3 py-1 text-xs flex items-center gap-1"
-          >
-            <Edit size={12} /> تعديل
-          </button>
-        )}
-      </div>
-    );
-  };
+function LoadingState() {
+  return <div className="flex items-center justify-center py-20"><Loader2 size={32} className="animate-spin" style={{ color: "var(--theme-primary)" }} /></div>;
+}
 
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="space-y-6">
-      {message && (
-        <div className="themed-card p-3 text-sm font-bold text-center" style={{ color: message.includes('✅') ? '#10B981' : '#EF4444' }}>
-          {message}
-        </div>
-      )}
-
-      {/* Stripe Section */}
-      <div className="themed-card p-5">
-        <h3 className="text-lg font-extrabold mb-4 flex items-center gap-2" style={{ color: 'var(--theme-text-primary)' }}>
-          💳 إعدادات Stripe
-        </h3>
-        <div>{STRIPE_KEYS.map(renderSecretRow)}</div>
-      </div>
-
-      {/* Paymob Section */}
-      <div className="themed-card p-5">
-        <h3 className="text-lg font-extrabold mb-4 flex items-center gap-2" style={{ color: 'var(--theme-text-primary)' }}>
-          🏦 إعدادات Paymob
-        </h3>
-        <div>{PAYMOB_KEYS.map(renderSecretRow)}</div>
-      </div>
-
-      {/* Payment Methods Toggle */}
-      <div className="themed-card p-5">
-        <h3 className="text-lg font-extrabold mb-4 flex items-center gap-2" style={{ color: 'var(--theme-text-primary)' }}>
-          🔀 طرق الدفع المتاحة
-        </h3>
-        <div className="space-y-3">
-          {PAYMENT_METHODS.map(method => {
-            const isOn = !!methodToggles[method.key];
-            return (
-              <div key={method.key} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--theme-surface-border)' }}>
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{method.icon}</span>
-                  <span className="text-sm font-bold" style={{ color: 'var(--theme-text-primary)' }}>{method.label}</span>
-                </div>
-                <button onClick={() => toggleMethod(method.key, !isOn)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                  {isOn
-                    ? <ToggleRight size={28} style={{ color: '#10B981' }} />
-                    : <ToggleLeft size={28} style={{ color: 'var(--theme-text-muted)' }} />
-                  }
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Refresh */}
-      <button onClick={loadConfig} className="themed-btn-outline px-4 py-2 flex items-center gap-2 text-sm mx-auto">
-        <RefreshCw size={14} /> تحديث البيانات
+    <div className="flex flex-col items-center justify-center py-20 gap-3">
+      <AlertCircle size={40} className="text-red-500" />
+      <p className="text-red-500 font-medium">{message}</p>
+      <button onClick={onRetry} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white" style={{ background: "var(--theme-cta-gradient)" }}>
+        <RefreshCw size={16} /> إعادة المحاولة
       </button>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════
-// SubscriptionPlansTab Component
-// ═══════════════════════════════════════════
-interface Plan {
-  id: string;
-  name_ar: string;
-  name_en?: string;
-  max_subjects: number;
-  price_monthly: number;
-  price_term?: number;
-  price_annual?: number;
-  discount_percent: number;
-  features_ar: string[];
-  is_active: boolean;
-}
-
-function SubscriptionPlansTab() {
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
-  const [message, setMessage] = useState('');
-  const [formData, setFormData] = useState({
-    name_ar: '', name_en: '', max_subjects: 1,
-    price_monthly: 89, price_term: 0, price_annual: 0,
-    discount_percent: 0, features_text: '', is_active: true,
-  });
-
-  const loadPlans = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await adminAPI('get_plans');
-      setPlans(data.plans || []);
-    } catch {
-      setMessage('فشل في تحميل الخطط');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadPlans(); }, [loadPlans]);
-
-  const resetForm = () => {
-    setFormData({ name_ar: '', name_en: '', max_subjects: 1, price_monthly: 89, price_term: 0, price_annual: 0, discount_percent: 0, features_text: '', is_active: true });
-    setEditingPlan(null);
-    setShowForm(false);
-  };
-
-  const openEdit = (plan: Plan) => {
-    setEditingPlan(plan);
-    setFormData({
-      name_ar: plan.name_ar,
-      name_en: plan.name_en || '',
-      max_subjects: plan.max_subjects,
-      price_monthly: plan.price_monthly,
-      price_term: plan.price_term || 0,
-      price_annual: plan.price_annual || 0,
-      discount_percent: plan.discount_percent,
-      features_text: (plan.features_ar || []).join('\n'),
-      is_active: plan.is_active,
-    });
-    setShowForm(true);
-  };
-
-  const savePlan = async () => {
-    try {
-      const features_ar = formData.features_text.split('\n').map(f => f.trim()).filter(Boolean);
-      const payload = {
-        name_ar: formData.name_ar, name_en: formData.name_en || null,
-        max_subjects: formData.max_subjects, price_monthly: formData.price_monthly,
-        price_term: formData.price_term || null, price_annual: formData.price_annual || null,
-        discount_percent: formData.discount_percent, features_ar, is_active: formData.is_active,
-      };
-      if (editingPlan) {
-        await adminAPI('update_plan', { id: editingPlan.id, ...payload });
-      } else {
-        await adminAPI('create_plan', payload);
-      }
-      setMessage(editingPlan ? 'تم تحديث الخطة ✅' : 'تم إنشاء الخطة ✅');
-      resetForm();
-      loadPlans();
-    } catch (e: unknown) {
-      setMessage(e instanceof Error ? e.message : 'فشل في الحفظ');
-    }
-    setTimeout(() => setMessage(''), 3000);
-  };
-
-  const deletePlan = async (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذه الخطة؟')) return;
-    try {
-      await adminAPI('delete_plan', { id });
-      setMessage('تم حذف الخطة ✅');
-      loadPlans();
-    } catch (e: unknown) {
-      setMessage(e instanceof Error ? e.message : 'فشل في الحذف');
-    }
-    setTimeout(() => setMessage(''), 3000);
-  };
-
-  if (loading) return (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 className="animate-spin" size={32} style={{ color: 'var(--theme-primary)' }} />
+function EmptyState({ message, icon }: { message: string; icon: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-3">
+      <div style={{ color: "var(--theme-text-secondary)" }}>{icon}</div>
+      <p className="font-medium" style={{ color: "var(--theme-text-secondary)" }}>{message}</p>
     </div>
   );
+}
+
+function InputField({ label, value, onChange, type = "text", placeholder = "", dir }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; dir?: string }) {
+  return (
+    <div className="mb-3">
+      <label className="block text-sm font-medium mb-1" style={{ color: "var(--theme-text-secondary)" }}>{label}</label>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} dir={dir || "rtl"}
+        className="w-full px-3 py-2 rounded-xl outline-none text-sm" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+    </div>
+  );
+}
+
+function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div className="mb-3">
+      <label className="block text-sm font-medium mb-1" style={{ color: "var(--theme-text-secondary)" }}>{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)} className="w-full px-3 py-2 rounded-xl outline-none text-sm" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }}>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button onClick={() => onChange(!checked)} className="flex items-center">
+      {checked ? <ToggleRight size={28} style={{ color: "var(--theme-primary)" }} /> : <ToggleLeft size={28} style={{ color: "var(--theme-text-secondary)" }} />}
+    </button>
+  );
+}
+
+function formatDate(d: string) {
+  if (!d) return "—";
+  try { return new Date(d).toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" }); } catch { return d; }
+}
+
+function formatCurrency(v: number | string) {
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  if (isNaN(n)) return "٠ ج.م";
+  return `${n.toLocaleString("ar-EG")} ج.م`;
+}
+
+/* ───────── Tabs Config ───────── */
+const TABS = [
+  { id: "overview", label: "نظرة عامة", icon: <BarChart3 size={18} /> },
+  { id: "students", label: "الطلاب", icon: <Users size={18} /> },
+  { id: "subscriptions", label: "الاشتراكات", icon: <CreditCard size={18} /> },
+  { id: "grades", label: "الصفوف", icon: <GraduationCap size={18} /> },
+  { id: "subjects", label: "المواد", icon: <BookOpen size={18} /> },
+  { id: "payments", label: "المدفوعات", icon: <DollarSign size={18} /> },
+  { id: "themes", label: "الثيمات", icon: <Palette size={18} /> },
+  { id: "coupons", label: "الكوبونات", icon: <Tag size={18} /> },
+  { id: "notifications", label: "الإشعارات", icon: <Bell size={18} /> },
+  { id: "payment_config", label: "💳 إعدادات الدفع", icon: <CreditCard size={18} /> },
+  { id: "plans", label: "📦 الخطط", icon: <Package size={18} /> },
+  { id: "secrets", label: "🔑 المفاتيح", icon: <Key size={18} /> },
+  { id: "settings", label: "⚙️ الإعدادات", icon: <Settings size={18} /> },
+];
+
+/* ───────── Main Component ───────── */
+export default function AdminPanel() {
+  const router = useRouter();
+  const { user } = useAuthStore();
+  const [activeTab, setActiveTab] = useState("overview");
+  const [tabsOpen, setTabsOpen] = useState(false);
+
+  useEffect(() => {
+    if (user && user.role !== "admin") router.push("/");
+  }, [user, router]);
 
   return (
-    <div className="space-y-6">
-      {message && (
-        <div className="themed-card p-3 text-sm font-bold text-center" style={{ color: message.includes('✅') ? '#10B981' : '#EF4444' }}>
-          {message}
+    <div className="min-h-screen pb-8" dir="rtl" style={{ fontFamily: "Cairo, sans-serif" }}>
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <h1 className="text-2xl font-bold mb-6 flex items-center gap-2" style={{ color: "var(--theme-text-primary)" }}>
+          <Shield size={28} /> لوحة التحكم
+        </h1>
+
+        {/* Mobile tab selector */}
+        <div className="md:hidden mb-4">
+          <button onClick={() => setTabsOpen(!tabsOpen)} className="w-full flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }}>
+            <span className="flex items-center gap-2">{TABS.find(t => t.id === activeTab)?.icon} {TABS.find(t => t.id === activeTab)?.label}</span>
+            <ChevronDown size={18} className={`transition-transform ${tabsOpen ? "rotate-180" : ""}`} />
+          </button>
+          {tabsOpen && (
+            <div className="mt-1 rounded-xl overflow-hidden shadow-lg" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+              {TABS.map(tab => (
+                <button key={tab.id} onClick={() => { setActiveTab(tab.id); setTabsOpen(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors"
+                  style={{ color: activeTab === tab.id ? "var(--theme-primary)" : "var(--theme-text-secondary)", background: activeTab === tab.id ? "var(--theme-primary-light, rgba(99,102,241,0.1))" : "transparent" }}>
+                  {tab.icon} {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Desktop tabs */}
+        <div className="hidden md:flex flex-wrap gap-2 mb-6">
+          {TABS.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+              style={activeTab === tab.id ? { background: "var(--theme-cta-gradient)", color: "white" } : { background: "var(--theme-surface-bg)", color: "var(--theme-text-secondary)", border: "1px solid var(--theme-surface-border)" }}>
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div className="rounded-2xl p-4 md:p-6" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+          {activeTab === "overview" && <OverviewTab />}
+          {activeTab === "students" && <StudentsTab />}
+          {activeTab === "subscriptions" && <SubscriptionsTab />}
+          {activeTab === "grades" && <GradesTab />}
+          {activeTab === "subjects" && <SubjectsTab />}
+          {activeTab === "payments" && <PaymentsTab />}
+          {activeTab === "themes" && <ThemesTab />}
+          {activeTab === "coupons" && <CouponsTab />}
+          {activeTab === "notifications" && <NotificationsTab />}
+          {activeTab === "payment_config" && <PaymentConfigTab />}
+          {activeTab === "plans" && <PlansTab />}
+          {activeTab === "secrets" && <SecretsTab />}
+          {activeTab === "settings" && <SettingsTab />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════ TAB 1: Overview ═══════════ */
+function OverviewTab() {
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { setData(await adminAPI("overview")); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (!data) return <EmptyState message="لا توجد بيانات" icon={<BarChart3 size={40} />} />;
+
+  const stats: StatCard[] = [
+    { title: "إجمالي الطلاب", value: (data.total_students as number) || 0, icon: <Users size={24} />, color: "#6366f1" },
+    { title: "الاشتراكات النشطة", value: (data.active_subscriptions as number) || 0, icon: <CreditCard size={24} />, color: "#10b981" },
+    { title: "إجمالي الإيرادات", value: formatCurrency((data.total_revenue as number) || 0), icon: <DollarSign size={24} />, color: "#f59e0b" },
+    { title: "إجمالي المواد", value: (data.total_subjects as number) || 0, icon: <BookOpen size={24} />, color: "#8b5cf6" },
+  ];
+
+  const recentExams = (data.recent_exams as Array<Record<string, unknown>>) || [];
+
+  return (
+    <div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {stats.map((s, i) => (
+          <div key={i} className="rounded-2xl p-4" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium" style={{ color: "var(--theme-text-secondary)" }}>{s.title}</span>
+              <div className="p-2 rounded-xl" style={{ background: s.color + "20", color: s.color }}>{s.icon}</div>
+            </div>
+            <p className="text-2xl font-bold" style={{ color: "var(--theme-text-primary)" }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+      <h3 className="text-lg font-bold mb-3" style={{ color: "var(--theme-text-primary)" }}>آخر الامتحانات</h3>
+      {recentExams.length === 0 ? <EmptyState message="لا توجد امتحانات حديثة" icon={<Eye size={32} />} /> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
+                <th className="text-right py-2 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>الطالب</th>
+                <th className="text-right py-2 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>المادة</th>
+                <th className="text-right py-2 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>النتيجة</th>
+                <th className="text-right py-2 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>التاريخ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentExams.slice(0, 10).map((ex, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
+                  <td className="py-2 px-3" style={{ color: "var(--theme-text-primary)" }}>{(ex.student_name as string) || "—"}</td>
+                  <td className="py-2 px-3" style={{ color: "var(--theme-text-primary)" }}>{(ex.subject_name as string) || "—"}</td>
+                  <td className="py-2 px-3" style={{ color: "var(--theme-text-primary)" }}>{(ex.score as number) ?? "—"}%</td>
+                  <td className="py-2 px-3" style={{ color: "var(--theme-text-secondary)" }}>{formatDate(ex.created_at as string)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
+    </div>
+  );
+}
 
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-extrabold" style={{ color: 'var(--theme-text-primary)' }}>📦 خطط الاشتراك</h3>
-        <button onClick={() => { resetForm(); setShowForm(true); }} className="themed-btn-primary px-4 py-2 text-sm flex items-center gap-2">
-          <Plus size={16} /> إضافة خطة
+/* ═══════════ TAB 2: Students ═══════════ */
+function StudentsTab() {
+  const [students, setStudents] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const perPage = 20;
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const res = await adminAPI("get_students", { search, page, per_page: perPage });
+      setStudents(res.students || res || []);
+      setTotal(res.total || 0);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, [search, page]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggleBan = async (id: string, banned: boolean) => {
+    try {
+      await adminAPI(banned ? "unban_student" : "ban_student", { student_id: id });
+      load();
+    } catch { /* reload anyway */ load(); }
+  };
+
+  return (
+    <div>
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "var(--theme-text-secondary)" }} />
+          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="بحث بالاسم أو البريد..."
+            className="w-full pr-10 pl-4 py-2 rounded-xl outline-none text-sm" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+        </div>
+        <button onClick={load} className="px-4 py-2 rounded-xl flex items-center gap-2 text-sm" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}>
+          <RefreshCw size={14} /> تحديث
         </button>
       </div>
 
-      {/* Plans Table */}
-      <div className="themed-card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: 'var(--theme-hover-overlay)' }}>
-              <th className="p-3 text-right font-bold" style={{ color: 'var(--theme-text-secondary)' }}>الاسم</th>
-              <th className="p-3 text-right font-bold" style={{ color: 'var(--theme-text-secondary)' }}>المواد</th>
-              <th className="p-3 text-right font-bold" style={{ color: 'var(--theme-text-secondary)' }}>شهري</th>
-              <th className="p-3 text-right font-bold" style={{ color: 'var(--theme-text-secondary)' }}>ترم</th>
-              <th className="p-3 text-right font-bold" style={{ color: 'var(--theme-text-secondary)' }}>سنوي</th>
-              <th className="p-3 text-right font-bold" style={{ color: 'var(--theme-text-secondary)' }}>خصم %</th>
-              <th className="p-3 text-right font-bold" style={{ color: 'var(--theme-text-secondary)' }}>الحالة</th>
-              <th className="p-3 text-right font-bold" style={{ color: 'var(--theme-text-secondary)' }}>إجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plans.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="p-6 text-center text-sm" style={{ color: 'var(--theme-text-muted)' }}>
-                  لا توجد خطط بعد — أضف خطة جديدة
-                </td>
-              </tr>
-            ) : plans.map(plan => (
-              <tr key={plan.id} style={{ borderBottom: '1px solid var(--theme-surface-border)' }}>
-                <td className="p-3 font-bold" style={{ color: 'var(--theme-text-primary)' }}>{plan.name_ar}</td>
-                <td className="p-3" style={{ color: 'var(--theme-text-secondary)' }}>{plan.max_subjects}</td>
-                <td className="p-3 font-bold" style={{ color: 'var(--theme-primary)' }}>{plan.price_monthly} ج.م</td>
-                <td className="p-3" style={{ color: 'var(--theme-text-secondary)' }}>{plan.price_term ? `${plan.price_term} ج.م` : '—'}</td>
-                <td className="p-3" style={{ color: 'var(--theme-text-secondary)' }}>{plan.price_annual ? `${plan.price_annual} ج.م` : '—'}</td>
-                <td className="p-3" style={{ color: 'var(--theme-text-secondary)' }}>{plan.discount_percent}%</td>
-                <td className="p-3">
-                  <span className="px-2 py-1 rounded-lg text-xs font-bold"
-                    style={{ background: plan.is_active ? '#10B98115' : '#EF444415', color: plan.is_active ? '#10B981' : '#EF4444' }}>
-                    {plan.is_active ? 'نشط' : 'معطل'}
-                  </span>
-                </td>
-                <td className="p-3">
-                  <div className="flex gap-1">
-                    <button onClick={() => openEdit(plan)} className="p-1.5 rounded-lg" style={{ background: 'var(--theme-hover-overlay)', border: 'none', cursor: 'pointer' }}>
-                      <Edit size={14} style={{ color: 'var(--theme-primary)' }} />
-                    </button>
-                    <button onClick={() => deletePlan(plan.id)} className="p-1.5 rounded-lg" style={{ background: 'rgba(220,38,38,0.1)', border: 'none', cursor: 'pointer' }}>
-                      <Trash2 size={14} style={{ color: '#DC2626' }} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Plan Form */}
-      {showForm && (
-        <div className="themed-card p-5 space-y-4">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-bold" style={{ color: 'var(--theme-text-primary)' }}>
-              {editingPlan ? '✏️ تعديل الخطة' : '➕ خطة جديدة'}
-            </h4>
-            <button onClick={resetForm} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--theme-text-muted)' }}>
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold mb-1 block" style={{ color: 'var(--theme-text-secondary)' }}>الاسم بالعربية *</label>
-              <input className="themed-input w-full" value={formData.name_ar} onChange={e => setFormData(p => ({ ...p, name_ar: e.target.value }))} placeholder="مثال: خطة المادة الواحدة" />
-            </div>
-            <div>
-              <label className="text-xs font-bold mb-1 block" style={{ color: 'var(--theme-text-secondary)' }}>الاسم بالإنجليزية</label>
-              <input className="themed-input w-full" value={formData.name_en} onChange={e => setFormData(p => ({ ...p, name_en: e.target.value }))} placeholder="e.g. Single Subject" />
-            </div>
-            <div>
-              <label className="text-xs font-bold mb-1 block" style={{ color: 'var(--theme-text-secondary)' }}>عدد المواد</label>
-              <input type="number" min={1} className="themed-input w-full" value={formData.max_subjects} onChange={e => setFormData(p => ({ ...p, max_subjects: parseInt(e.target.value) || 1 }))} />
-            </div>
-            <div>
-              <label className="text-xs font-bold mb-1 block" style={{ color: 'var(--theme-text-secondary)' }}>السعر الشهري (ج.م)</label>
-              <input type="number" min={0} className="themed-input w-full" value={formData.price_monthly} onChange={e => setFormData(p => ({ ...p, price_monthly: parseInt(e.target.value) || 0 }))} />
-            </div>
-            <div>
-              <label className="text-xs font-bold mb-1 block" style={{ color: 'var(--theme-text-secondary)' }}>سعر الترم (ج.م)</label>
-              <input type="number" min={0} className="themed-input w-full" value={formData.price_term} onChange={e => setFormData(p => ({ ...p, price_term: parseInt(e.target.value) || 0 }))} />
-            </div>
-            <div>
-              <label className="text-xs font-bold mb-1 block" style={{ color: 'var(--theme-text-secondary)' }}>السعر السنوي (ج.م)</label>
-              <input type="number" min={0} className="themed-input w-full" value={formData.price_annual} onChange={e => setFormData(p => ({ ...p, price_annual: parseInt(e.target.value) || 0 }))} />
-            </div>
-            <div>
-              <label className="text-xs font-bold mb-1 block" style={{ color: 'var(--theme-text-secondary)' }}>نسبة الخصم %</label>
-              <input type="number" min={0} max={100} className="themed-input w-full" value={formData.discount_percent} onChange={e => setFormData(p => ({ ...p, discount_percent: parseInt(e.target.value) || 0 }))} />
-            </div>
-            <div className="flex items-center gap-3 pt-5">
-              <label className="text-sm font-bold" style={{ color: 'var(--theme-text-secondary)' }}>نشط</label>
-              <button onClick={() => setFormData(p => ({ ...p, is_active: !p.is_active }))} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                {formData.is_active
-                  ? <ToggleRight size={28} style={{ color: '#10B981' }} />
-                  : <ToggleLeft size={28} style={{ color: 'var(--theme-text-muted)' }} />
-                }
-              </button>
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-bold mb-1 block" style={{ color: 'var(--theme-text-secondary)' }}>المميزات (سطر لكل ميزة)</label>
-            <textarea className="themed-input w-full" rows={4} value={formData.features_text}
-              onChange={e => setFormData(p => ({ ...p, features_text: e.target.value }))}
-              placeholder={"شرح تفاعلي بالذكاء الاصطناعي\nامتحانات ذكية\nتقارير مفصلة"} />
-          </div>
-
-          {/* Price Preview */}
-          <div className="themed-card p-4" style={{ background: 'var(--theme-hover-overlay)' }}>
-            <h5 className="text-xs font-bold mb-2" style={{ color: 'var(--theme-text-secondary)' }}>معاينة الأسعار:</h5>
-            <div className="grid grid-cols-3 gap-3 text-center text-sm">
-              <div>
-                <div className="font-bold" style={{ color: 'var(--theme-primary)' }}>{formData.price_monthly} ج.م</div>
-                <div className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>شهري</div>
-              </div>
-              <div>
-                <div className="font-bold" style={{ color: 'var(--theme-primary)' }}>{formData.price_term || '—'} {formData.price_term ? 'ج.م' : ''}</div>
-                <div className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>ترم</div>
-              </div>
-              <div>
-                <div className="font-bold" style={{ color: 'var(--theme-primary)' }}>{formData.price_annual || '—'} {formData.price_annual ? 'ج.م' : ''}</div>
-                <div className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>سنوي</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-3 justify-end">
-            <button onClick={resetForm} className="themed-btn-outline px-4 py-2 text-sm">إلغاء</button>
-            <button onClick={savePlan} disabled={!formData.name_ar.trim()} className="themed-btn-primary px-6 py-2 text-sm flex items-center gap-2">
-              <Save size={14} /> {editingPlan ? 'تحديث' : 'إنشاء'}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════
-// Main AdminPanel
-// ═══════════════════════════════════════════
-export default function AdminPanel() {
-  const { user, isAuthenticated } = useAuthStore();
-  const { theme, setTheme } = useUIStore();
-  const [activeTab, setActiveTab] = useState("overview");
-  const [searchQuery, setSearchQuery] = useState("");
-  const router = useRouter();
-
-  if (!isAuthenticated || user?.role !== "admin") {
-    return (
-      <div className="p-6 font-cairo text-center" style={{ color: "var(--theme-text-primary)" }}>
-        <div className="themed-card p-8 max-w-md mx-auto">
-          <div className="text-5xl mb-4">🛡️</div>
-          <h2 className="text-2xl font-extrabold mb-2">صفحة الإدارة</h2>
-          <p className="text-sm mb-6" style={{ color: "var(--theme-text-secondary)" }}>
-            هذه الصفحة متاحة للمسؤولين فقط
-          </p>
-          <button onClick={() => router.push("/login")} className="themed-btn-primary px-6 py-2">
-            تسجيل الدخول كمسؤول
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-6 font-cairo" style={{ color: "var(--theme-text-primary)" }}>
-      <h1 className="text-2xl font-extrabold mb-6">🛡️ لوحة الإدارة</h1>
-
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto" style={{ borderBottom: "1px solid var(--theme-surface-border)", paddingBottom: "0.75rem" }}>
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer transition-all whitespace-nowrap"
-              style={{
-                background: activeTab === tab.key ? "var(--theme-cta-gradient)" : "transparent",
-                color: activeTab === tab.key ? "#fff" : "var(--theme-text-secondary)",
-                border: activeTab === tab.key ? "none" : "1px solid var(--theme-surface-border)",
-              }}>
-              <Icon size={16} />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ═══ OVERVIEW TAB ═══ */}
-      {activeTab === "overview" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {overviewStats.map((stat, i) => {
-              const Icon = stat.icon;
-              return (
-                <div key={i} className="themed-card p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-                      style={{ background: `${stat.color}15` }}>
-                      <Icon size={22} style={{ color: stat.color }} />
-                    </div>
-                    <div>
-                      <div className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>{stat.label}</div>
-                      <div className="text-xl font-extrabold" style={{ color: "var(--theme-text-primary)" }}>{stat.value}</div>
-                      <div className="text-xs font-bold" style={{ color: "#10B981" }}>{stat.change}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="themed-card p-6">
-              <h3 className="text-lg font-bold mb-4" style={{ color: "var(--theme-text-primary)" }}>📊 الاشتراكات الجديدة</h3>
-              <div className="flex items-end gap-2 h-40">
-                {[35, 55, 45, 70, 60, 85, 75].map((h, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <div className="w-full rounded-t-md" style={{ height: `${h}%`, background: "var(--theme-cta-gradient)" }} />
-                    <span className="text-[0.55rem]" style={{ color: "var(--theme-text-muted)" }}>
-                      {["سبت", "أحد", "اثن", "ثلا", "أربع", "خمي", "جمع"][i]}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="themed-card p-6">
-              <h3 className="text-lg font-bold mb-4" style={{ color: "var(--theme-text-primary)" }}>💰 الإيرادات اليومية</h3>
-              <div className="flex items-end gap-2 h-40">
-                {[40, 65, 50, 80, 55, 90, 70].map((h, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <div className="w-full rounded-t-md" style={{ height: `${h}%`, background: "linear-gradient(to top, #F59E0B, #FBBF24)" }} />
-                    <span className="text-[0.55rem]" style={{ color: "var(--theme-text-muted)" }}>
-                      {["سبت", "أحد", "اثن", "ثلا", "أربع", "خمي", "جمع"][i]}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ SUBSCRIPTIONS TAB ═══ */}
-      {activeTab === "subscriptions" && (
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="relative flex-1 max-w-sm">
-              <Search size={18} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "var(--theme-text-muted)" }} />
-              <input className="themed-input pr-10" placeholder="بحث بالاسم أو الهاتف..."
-                value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-            </div>
-          </div>
-          <div className="themed-card overflow-hidden">
+      {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={load} /> : students.length === 0 ? <EmptyState message="لا يوجد طلاب" icon={<Users size={40} />} /> : (
+        <>
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr style={{ background: "var(--theme-hover-overlay)" }}>
-                  <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>الطالب</th>
-                  <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>الهاتف</th>
-                  <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>الخطة</th>
-                  <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>الحالة</th>
-                  <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>المبلغ</th>
-                  <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>التاريخ</th>
-                  <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>إجراءات</th>
+                <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
+                  {["الاسم", "البريد الإلكتروني", "الصف", "الحالة", "تاريخ التسجيل", "إجراء"].map(h => (
+                    <th key={h} className="text-right py-3 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {subscriptionsList.filter((s) =>
-                  !searchQuery || s.student.includes(searchQuery) || s.phone.includes(searchQuery)
-                ).map((sub) => (
-                  <tr key={sub.id} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
-                    <td className="p-3 font-bold" style={{ color: "var(--theme-text-primary)" }}>{sub.student}</td>
-                    <td className="p-3" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>{sub.phone}</td>
-                    <td className="p-3" style={{ color: "var(--theme-text-secondary)" }}>{sub.plan}</td>
-                    <td className="p-3">
-                      <span className="px-2 py-1 rounded-lg text-xs font-bold"
-                        style={{ background: `${statusColors[sub.status]}15`, color: statusColors[sub.status] }}>
-                        {sub.status}
+                {students.map((s, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
+                    <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.name as string) || (s.full_name as string) || "—"}</td>
+                    <td className="py-3 px-3" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>{(s.email as string) || "—"}</td>
+                    <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(s.grade as string) || (s.grade_name as string) || "—"}</td>
+                    <td className="py-3 px-3">
+                      <span className={`px-2 py-1 rounded-lg text-xs font-medium ${s.banned ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
+                        {s.banned ? "محظور" : "نشط"}
                       </span>
                     </td>
-                    <td className="p-3 font-bold" style={{ color: "var(--theme-primary)" }}>{sub.amount}</td>
-                    <td className="p-3 text-xs" style={{ color: "var(--theme-text-muted)" }}>{sub.date}</td>
-                    <td className="p-3">
-                      <div className="flex gap-1">
-                        <button className="p-1.5 rounded-lg" style={{ background: "var(--theme-hover-overlay)", border: "none", cursor: "pointer" }}>
-                          <Eye size={14} style={{ color: "var(--theme-primary)" }} />
-                        </button>
-                        <button className="p-1.5 rounded-lg" style={{ background: "var(--theme-hover-overlay)", border: "none", cursor: "pointer" }}>
-                          <Edit size={14} style={{ color: "var(--theme-primary)" }} />
-                        </button>
-                      </div>
+                    <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{formatDate(s.created_at as string)}</td>
+                    <td className="py-3 px-3">
+                      <button onClick={() => toggleBan(s.id as string, !!s.banned)}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium ${s.banned ? "bg-green-100 text-green-600 hover:bg-green-200" : "bg-red-100 text-red-600 hover:bg-red-200"}`}>
+                        {s.banned ? "إلغاء الحظر" : "حظر"}
+                      </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* ═══ GRADES TAB ═══ */}
-      {activeTab === "grades" && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {gradesList.map((grade) => (
-            <div key={grade.id} className="themed-card p-5">
-              <div className="text-3xl mb-3">🎓</div>
-              <h3 className="text-lg font-bold mb-3" style={{ color: "var(--theme-text-primary)" }}>{grade.name}</h3>
-              <div className="space-y-2 text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                <div className="flex justify-between">
-                  <span>عدد الطلاب</span>
-                  <span className="font-bold" style={{ color: "var(--theme-primary)" }}>{grade.students}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>عدد المواد</span>
-                  <span className="font-bold" style={{ color: "var(--theme-primary)" }}>{grade.subjects}</span>
-                </div>
-              </div>
-              <button className="themed-btn-outline w-full mt-4 py-2 flex items-center justify-center gap-2 text-sm">
-                <Edit size={14} /> تعديل
-              </button>
+          {total > perPage && (
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded-lg text-sm disabled:opacity-40" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}>السابق</button>
+              <span className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>صفحة {page} من {Math.ceil(total / perPage)}</span>
+              <button onClick={() => setPage(p => p + 1)} disabled={page >= Math.ceil(total / perPage)} className="px-3 py-1 rounded-lg text-sm disabled:opacity-40" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}>التالي</button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
+    </div>
+  );
+}
 
-      {/* ═══ SUBJECTS TAB ═══ */}
-      {activeTab === "subjects" && (
-        <div>
-          <button className="themed-btn-primary mb-4 px-4 py-2 flex items-center gap-2 text-sm">
-            <Plus size={16} /> إضافة مادة
-          </button>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {subjectsList.map((sub) => (
-              <div key={sub.id} className="themed-card p-5">
-                <div className="text-3xl mb-3">{sub.icon}</div>
-                <h3 className="text-xl font-extrabold mb-3" style={{ color: "var(--theme-text-primary)" }}>{sub.name}</h3>
-                <div className="space-y-2 text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                  <div className="flex justify-between">
-                    <span>عدد الدروس</span>
-                    <span className="font-bold" style={{ color: "var(--theme-primary)" }}>{sub.lessons}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>عدد الطلاب</span>
-                    <span className="font-bold" style={{ color: "var(--theme-primary)" }}>{sub.students}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>الصفوف</span>
-                    <span className="font-bold text-xs" style={{ color: "var(--theme-primary)" }}>
-                      {sub.grades.length} صفوف
-                    </span>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <button className="themed-btn-outline flex-1 py-2 flex items-center justify-center gap-1 text-xs">
-                    <Edit size={14} /> تعديل
-                  </button>
-                  <button className="flex-1 py-2 rounded-lg flex items-center justify-center gap-1 text-xs font-bold cursor-pointer"
-                    style={{ background: "rgba(220,38,38,0.1)", color: "#DC2626", border: "1px solid rgba(220,38,38,0.3)" }}>
-                    <Trash2 size={14} /> حذف
-                  </button>
-                </div>
-              </div>
+/* ═══════════ TAB 3: Subscriptions ═══════════ */
+function SubscriptionsTab() {
+  const [subs, setSubs] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_subscriptions"); setSubs(Array.isArray(r) ? r : r.subscriptions || []); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (subs.length === 0) return <EmptyState message="لا توجد اشتراكات" icon={<CreditCard size={40} />} />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
+            {["الطالب", "الخطة", "الحالة", "بداية", "نهاية", "المبلغ"].map(h => (
+              <th key={h} className="text-right py-3 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
             ))}
-          </div>
-        </div>
-      )}
+          </tr>
+        </thead>
+        <tbody>
+          {subs.map((s, i) => (
+            <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
+              <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.student_name as string) || (s.user_name as string) || "—"}</td>
+              <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(s.plan_name as string) || (s.plan as string) || "—"}</td>
+              <td className="py-3 px-3">
+                <span className={`px-2 py-1 rounded-lg text-xs font-medium ${s.status === "active" ? "bg-green-100 text-green-600" : s.status === "cancelled" ? "bg-red-100 text-red-600" : "bg-yellow-100 text-yellow-600"}`}>
+                  {s.status === "active" ? "نشط" : s.status === "cancelled" ? "ملغي" : s.status === "expired" ? "منتهي" : (s.status as string) || "—"}
+                </span>
+              </td>
+              <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{formatDate(s.start_date as string || s.created_at as string)}</td>
+              <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{formatDate(s.end_date as string || s.expires_at as string)}</td>
+              <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{formatCurrency((s.amount as number) || 0)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-      {/* ═══ PAYMENTS TAB ═══ */}
-      {activeTab === "payments" && (
-        <div className="themed-card overflow-hidden">
+/* ═══════════ TAB 4: Grades ═══════════ */
+function GradesTab() {
+  const [grades, setGrades] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_grades"); setGrades(Array.isArray(r) ? r : r.grades || []); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const togglePublish = async (id: string, published: boolean) => {
+    try { await adminAPI("toggle_grade", { grade_id: id, published: !published }); load(); } catch { load(); }
+  };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (grades.length === 0) return <EmptyState message="لا توجد صفوف" icon={<GraduationCap size={40} />} />;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {grades.map((g, i) => (
+        <div key={i} className="rounded-2xl p-4 flex items-center justify-between" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
+          <div>
+            <p className="font-bold" style={{ color: "var(--theme-text-primary)" }}>{(g.name as string) || (g.grade_name as string) || "—"}</p>
+            <p className="text-xs mt-1" style={{ color: "var(--theme-text-secondary)" }}>{(g.subjects_count as number) || 0} مادة</p>
+          </div>
+          <ToggleSwitch checked={!!(g.published ?? g.is_published ?? true)} onChange={() => togglePublish(g.id as string, !!(g.published ?? g.is_published ?? true))} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════ TAB 5: Subjects ═══════════ */
+function SubjectsTab() {
+  const [subjects, setSubjects] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [modal, setModal] = useState<"create" | "edit" | null>(null);
+  const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
+  const [form, setForm] = useState({ name: "", grade_id: "", description: "" });
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_subjects"); setSubjects(Array.isArray(r) ? r : r.subjects || []); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openCreate = () => { setForm({ name: "", grade_id: "", description: "" }); setEditItem(null); setModal("create"); };
+  const openEdit = (s: Record<string, unknown>) => {
+    setForm({ name: (s.name as string) || "", grade_id: (s.grade_id as string) || "", description: (s.description as string) || "" });
+    setEditItem(s); setModal("edit");
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      if (modal === "create") await adminAPI("create_subject", form);
+      else await adminAPI("update_subject", { subject_id: editItem?.id, ...form });
+      setModal(null); load();
+    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("هل أنت متأكد من حذف هذه المادة؟")) return;
+    try { await adminAPI("delete_subject", { subject_id: id }); load(); } catch { load(); }
+  };
+
+  const togglePublish = async (id: string, published: boolean) => {
+    try { await adminAPI("toggle_subject", { subject_id: id, published: !published }); load(); } catch { load(); }
+  };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-bold" style={{ color: "var(--theme-text-primary)" }}>المواد الدراسية ({subjects.length})</h3>
+        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+          <Plus size={16} /> إضافة مادة
+        </button>
+      </div>
+
+      {subjects.length === 0 ? <EmptyState message="لا توجد مواد" icon={<BookOpen size={40} />} /> : (
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: "var(--theme-hover-overlay)" }}>
-                <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>الطالب</th>
-                <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>الطريقة</th>
-                <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>المبلغ</th>
-                <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>الحالة</th>
-                <th className="p-3 text-right font-bold" style={{ color: "var(--theme-text-secondary)" }}>التاريخ</th>
+              <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
+                {["المادة", "الصف", "الوصف", "منشور", "إجراءات"].map(h => (
+                  <th key={h} className="text-right py-3 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {paymentsList.map((pay) => (
-                <tr key={pay.id} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
-                  <td className="p-3 font-bold" style={{ color: "var(--theme-text-primary)" }}>{pay.student}</td>
-                  <td className="p-3" style={{ color: "var(--theme-text-secondary)" }}>{pay.method}</td>
-                  <td className="p-3 font-bold" style={{ color: "var(--theme-primary)" }}>{pay.amount}</td>
-                  <td className="p-3">
-                    <span className="px-2 py-1 rounded-lg text-xs font-bold"
-                      style={{ background: `${statusColors[pay.status]}15`, color: statusColors[pay.status] }}>
-                      {pay.status}
-                    </span>
+              {subjects.map((s, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
+                  <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.name as string) || "—"}</td>
+                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(s.grade_name as string) || (s.grade_id as string) || "—"}</td>
+                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{((s.description as string) || "—").slice(0, 50)}</td>
+                  <td className="py-3 px-3"><ToggleSwitch checked={!!(s.published ?? s.is_published)} onChange={() => togglePublish(s.id as string, !!(s.published ?? s.is_published))} /></td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={16} /></button>
+                      <button onClick={() => handleDelete(s.id as string)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={16} /></button>
+                    </div>
                   </td>
-                  <td className="p-3 text-xs" style={{ color: "var(--theme-text-muted)" }}>{pay.date}</td>
                 </tr>
               ))}
             </tbody>
@@ -814,54 +533,585 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* ═══ THEMES TAB ═══ */}
-      {activeTab === "themes" && (
-        <div>
-          <p className="text-sm mb-6" style={{ color: "var(--theme-text-secondary)" }}>
-            اختر ثيم المنصة. التغيير يطبق فوراً على جميع الصفحات.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {themeOptions.map((t) => {
-              const isActive = theme === t.key;
-              return (
-                <button key={t.key}
-                  onClick={() => setTheme(t.key)}
-                  className="themed-card p-5 text-right cursor-pointer transition-all"
-                  style={{
-                    borderColor: isActive ? t.colors[0] : undefined,
-                    borderWidth: isActive ? "2px" : undefined,
-                    boxShadow: isActive ? `0 4px 20px ${t.colors[0]}30` : undefined,
-                  }}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="text-3xl">{t.emoji}</div>
-                    <div>
-                      <div className="font-bold" style={{ color: "var(--theme-text-primary)" }}>{t.name}</div>
-                      <div className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>{t.desc}</div>
-                    </div>
-                    {isActive && (
-                      <div className="mr-auto w-6 h-6 rounded-full flex items-center justify-center"
-                        style={{ background: t.colors[0] }}>
-                        <Check size={14} color="#fff" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex gap-1">
-                    {t.colors.map((c, i) => (
-                      <div key={i} className="flex-1 h-3 rounded-full" style={{ background: c }} />
-                    ))}
-                  </div>
-                </button>
-              );
-            })}
+      <Modal open={!!modal} onClose={() => setModal(null)} title={modal === "create" ? "إضافة مادة جديدة" : "تعديل المادة"} onSave={handleSave} saving={saving}>
+        <InputField label="اسم المادة" value={form.name} onChange={v => setForm({ ...form, name: v })} placeholder="مثال: الرياضيات" />
+        <InputField label="معرّف الصف" value={form.grade_id} onChange={v => setForm({ ...form, grade_id: v })} placeholder="grade_id" />
+        <InputField label="الوصف" value={form.description} onChange={v => setForm({ ...form, description: v })} placeholder="وصف المادة" />
+      </Modal>
+    </div>
+  );
+}
+
+/* ═══════════ TAB 6: Payments ═══════════ */
+function PaymentsTab() {
+  const [payments, setPayments] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_payments"); setPayments(Array.isArray(r) ? r : r.payments || []); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (payments.length === 0) return <EmptyState message="لا توجد مدفوعات" icon={<DollarSign size={40} />} />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
+            {["الطالب", "المبلغ", "الطريقة", "الحالة", "التاريخ"].map(h => (
+              <th key={h} className="text-right py-3 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {payments.map((p, i) => (
+            <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
+              <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(p.student_name as string) || (p.user_name as string) || "—"}</td>
+              <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{formatCurrency((p.amount as number) || 0)}</td>
+              <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(p.method as string) || (p.provider as string) || "—"}</td>
+              <td className="py-3 px-3">
+                <span className={`px-2 py-1 rounded-lg text-xs font-medium ${p.status === "completed" || p.status === "paid" ? "bg-green-100 text-green-600" : p.status === "failed" ? "bg-red-100 text-red-600" : "bg-yellow-100 text-yellow-600"}`}>
+                  {p.status === "completed" || p.status === "paid" ? "مكتمل" : p.status === "pending" ? "قيد الانتظار" : p.status === "failed" ? "فشل" : (p.status as string) || "—"}
+                </span>
+              </td>
+              <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{formatDate(p.created_at as string)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ═══════════ TAB 7: Themes ═══════════ */
+function ThemesTab() {
+  const [themes, setThemes] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_themes"); setThemes(Array.isArray(r) ? r : r.themes || []); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const activate = async (id: string) => {
+    try { await adminAPI("update_theme", { theme_id: id, active: true }); load(); } catch { load(); }
+  };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (themes.length === 0) return <EmptyState message="لا توجد ثيمات" icon={<Palette size={40} />} />;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {themes.map((t, i) => (
+        <div key={i} className="rounded-2xl p-4 relative" style={{ background: "var(--theme-bg)", border: `2px solid ${t.active || t.is_active ? "var(--theme-primary)" : "var(--theme-surface-border)"}` }}>
+          {(t.active || t.is_active) && (
+            <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg text-xs font-medium bg-green-100 text-green-600">نشط</span>
+          )}
+          <div className="flex items-center gap-3 mb-3">
+            {t.preview_colors ? (
+              <div className="flex gap-1">
+                {(t.preview_colors as string[]).map((c: string, j: number) => <div key={j} className="w-6 h-6 rounded-full" style={{ background: c }} />)}
+              </div>
+            ) : (
+              <div className="w-10 h-10 rounded-xl" style={{ background: (t.primary_color as string) || "var(--theme-primary)" }} />
+            )}
           </div>
+          <h4 className="font-bold mb-1" style={{ color: "var(--theme-text-primary)" }}>{(t.name as string) || "—"}</h4>
+          <p className="text-xs mb-3" style={{ color: "var(--theme-text-secondary)" }}>{(t.description as string) || ""}</p>
+          {!(t.active || t.is_active) && (
+            <button onClick={() => activate(t.id as string)} className="w-full py-2 rounded-xl text-white text-sm font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+              تفعيل
+            </button>
+          )}
+          {t.scheduled_at && (
+            <p className="text-xs mt-2 flex items-center gap-1" style={{ color: "var(--theme-text-secondary)" }}>
+              <Calendar size={12} /> مجدول: {formatDate(t.scheduled_at as string)}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════ TAB 8: Coupons ═══════════ */
+function CouponsTab() {
+  const [coupons, setCoupons] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [modal, setModal] = useState<"create" | "edit" | null>(null);
+  const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
+  const [form, setForm] = useState({ code: "", discount_type: "percentage", discount_value: "", max_uses: "", expires_at: "" });
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_coupons"); setCoupons(Array.isArray(r) ? r : r.coupons || []); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openCreate = () => { setForm({ code: "", discount_type: "percentage", discount_value: "", max_uses: "", expires_at: "" }); setEditItem(null); setModal("create"); };
+  const openEdit = (c: Record<string, unknown>) => {
+    setForm({
+      code: (c.code as string) || "", discount_type: (c.discount_type as string) || "percentage",
+      discount_value: String(c.discount_value || c.discount || ""), max_uses: String(c.max_uses || ""),
+      expires_at: (c.expires_at as string)?.slice(0, 10) || "",
+    });
+    setEditItem(c); setModal("edit");
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const params = { ...form, discount_value: Number(form.discount_value), max_uses: form.max_uses ? Number(form.max_uses) : null };
+      if (modal === "create") await adminAPI("create_coupon", params);
+      else await adminAPI("update_coupon", { coupon_id: editItem?.id, ...params });
+      setModal(null); load();
+    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("هل أنت متأكد من حذف هذا الكوبون؟")) return;
+    try { await adminAPI("delete_coupon", { coupon_id: id }); load(); } catch { load(); }
+  };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-bold" style={{ color: "var(--theme-text-primary)" }}>الكوبونات ({coupons.length})</h3>
+        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+          <Plus size={16} /> إضافة كوبون
+        </button>
+      </div>
+
+      {coupons.length === 0 ? <EmptyState message="لا توجد كوبونات" icon={<Tag size={40} />} /> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
+                {["الكود", "النوع", "القيمة", "الاستخدامات", "ينتهي", "إجراءات"].map(h => (
+                  <th key={h} className="text-right py-3 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {coupons.map((c, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
+                  <td className="py-3 px-3 font-mono font-bold" style={{ color: "var(--theme-primary)" }}>{(c.code as string) || "—"}</td>
+                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{c.discount_type === "percentage" ? "نسبة %" : "مبلغ ثابت"}</td>
+                  <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>
+                    {c.discount_type === "percentage" ? `${c.discount_value || c.discount}%` : formatCurrency((c.discount_value as number) || (c.discount as number) || 0)}
+                  </td>
+                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(c.used_count as number) || 0} / {(c.max_uses as number) || "∞"}</td>
+                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{c.expires_at ? formatDate(c.expires_at as string) : "—"}</td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={16} /></button>
+                      <button onClick={() => handleDelete(c.id as string)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* ═══ PAYMENT CONFIG TAB ═══ */}
-      {activeTab === "payment_config" && <PaymentsConfigTab />}
+      <Modal open={!!modal} onClose={() => setModal(null)} title={modal === "create" ? "إضافة كوبون جديد" : "تعديل الكوبون"} onSave={handleSave} saving={saving}>
+        <InputField label="كود الكوبون" value={form.code} onChange={v => setForm({ ...form, code: v })} placeholder="SAVE20" dir="ltr" />
+        <SelectField label="نوع الخصم" value={form.discount_type} onChange={v => setForm({ ...form, discount_type: v })} options={[{ value: "percentage", label: "نسبة مئوية %" }, { value: "fixed", label: "مبلغ ثابت" }]} />
+        <InputField label="قيمة الخصم" value={form.discount_value} onChange={v => setForm({ ...form, discount_value: v })} type="number" placeholder="20" />
+        <InputField label="أقصى عدد استخدامات" value={form.max_uses} onChange={v => setForm({ ...form, max_uses: v })} type="number" placeholder="اتركه فارغاً لغير محدود" />
+        <InputField label="تاريخ الانتهاء" value={form.expires_at} onChange={v => setForm({ ...form, expires_at: v })} type="date" />
+      </Modal>
+    </div>
+  );
+}
 
-      {/* ═══ SUBSCRIPTION PLANS TAB ═══ */}
-      {activeTab === "plans" && <SubscriptionPlansTab />}
+/* ═══════════ TAB 9: Notifications ═══════════ */
+function NotificationsTab() {
+  const [notifications, setNotifications] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ title: "", body: "", target: "all" });
+  const [sending, setSending] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/admin/notifications", { credentials: "include" });
+      const data = await res.json();
+      setNotifications(Array.isArray(data) ? data : data.data || data.notifications || []);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSend = async () => {
+    if (!form.title || !form.body) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "فشل في الإرسال");
+      setShowCreate(false); setForm({ title: "", body: "", target: "all" }); load();
+    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    setSending(false);
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-bold" style={{ color: "var(--theme-text-primary)" }}>الإشعارات</h3>
+        <button onClick={() => setShowCreate(!showCreate)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+          <Plus size={16} /> إرسال إشعار
+        </button>
+      </div>
+
+      {showCreate && (
+        <div className="rounded-2xl p-4 mb-4" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
+          <InputField label="عنوان الإشعار" value={form.title} onChange={v => setForm({ ...form, title: v })} placeholder="عنوان الإشعار" />
+          <div className="mb-3">
+            <label className="block text-sm font-medium mb-1" style={{ color: "var(--theme-text-secondary)" }}>محتوى الإشعار</label>
+            <textarea value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} rows={3} placeholder="اكتب محتوى الإشعار..."
+              className="w-full px-3 py-2 rounded-xl outline-none text-sm resize-none" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+          </div>
+          <SelectField label="الهدف" value={form.target} onChange={v => setForm({ ...form, target: v })} options={[{ value: "all", label: "جميع الطلاب" }, { value: "subscribed", label: "المشتركون فقط" }]} />
+          <button onClick={handleSend} disabled={sending} className="w-full py-2 rounded-xl text-white font-medium flex items-center justify-center gap-2" style={{ background: "var(--theme-cta-gradient)" }}>
+            {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} إرسال
+          </button>
+        </div>
+      )}
+
+      {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={load} /> : notifications.length === 0 ? <EmptyState message="لا توجد إشعارات" icon={<Bell size={40} />} /> : (
+        <div className="space-y-3">
+          {notifications.map((n, i) => (
+            <div key={i} className="rounded-xl p-4" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h4 className="font-bold text-sm" style={{ color: "var(--theme-text-primary)" }}>{(n.title as string) || "—"}</h4>
+                  <p className="text-xs mt-1" style={{ color: "var(--theme-text-secondary)" }}>{(n.body as string) || (n.message as string) || ""}</p>
+                </div>
+                <span className="text-xs whitespace-nowrap" style={{ color: "var(--theme-text-secondary)" }}>{formatDate(n.created_at as string)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════ TAB 10: Payment Config ═══════════ */
+function PaymentConfigTab() {
+  const [config, setConfig] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_payment_config"); setConfig(r || {}); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try { await adminAPI("update_payment_config", { config }); alert("تم حفظ الإعدادات"); } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    setSaving(false);
+  };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+
+  const fields = [
+    { key: "stripe_publishable_key", label: "Stripe Publishable Key" },
+    { key: "stripe_secret_key", label: "Stripe Secret Key" },
+    { key: "stripe_webhook_secret", label: "Stripe Webhook Secret" },
+    { key: "paymob_api_key", label: "Paymob API Key" },
+    { key: "paymob_integration_id", label: "Paymob Integration ID" },
+    { key: "paymob_iframe_id", label: "Paymob iFrame ID" },
+    { key: "paymob_hmac_secret", label: "Paymob HMAC Secret" },
+  ];
+
+  return (
+    <div>
+      <h3 className="font-bold mb-4" style={{ color: "var(--theme-text-primary)" }}>إعدادات بوابات الدفع</h3>
+      <div className="space-y-1">
+        {fields.map(f => (
+          <InputField key={f.key} label={f.label} value={config[f.key] || ""} onChange={v => setConfig({ ...config, [f.key]: v })} placeholder={f.label} dir="ltr" />
+        ))}
+      </div>
+      <button onClick={handleSave} disabled={saving} className="mt-4 w-full py-2.5 rounded-xl text-white font-medium flex items-center justify-center gap-2" style={{ background: "var(--theme-cta-gradient)" }}>
+        {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} حفظ الإعدادات
+      </button>
+    </div>
+  );
+}
+
+/* ═══════════ TAB 11: Plans ═══════════ */
+function PlansTab() {
+  const [plans, setPlans] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [modal, setModal] = useState<"create" | "edit" | null>(null);
+  const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
+  const [form, setForm] = useState({ name: "", price: "", duration_days: "", description: "", features: "" });
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_plans"); setPlans(Array.isArray(r) ? r : r.plans || []); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openCreate = () => { setForm({ name: "", price: "", duration_days: "", description: "", features: "" }); setEditItem(null); setModal("create"); };
+  const openEdit = (p: Record<string, unknown>) => {
+    setForm({
+      name: (p.name as string) || "", price: String(p.price || ""), duration_days: String(p.duration_days || p.duration || ""),
+      description: (p.description as string) || "",
+      features: Array.isArray(p.features) ? (p.features as string[]).join("\n") : (p.features as string) || "",
+    });
+    setEditItem(p); setModal("edit");
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const params = { ...form, price: Number(form.price), duration_days: Number(form.duration_days), features: form.features.split("\n").filter(Boolean) };
+      if (modal === "create") await adminAPI("create_plan", params);
+      else await adminAPI("update_plan", { plan_id: editItem?.id, ...params });
+      setModal(null); load();
+    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("هل أنت متأكد من حذف هذه الخطة؟")) return;
+    try { await adminAPI("delete_plan", { plan_id: id }); load(); } catch { load(); }
+  };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-bold" style={{ color: "var(--theme-text-primary)" }}>خطط الاشتراك ({plans.length})</h3>
+        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+          <Plus size={16} /> إضافة خطة
+        </button>
+      </div>
+
+      {plans.length === 0 ? <EmptyState message="لا توجد خطط" icon={<Package size={40} />} /> : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {plans.map((p, i) => (
+            <div key={i} className="rounded-2xl p-4" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
+              <div className="flex justify-between items-start mb-2">
+                <h4 className="font-bold" style={{ color: "var(--theme-text-primary)" }}>{(p.name as string) || "—"}</h4>
+                <div className="flex gap-1">
+                  <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={14} /></button>
+                  <button onClick={() => handleDelete(p.id as string)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={14} /></button>
+                </div>
+              </div>
+              <p className="text-2xl font-bold mb-1" style={{ color: "var(--theme-primary)" }}>{formatCurrency((p.price as number) || 0)}</p>
+              <p className="text-xs mb-2" style={{ color: "var(--theme-text-secondary)" }}>{(p.duration_days as number) || (p.duration as number) || 30} يوم</p>
+              {p.description && <p className="text-xs mb-2" style={{ color: "var(--theme-text-secondary)" }}>{p.description as string}</p>}
+              {Array.isArray(p.features) && (p.features as string[]).length > 0 && (
+                <ul className="space-y-1">
+                  {(p.features as string[]).map((f: string, j: number) => (
+                    <li key={j} className="flex items-center gap-1 text-xs" style={{ color: "var(--theme-text-secondary)" }}>
+                      <CheckCircle size={12} className="text-green-500 flex-shrink-0" /> {f}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal open={!!modal} onClose={() => setModal(null)} title={modal === "create" ? "إضافة خطة جديدة" : "تعديل الخطة"} onSave={handleSave} saving={saving}>
+        <InputField label="اسم الخطة" value={form.name} onChange={v => setForm({ ...form, name: v })} placeholder="مثال: الخطة الشهرية" />
+        <InputField label="السعر (ج.م)" value={form.price} onChange={v => setForm({ ...form, price: v })} type="number" placeholder="99" />
+        <InputField label="المدة (بالأيام)" value={form.duration_days} onChange={v => setForm({ ...form, duration_days: v })} type="number" placeholder="30" />
+        <InputField label="الوصف" value={form.description} onChange={v => setForm({ ...form, description: v })} placeholder="وصف الخطة" />
+        <div className="mb-3">
+          <label className="block text-sm font-medium mb-1" style={{ color: "var(--theme-text-secondary)" }}>المميزات (سطر لكل ميزة)</label>
+          <textarea value={form.features} onChange={e => setForm({ ...form, features: e.target.value })} rows={4} placeholder="وصول لجميع المواد&#10;امتحانات غير محدودة&#10;دعم فني"
+            className="w-full px-3 py-2 rounded-xl outline-none text-sm resize-none" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ═══════════ TAB 12: Secrets ═══════════ */
+function SecretsTab() {
+  const [secrets, setSecrets] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_secrets"); setSecrets(Array.isArray(r) ? r : r.secrets || []); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSave = async (key: string) => {
+    setSaving(true);
+    try { await adminAPI("update_secret", { key, value: editValue }); setEditKey(null); load(); } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    setSaving(false);
+  };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (secrets.length === 0) return <EmptyState message="لا توجد مفاتيح" icon={<Key size={40} />} />;
+
+  return (
+    <div>
+      <h3 className="font-bold mb-4" style={{ color: "var(--theme-text-primary)" }}>مفاتيح النظام</h3>
+      <div className="space-y-3">
+        {secrets.map((s, i) => {
+          const key = (s.key as string) || (s.name as string) || "";
+          const isEditing = editKey === key;
+          return (
+            <div key={i} className="rounded-xl p-4" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-mono text-sm font-medium" style={{ color: "var(--theme-text-primary)" }}>{key}</span>
+                {isEditing ? (
+                  <div className="flex gap-2">
+                    <button onClick={() => handleSave(key)} disabled={saving} className="px-3 py-1 rounded-lg text-xs text-white font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+                      {saving ? <Loader2 size={12} className="animate-spin" /> : "حفظ"}
+                    </button>
+                    <button onClick={() => setEditKey(null)} className="px-3 py-1 rounded-lg text-xs font-medium" style={{ color: "var(--theme-text-secondary)" }}>إلغاء</button>
+                  </div>
+                ) : (
+                  <button onClick={() => { setEditKey(key); setEditValue((s.value as string) || ""); }} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}>
+                    <Edit size={14} />
+                  </button>
+                )}
+              </div>
+              {isEditing ? (
+                <input value={editValue} onChange={e => setEditValue(e.target.value)} dir="ltr"
+                  className="w-full px-3 py-2 rounded-lg outline-none text-sm font-mono mt-1" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+              ) : (
+                <p className="text-xs font-mono" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>
+                  {(s.value as string) ? "••••••••••••" : "(فارغ)"}
+                </p>
+              )}
+              {s.description && <p className="text-xs mt-1" style={{ color: "var(--theme-text-secondary)" }}>{s.description as string}</p>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════ TAB 13: Settings ═══════════ */
+function SettingsTab() {
+  const [settings, setSettings] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const r = await adminAPI("get_settings"); setSettings(Array.isArray(r) ? r : r.settings || []); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSave = async (key: string) => {
+    setSaving(true);
+    try { await adminAPI("update_setting", { key, value: editValue }); setEditKey(null); load(); } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    setSaving(false);
+  };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (settings.length === 0) return <EmptyState message="لا توجد إعدادات" icon={<Settings size={40} />} />;
+
+  return (
+    <div>
+      <h3 className="font-bold mb-4" style={{ color: "var(--theme-text-primary)" }}>إعدادات الموقع</h3>
+      <div className="space-y-3">
+        {settings.map((s, i) => {
+          const key = (s.key as string) || (s.name as string) || "";
+          const val = (s.value as string) || "";
+          const isEditing = editKey === key;
+          const isBool = val === "true" || val === "false";
+          return (
+            <div key={i} className="rounded-xl p-4 flex items-center justify-between gap-4" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm" style={{ color: "var(--theme-text-primary)" }}>{(s.label as string) || key}</p>
+                {s.description && <p className="text-xs mt-0.5" style={{ color: "var(--theme-text-secondary)" }}>{s.description as string}</p>}
+                {isEditing && !isBool && (
+                  <input value={editValue} onChange={e => setEditValue(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg outline-none text-sm mt-2" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {isBool ? (
+                  <ToggleSwitch checked={val === "true"} onChange={async (v) => {
+                    try { await adminAPI("update_setting", { key, value: String(v) }); load(); } catch { load(); }
+                  }} />
+                ) : isEditing ? (
+                  <>
+                    <button onClick={() => handleSave(key)} disabled={saving} className="px-3 py-1 rounded-lg text-xs text-white font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+                      {saving ? <Loader2 size={12} className="animate-spin" /> : "حفظ"}
+                    </button>
+                    <button onClick={() => setEditKey(null)} className="px-3 py-1 rounded-lg text-xs" style={{ color: "var(--theme-text-secondary)" }}>إلغاء</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xs truncate max-w-[120px]" style={{ color: "var(--theme-text-secondary)" }}>{val || "(فارغ)"}</span>
+                    <button onClick={() => { setEditKey(key); setEditValue(val); }} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={14} /></button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

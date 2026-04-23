@@ -1,11 +1,26 @@
 "use client";
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  BookOpen, ChevronLeft, FileText, Loader2, AlertCircle,
-  Search, Layers, Bot, PlayCircle,
+  BookOpen,
+  ChevronLeft,
+  FileText,
+  Loader2,
+  AlertCircle,
+  Search,
+  Layers,
+  PlayCircle,
+  Brain,
+  CheckCircle,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  Hash,
 } from "lucide-react";
 import SubjectChat from "@/components/chat/SubjectChat";
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
 
 interface Subject {
   id: string;
@@ -13,9 +28,11 @@ interface Subject {
   icon: string;
   description: string;
   lesson_count: number;
+  question_count: number;
+  color: string;
 }
 
-interface Lesson {
+interface LessonSummary {
   id: string;
   title: string;
   sort_order: number;
@@ -28,7 +45,7 @@ interface SubjectDetail {
   name: string;
   icon: string;
   description: string;
-  lessons: Lesson[];
+  lessons: LessonSummary[];
 }
 
 interface LessonContent {
@@ -43,376 +60,854 @@ interface LessonContent {
   question_count: number;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Helper: icon mapping                                               */
+/* ------------------------------------------------------------------ */
+
+const ICON_MAP: Record<string, React.ReactNode> = {
+  BookOpen: <BookOpen size={28} />,
+  Brain: <Brain size={28} />,
+  Layers: <Layers size={28} />,
+  FileText: <FileText size={28} />,
+  Hash: <Hash size={28} />,
+};
+
+function SubjectIcon({ icon, size = 28 }: { icon: string; size?: number }) {
+  const Component = { BookOpen, Brain, Layers, FileText, Hash }[icon];
+  if (Component) return <Component size={size} />;
+  return <BookOpen size={size} />;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main Component                                                     */
+/* ------------------------------------------------------------------ */
+
 export default function SubjectsPage() {
+  /* ---------- state ---------- */
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
+  const [errorSubjects, setErrorSubjects] = useState<string | null>(null);
+
   const [selectedSubject, setSelectedSubject] = useState<SubjectDetail | null>(null);
-  const [loadingSubject, setLoadingSubject] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
+
   const [selectedLesson, setSelectedLesson] = useState<LessonContent | null>(null);
   const [loadingLesson, setLoadingLesson] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [error, setError] = useState("");
+  const [errorLesson, setErrorLesson] = useState<string | null>(null);
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchSubjects = async () => {
-      try {
-        const res = await fetch("/api/subjects", { credentials: "include" });
-        if (res.ok) {
-          const json = await res.json();
-          setSubjects(json.subjects || []);
-        }
-      } catch {
-        setError("فشل في جلب المواد");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSubjects();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  /* ---------- fetch subjects ---------- */
+  const fetchSubjects = useCallback(async () => {
+    setLoadingSubjects(true);
+    setErrorSubjects(null);
+    try {
+      const res = await fetch("/api/subjects", { credentials: "include" });
+      if (!res.ok) throw new Error("فشل في تحميل المواد");
+      const data = await res.json();
+      setSubjects(data.subjects ?? data ?? []);
+    } catch (err: any) {
+      setErrorSubjects(err.message ?? "حدث خطأ غير متوقع");
+    } finally {
+      setLoadingSubjects(false);
+    }
   }, []);
 
-  const handleSelectSubject = async (subjectId: string) => {
-    setLoadingSubject(true);
+  useEffect(() => {
+    fetchSubjects();
+  }, [fetchSubjects]);
+
+  /* ---------- fetch subject detail ---------- */
+  const openSubject = useCallback(async (id: string) => {
+    setLoadingDetail(true);
+    setErrorDetail(null);
     setSelectedLesson(null);
-    setError("");
+    setActiveLessonId(null);
     try {
-      const res = await fetch(`/api/subjects/${subjectId}`, {
-        credentials: "include",
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setSelectedSubject(json.data);
-      } else {
-        setError("فشل في جلب تفاصيل المادة");
-      }
-    } catch {
-      setError("فشل في الاتصال");
+      const res = await fetch(`/api/subjects/${id}`, { credentials: "include" });
+      if (!res.ok) throw new Error("فشل في تحميل تفاصيل المادة");
+      const data = await res.json();
+      setSelectedSubject(data.subject ?? data);
+    } catch (err: any) {
+      setErrorDetail(err.message ?? "حدث خطأ غير متوقع");
     } finally {
-      setLoadingSubject(false);
+      setLoadingDetail(false);
     }
-  };
+  }, []);
 
-  const handleSelectLesson = async (lessonId: string) => {
-    if (!selectedSubject) return;
-    setLoadingLesson(true);
-    setError("");
-    try {
-      const res = await fetch(
-        `/api/subjects/${selectedSubject.id}/lessons/${lessonId}`,
-        { credentials: "include" }
-      );
-      if (res.ok) {
-        const json = await res.json();
-        setSelectedLesson(json.data);
-      } else {
-        setError("فشل في جلب محتوى الدرس");
+  /* ---------- fetch lesson content ---------- */
+  const openLesson = useCallback(
+    async (lessonId: string) => {
+      if (!selectedSubject) return;
+      if (activeLessonId === lessonId) {
+        // toggle off
+        setActiveLessonId(null);
+        setSelectedLesson(null);
+        return;
       }
-    } catch {
-      setError("فشل في الاتصال");
-    } finally {
-      setLoadingLesson(false);
-    }
-  };
-
-  const filteredSubjects = subjects.filter((s) =>
-    s.name.includes(searchQuery)
+      setActiveLessonId(lessonId);
+      setLoadingLesson(true);
+      setErrorLesson(null);
+      try {
+        const res = await fetch(
+          `/api/subjects/${selectedSubject.id}/lessons/${lessonId}`,
+          { credentials: "include" }
+        );
+        if (!res.ok) throw new Error("فشل في تحميل محتوى الدرس");
+        const data = await res.json();
+        setSelectedLesson(data.lesson ?? data);
+      } catch (err: any) {
+        setErrorLesson(err.message ?? "حدث خطأ غير متوقع");
+      } finally {
+        setLoadingLesson(false);
+      }
+    },
+    [selectedSubject, activeLessonId]
   );
 
-  if (loading) {
+  /* ---------- go back ---------- */
+  const goBack = () => {
+    setSelectedSubject(null);
+    setSelectedLesson(null);
+    setActiveLessonId(null);
+    setErrorDetail(null);
+    setErrorLesson(null);
+  };
+
+  /* ---------- filtered subjects ---------- */
+  const filtered = subjects.filter(
+    (s) =>
+      s.name.includes(searchQuery) ||
+      s.description.includes(searchQuery)
+  );
+
+  /* ================================================================ */
+  /*  RENDER — Subject List                                            */
+  /* ================================================================ */
+
+  if (!selectedSubject && !loadingDetail) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <Loader2 size={40} className="animate-spin mx-auto mb-4" style={{ color: "var(--theme-primary)" }} />
-          <p className="text-sm font-bold" style={{ color: "var(--theme-text-secondary)" }}>
-            جارٍ تحميل المواد...
-          </p>
+      <div className="min-h-screen p-4 md:p-8" dir="rtl">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center"
+            style={{ background: "var(--theme-cta-gradient)" }}
+          >
+            <BookOpen size={22} className="text-white" />
+          </div>
+          <h1
+            className="text-2xl font-extrabold"
+            style={{ color: "var(--theme-text-primary)" }}
+          >
+            المواد الدراسية
+          </h1>
         </div>
+
+        {/* Search */}
+        <div className="relative mb-6 max-w-md">
+          <Search
+            size={18}
+            className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40"
+            style={{ color: "var(--theme-text-secondary)" }}
+          />
+          <input
+            type="text"
+            placeholder="ابحث عن مادة..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pr-10 pl-4 py-2.5 rounded-xl border outline-none text-sm transition-colors focus:ring-2"
+            style={{
+              background: "var(--theme-surface-bg)",
+              borderColor: "var(--theme-surface-border)",
+              color: "var(--theme-text-primary)",
+            }}
+          />
+        </div>
+
+        {/* Loading */}
+        {loadingSubjects && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2
+              size={36}
+              className="animate-spin"
+              style={{ color: "var(--theme-primary)" }}
+            />
+            <span
+              className="text-sm"
+              style={{ color: "var(--theme-text-secondary)" }}
+            >
+              جاري تحميل المواد...
+            </span>
+          </div>
+        )}
+
+        {/* Error */}
+        {errorSubjects && (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <AlertCircle size={40} className="text-red-500" />
+            <p className="text-red-500 text-sm">{errorSubjects}</p>
+            <button
+              onClick={fetchSubjects}
+              className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ background: "var(--theme-cta-gradient)" }}
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
+
+        {/* Empty */}
+        {!loadingSubjects && !errorSubjects && filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <BookOpen
+              size={48}
+              className="opacity-30"
+              style={{ color: "var(--theme-text-secondary)" }}
+            />
+            <p
+              className="text-sm"
+              style={{ color: "var(--theme-text-secondary)" }}
+            >
+              {searchQuery
+                ? "لا توجد نتائج مطابقة للبحث"
+                : "لا توجد مواد دراسية متاحة حالياً"}
+            </p>
+          </div>
+        )}
+
+        {/* Subject Grid */}
+        {!loadingSubjects && !errorSubjects && filtered.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((subject) => (
+              <button
+                key={subject.id}
+                onClick={() => openSubject(subject.id)}
+                className="group text-right rounded-2xl p-5 border transition-all duration-200 hover:shadow-lg"
+                style={{
+                  background: "var(--theme-surface-bg)",
+                  borderColor: "var(--theme-surface-border)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor =
+                    subject.color || "var(--theme-primary)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor =
+                    "var(--theme-surface-border)";
+                }}
+              >
+                {/* Icon */}
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
+                  style={{
+                    background: `${subject.color || "var(--theme-primary)"}18`,
+                    color: subject.color || "var(--theme-primary)",
+                  }}
+                >
+                  <SubjectIcon icon={subject.icon} size={26} />
+                </div>
+
+                {/* Name */}
+                <h3
+                  className="mb-1"
+                  style={{
+                    fontSize: "1.25rem",
+                    fontWeight: 800,
+                    color: "var(--theme-text-primary)",
+                  }}
+                >
+                  {subject.name}
+                </h3>
+
+                {/* Description */}
+                <p
+                  className="text-sm mb-3 line-clamp-2 leading-relaxed"
+                  style={{ color: "var(--theme-text-secondary)" }}
+                >
+                  {subject.description}
+                </p>
+
+                {/* Meta */}
+                <div className="flex items-center gap-4 text-xs" style={{ color: "var(--theme-text-secondary)" }}>
+                  <span className="flex items-center gap-1">
+                    <Layers size={14} />
+                    {subject.lesson_count} درس
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <MessageSquare size={14} />
+                    {subject.question_count} سؤال
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
+  /* ================================================================ */
+  /*  RENDER — Loading Detail                                          */
+  /* ================================================================ */
+
+  if (loadingDetail) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-3"
+        dir="rtl"
+      >
+        <Loader2
+          size={36}
+          className="animate-spin"
+          style={{ color: "var(--theme-primary)" }}
+        />
+        <span
+          className="text-sm"
+          style={{ color: "var(--theme-text-secondary)" }}
+        >
+          جاري تحميل المادة...
+        </span>
+      </div>
+    );
+  }
+
+  /* ================================================================ */
+  /*  RENDER — Error Detail                                            */
+  /* ================================================================ */
+
+  if (errorDetail) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-4"
+        dir="rtl"
+      >
+        <AlertCircle size={40} className="text-red-500" />
+        <p className="text-red-500 text-sm">{errorDetail}</p>
+        <button
+          onClick={goBack}
+          className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          style={{ background: "var(--theme-cta-gradient)" }}
+        >
+          العودة للمواد
+        </button>
+      </div>
+    );
+  }
+
+  /* ================================================================ */
+  /*  RENDER — Subject Detail (Split Layout)                           */
+  /* ================================================================ */
+
+  if (!selectedSubject) return null;
+
+  const sortedLessons = [...(selectedSubject.lessons || [])].sort(
+    (a, b) => a.sort_order - b.sort_order
+  );
+
   return (
-    <div className="flex h-[calc(100vh-4rem)]" style={{ color: "var(--theme-text-primary)" }}>
-      {/* Main Content — 62% */}
-      <div className="w-[62%] overflow-y-auto p-6 space-y-6" style={{ borderLeft: "1px solid var(--theme-surface-border)" }}>
-        {/* Header */}
-        <div className="flex items-center justify-between">
+    <div
+      className="flex flex-col lg:flex-row gap-0 lg:gap-0"
+      dir="rtl"
+      style={{ height: "calc(100vh - 4rem)" }}
+    >
+      {/* ============ RIGHT: Content (62%) ============ */}
+      <div
+        className="w-full lg:w-[62%] overflow-y-auto p-4 md:p-6"
+        style={{ height: "calc(100vh - 4rem)" }}
+      >
+        {/* Back + Header */}
+        <div className="flex items-center gap-3 mb-5">
+          <button
+            onClick={goBack}
+            className="w-9 h-9 rounded-xl flex items-center justify-center border transition-colors hover:opacity-80"
+            style={{
+              background: "var(--theme-surface-bg)",
+              borderColor: "var(--theme-surface-border)",
+              color: "var(--theme-text-primary)",
+            }}
+          >
+            <ChevronLeft size={18} style={{ transform: "scaleX(-1)" }} />
+          </button>
+
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{
+              background: "var(--theme-cta-gradient)",
+            }}
+          >
+            <SubjectIcon icon={selectedSubject.icon} size={20} />
+          </div>
+
           <div>
-            <h1 className="text-2xl font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
-              📚 المواد الدراسية
+            <h1
+              style={{
+                fontSize: "1.25rem",
+                fontWeight: 800,
+                color: "var(--theme-text-primary)",
+              }}
+            >
+              {selectedSubject.name}
             </h1>
-            <p className="text-sm mt-1" style={{ color: "var(--theme-text-secondary)" }}>
-              اختر مادة ثم درس لبدء المذاكرة
+            <p
+              className="text-xs"
+              style={{ color: "var(--theme-text-secondary)" }}
+            >
+              {selectedSubject.description}
             </p>
           </div>
-          {selectedSubject && (
-            <button
-              onClick={() => {
-                setSelectedSubject(null);
-                setSelectedLesson(null);
-              }}
-              className="themed-btn-outline text-sm flex items-center gap-1"
-            >
-              كل المواد
-            </button>
-          )}
         </div>
 
-        {/* Search */}
-        {!selectedSubject && (
-          <div className="relative">
-            <Search size={18} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "var(--theme-text-muted)" }} />
-            <input
-              className="themed-input pr-10 w-full"
-              placeholder="ابحث عن مادة..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        )}
-
-        {error && (
-          <div
-            className="p-3 rounded-lg text-sm font-bold flex items-center gap-2"
-            style={{ background: "rgba(220,38,38,0.1)", color: "#DC2626", border: "1px solid rgba(220,38,38,0.3)" }}
+        {/* Lessons Header */}
+        <div className="flex items-center gap-2 mb-4">
+          <Layers size={18} style={{ color: "var(--theme-primary)" }} />
+          <h2
+            className="text-base font-bold"
+            style={{ color: "var(--theme-text-primary)" }}
           >
-            <AlertCircle size={16} />
-            {error}
-          </div>
-        )}
+            الدروس ({sortedLessons.length})
+          </h2>
+        </div>
 
-        {/* Subject List */}
-        {!selectedSubject && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {filteredSubjects.length > 0 ? (
-              filteredSubjects.map((subject) => (
-                <button
-                  key={subject.id}
-                  onClick={() => handleSelectSubject(subject.id)}
-                  className="themed-card p-5 text-right block w-full hover:shadow-lg transition-shadow cursor-pointer"
-                  style={{ border: "none" }}
+        {/* Lessons Grid */}
+        {sortedLessons.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <FileText
+              size={40}
+              className="opacity-30"
+              style={{ color: "var(--theme-text-secondary)" }}
+            />
+            <p
+              className="text-sm"
+              style={{ color: "var(--theme-text-secondary)" }}
+            >
+              لا توجد دروس متاحة حالياً لهذه المادة
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            {sortedLessons.map((lesson, idx) => (
+              <button
+                key={lesson.id}
+                onClick={() => openLesson(lesson.id)}
+                className="text-right rounded-xl p-3.5 border transition-all duration-200 hover:shadow-md flex items-start gap-3"
+                style={{
+                  background:
+                    activeLessonId === lesson.id
+                      ? "var(--theme-primary-light, rgba(99,102,241,0.08))"
+                      : "var(--theme-surface-bg)",
+                  borderColor:
+                    activeLessonId === lesson.id
+                      ? "var(--theme-primary)"
+                      : "var(--theme-surface-border)",
+                }}
+              >
+                {/* Lesson number */}
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                  style={{
+                    background:
+                      activeLessonId === lesson.id
+                        ? "var(--theme-cta-gradient)"
+                        : "var(--theme-surface-border)",
+                    color:
+                      activeLessonId === lesson.id
+                        ? "#fff"
+                        : "var(--theme-text-secondary)",
+                  }}
                 >
-                  <div className="text-3xl mb-3">{subject.icon || "📖"}</div>
-                  <h3 className="text-lg font-extrabold mb-1" style={{ color: "var(--theme-text-primary)" }}>
-                    {subject.name}
-                  </h3>
-                  <p className="text-xs mb-3" style={{ color: "var(--theme-text-secondary)" }}>
-                    {subject.description || ""}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold flex items-center gap-1" style={{ color: "var(--theme-text-muted)" }}>
-                      <Layers size={14} />
-                      {subject.lesson_count || 0} درس
-                    </span>
-                    <span className="text-xs font-bold flex items-center gap-1" style={{ color: "var(--theme-primary)" }}>
-                      عرض الدروس
-                      <ChevronLeft size={14} />
+                  {idx + 1}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <h4
+                    className="text-sm font-bold truncate"
+                    style={{ color: "var(--theme-text-primary)" }}
+                  >
+                    {lesson.title}
+                  </h4>
+                  <div
+                    className="flex items-center gap-3 mt-1 text-xs"
+                    style={{ color: "var(--theme-text-secondary)" }}
+                  >
+                    {lesson.has_summary && (
+                      <span className="flex items-center gap-1">
+                        <CheckCircle size={12} />
+                        ملخّص
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <MessageSquare size={12} />
+                      {lesson.question_count} سؤال
                     </span>
                   </div>
-                </button>
-              ))
-            ) : (
-              <div className="col-span-2 themed-card p-8 text-center">
-                <div className="text-4xl mb-3">📚</div>
-                <p className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                  لا توجد مواد متاحة حالياً
-                </p>
+                </div>
+
+                {/* Expand indicator */}
+                <div
+                  className="flex-shrink-0 mt-1"
+                  style={{ color: "var(--theme-text-secondary)" }}
+                >
+                  {activeLessonId === lesson.id ? (
+                    <ChevronUp size={16} />
+                  ) : (
+                    <ChevronDown size={16} />
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ---- Lesson Content (below grid) ---- */}
+        {activeLessonId && (
+          <div
+            className="rounded-2xl border p-5 mb-4 transition-all duration-300 animate-in fade-in slide-in-from-top-2"
+            style={{
+              background: "var(--theme-surface-bg)",
+              borderColor: "var(--theme-surface-border)",
+            }}
+          >
+            {loadingLesson && (
+              <div className="flex items-center justify-center py-10 gap-3">
+                <Loader2
+                  size={24}
+                  className="animate-spin"
+                  style={{ color: "var(--theme-primary)" }}
+                />
+                <span
+                  className="text-sm"
+                  style={{ color: "var(--theme-text-secondary)" }}
+                >
+                  جاري تحميل محتوى الدرس...
+                </span>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Loading Subject */}
-        {loadingSubject && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={30} className="animate-spin" style={{ color: "var(--theme-primary)" }} />
-          </div>
-        )}
-
-        {/* Subject Detail: Lesson list */}
-        {selectedSubject && !loadingSubject && !selectedLesson && (
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-3xl">{selectedSubject.icon || "📖"}</span>
-              <div>
-                <h2 className="text-xl font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
-                  {selectedSubject.name}
-                </h2>
-                <p className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>
-                  {selectedSubject.lessons?.length || 0} درس
-                </p>
-              </div>
-            </div>
-            <div className="space-y-3">
-              {(selectedSubject.lessons || []).map((lesson, i) => (
+            {errorLesson && (
+              <div className="flex flex-col items-center justify-center py-8 gap-3">
+                <AlertCircle size={28} className="text-red-500" />
+                <p className="text-red-500 text-sm">{errorLesson}</p>
                 <button
-                  key={lesson.id}
-                  onClick={() => handleSelectLesson(lesson.id)}
-                  className="themed-card p-4 w-full text-right flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer"
-                  style={{ border: "none" }}
+                  onClick={() => openLesson(activeLessonId)}
+                  className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90"
+                  style={{ background: "var(--theme-cta-gradient)" }}
                 >
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-sm font-extrabold"
-                    style={{ background: "var(--theme-cta-gradient)", color: "#fff" }}
-                  >
-                    {i + 1}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-sm font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
-                      {lesson.title}
-                    </h3>
-                    <div className="flex items-center gap-3 mt-1">
-                      {lesson.has_summary && (
-                        <span className="text-xs flex items-center gap-1" style={{ color: "var(--theme-text-muted)" }}>
-                          <FileText size={12} />
-                          ملخص
-                        </span>
-                      )}
-                      {lesson.question_count > 0 && (
-                        <span className="text-xs flex items-center gap-1" style={{ color: "var(--theme-text-muted)" }}>
-                          <PlayCircle size={12} />
-                          {lesson.question_count} سؤال
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <ChevronLeft size={18} style={{ color: "var(--theme-text-muted)" }} />
+                  إعادة المحاولة
                 </button>
-              ))}
-              {(selectedSubject.lessons || []).length === 0 && (
-                <div className="themed-card p-8 text-center">
-                  <p className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                    لا توجد دروس متاحة حالياً لهذه المادة
-                  </p>
+              </div>
+            )}
+
+            {!loadingLesson && !errorLesson && selectedLesson && (
+              <>
+                {/* Lesson Title */}
+                <div className="flex items-center gap-2 mb-4">
+                  <PlayCircle
+                    size={20}
+                    style={{ color: "var(--theme-primary)" }}
+                  />
+                  <h3
+                    className="text-lg font-bold"
+                    style={{ color: "var(--theme-text-primary)" }}
+                  >
+                    {selectedLesson.title}
+                  </h3>
                 </div>
-              )}
-            </div>
-          </div>
-        )}
 
-        {/* Loading lesson */}
-        {loadingLesson && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={30} className="animate-spin" style={{ color: "var(--theme-primary)" }} />
-          </div>
-        )}
-
-        {/* Lesson Content */}
-        {selectedLesson && !loadingLesson && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setSelectedLesson(null)}
-                className="themed-btn-outline text-sm"
-              >
-                ← رجوع للدروس
-              </button>
-              <h2 className="text-lg font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
-                {selectedLesson.title}
-              </h2>
-            </div>
-
-            {selectedLesson.summary ? (
-              <div className="space-y-5">
-                {/* Key points */}
-                {selectedLesson.summary.key_points?.length > 0 && (
-                  <div className="themed-card p-5">
-                    <h3 className="text-base font-extrabold mb-3 flex items-center gap-2" style={{ color: "var(--theme-text-primary)" }}>
-                      💡 النقاط الرئيسية
-                    </h3>
-                    <ul className="space-y-2">
-                      {selectedLesson.summary.key_points.map((p, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                          <span className="mt-1 w-2 h-2 rounded-full flex-shrink-0" style={{ background: "var(--theme-primary)" }} />
-                          {p}
-                        </li>
-                      ))}
-                    </ul>
+                {!selectedLesson.summary ? (
+                  <div className="flex flex-col items-center py-8 gap-2">
+                    <FileText
+                      size={32}
+                      className="opacity-30"
+                      style={{ color: "var(--theme-text-secondary)" }}
+                    />
+                    <p
+                      className="text-sm"
+                      style={{ color: "var(--theme-text-secondary)" }}
+                    >
+                      لا يوجد ملخّص متاح لهذا الدرس بعد
+                    </p>
                   </div>
-                )}
+                ) : (
+                  <div className="space-y-5">
+                    {/* Key Points */}
+                    {selectedLesson.summary.key_points &&
+                      selectedLesson.summary.key_points.length > 0 && (
+                        <div>
+                          <h4
+                            className="text-sm font-bold mb-2 flex items-center gap-1.5"
+                            style={{ color: "var(--theme-primary)" }}
+                          >
+                            <Brain size={16} />
+                            النقاط الرئيسية
+                          </h4>
+                          <ul className="space-y-1.5">
+                            {selectedLesson.summary.key_points.map(
+                              (point, i) => (
+                                <li
+                                  key={i}
+                                  className="flex items-start gap-2 text-sm leading-relaxed"
+                                  style={{
+                                    color: "var(--theme-text-primary)",
+                                  }}
+                                >
+                                  <CheckCircle
+                                    size={14}
+                                    className="mt-1 flex-shrink-0"
+                                    style={{ color: "var(--theme-primary)" }}
+                                  />
+                                  {point}
+                                </li>
+                              )
+                            )}
+                          </ul>
+                        </div>
+                      )}
 
-                {/* Definitions */}
-                {selectedLesson.summary.definitions?.length > 0 && (
-                  <div className="themed-card p-5">
-                    <h3 className="text-base font-extrabold mb-3 flex items-center gap-2" style={{ color: "var(--theme-text-primary)" }}>
-                      📝 التعريفات
-                    </h3>
-                    <div className="space-y-3">
-                      {selectedLesson.summary.definitions.map((d, i) => (
-                        <div key={i} className="p-3 rounded-lg" style={{ background: "var(--theme-hover-overlay)" }}>
-                          <div className="text-sm font-extrabold mb-1" style={{ color: "var(--theme-primary)" }}>
-                            {d.term}
-                          </div>
-                          <div className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                            {d.definition}
+                    {/* Definitions Table */}
+                    {selectedLesson.summary.definitions &&
+                      selectedLesson.summary.definitions.length > 0 && (
+                        <div>
+                          <h4
+                            className="text-sm font-bold mb-2 flex items-center gap-1.5"
+                            style={{ color: "var(--theme-primary)" }}
+                          >
+                            <BookOpen size={16} />
+                            التعريفات
+                          </h4>
+                          <div
+                            className="rounded-xl border overflow-hidden"
+                            style={{
+                              borderColor: "var(--theme-surface-border)",
+                            }}
+                          >
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr
+                                  style={{
+                                    background:
+                                      "var(--theme-surface-border)",
+                                  }}
+                                >
+                                  <th
+                                    className="py-2 px-3 text-right font-bold"
+                                    style={{
+                                      color: "var(--theme-text-primary)",
+                                    }}
+                                  >
+                                    المصطلح
+                                  </th>
+                                  <th
+                                    className="py-2 px-3 text-right font-bold"
+                                    style={{
+                                      color: "var(--theme-text-primary)",
+                                    }}
+                                  >
+                                    التعريف
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedLesson.summary.definitions.map(
+                                  (def, i) => (
+                                    <tr
+                                      key={i}
+                                      className="border-t"
+                                      style={{
+                                        borderColor:
+                                          "var(--theme-surface-border)",
+                                      }}
+                                    >
+                                      <td
+                                        className="py-2 px-3 font-semibold"
+                                        style={{
+                                          color: "var(--theme-text-primary)",
+                                        }}
+                                      >
+                                        {def.term}
+                                      </td>
+                                      <td
+                                        className="py-2 px-3"
+                                        style={{
+                                          color:
+                                            "var(--theme-text-secondary)",
+                                        }}
+                                      >
+                                        {def.definition}
+                                      </td>
+                                    </tr>
+                                  )
+                                )}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                      )}
 
-                {/* Laws */}
-                {selectedLesson.summary.laws && selectedLesson.summary.laws.length > 0 && (
-                  <div className="themed-card p-5">
-                    <h3 className="text-base font-extrabold mb-3 flex items-center gap-2" style={{ color: "var(--theme-text-primary)" }}>
-                      ⚖️ القوانين
-                    </h3>
-                    <div className="space-y-3">
-                      {selectedLesson.summary.laws.map((l, i) => (
-                        <div key={i} className="p-3 rounded-lg" style={{ background: "var(--theme-hover-overlay)" }}>
-                          <div className="text-sm font-extrabold mb-1" style={{ color: "var(--theme-primary)" }}>
-                            {l.name}
-                          </div>
-                          {l.formula && (
-                            <div className="text-sm font-mono mb-1 px-2 py-1 rounded" style={{ background: "var(--theme-surface-border)", color: "var(--theme-text-primary)" }}>
-                              {l.formula}
-                            </div>
-                          )}
-                          <div className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                            {l.description}
+                    {/* Laws / Formulas */}
+                    {selectedLesson.summary.laws &&
+                      selectedLesson.summary.laws.length > 0 && (
+                        <div>
+                          <h4
+                            className="text-sm font-bold mb-2 flex items-center gap-1.5"
+                            style={{ color: "var(--theme-primary)" }}
+                          >
+                            <Hash size={16} />
+                            القوانين والصيغ
+                          </h4>
+                          <div className="space-y-2">
+                            {selectedLesson.summary.laws.map((law, i) => (
+                              <div
+                                key={i}
+                                className="rounded-xl border p-3"
+                                style={{
+                                  background:
+                                    "var(--theme-surface-bg)",
+                                  borderColor:
+                                    "var(--theme-surface-border)",
+                                }}
+                              >
+                                <p
+                                  className="font-bold text-sm mb-1"
+                                  style={{
+                                    color: "var(--theme-text-primary)",
+                                  }}
+                                >
+                                  {law.name}
+                                </p>
+                                {law.formula && (
+                                  <p
+                                    className="text-sm font-mono mb-1 py-1 px-2 rounded-lg inline-block"
+                                    dir="ltr"
+                                    style={{
+                                      background:
+                                        "var(--theme-surface-border)",
+                                      color: "var(--theme-primary)",
+                                    }}
+                                  >
+                                    {law.formula}
+                                  </p>
+                                )}
+                                <p
+                                  className="text-xs leading-relaxed"
+                                  style={{
+                                    color: "var(--theme-text-secondary)",
+                                  }}
+                                >
+                                  {law.description}
+                                </p>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                      )}
 
-                {/* Examples */}
-                {selectedLesson.summary.examples && selectedLesson.summary.examples.length > 0 && (
-                  <div className="themed-card p-5">
-                    <h3 className="text-base font-extrabold mb-3 flex items-center gap-2" style={{ color: "var(--theme-text-primary)" }}>
-                      📌 أمثلة
-                    </h3>
-                    <div className="space-y-3">
-                      {selectedLesson.summary.examples.map((ex, i) => (
-                        <div key={i} className="p-3 rounded-lg" style={{ background: "var(--theme-hover-overlay)" }}>
-                          <div className="text-sm font-extrabold mb-1" style={{ color: "var(--theme-text-primary)" }}>
-                            {ex.title}
-                          </div>
-                          <div className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                            {ex.content}
+                    {/* Examples */}
+                    {selectedLesson.summary.examples &&
+                      selectedLesson.summary.examples.length > 0 && (
+                        <div>
+                          <h4
+                            className="text-sm font-bold mb-2 flex items-center gap-1.5"
+                            style={{ color: "var(--theme-primary)" }}
+                          >
+                            <PlayCircle size={16} />
+                            أمثلة
+                          </h4>
+                          <div className="space-y-2">
+                            {selectedLesson.summary.examples.map(
+                              (example, i) => (
+                                <div
+                                  key={i}
+                                  className="rounded-xl border p-3"
+                                  style={{
+                                    background:
+                                      "var(--theme-surface-bg)",
+                                    borderColor:
+                                      "var(--theme-surface-border)",
+                                  }}
+                                >
+                                  <p
+                                    className="font-bold text-sm mb-1"
+                                    style={{
+                                      color: "var(--theme-text-primary)",
+                                    }}
+                                  >
+                                    {example.title}
+                                  </p>
+                                  <p
+                                    className="text-sm leading-relaxed whitespace-pre-wrap"
+                                    style={{
+                                      color: "var(--theme-text-secondary)",
+                                    }}
+                                  >
+                                    {example.content}
+                                  </p>
+                                </div>
+                              )
+                            )}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      )}
                   </div>
                 )}
-              </div>
-            ) : (
-              <div className="themed-card p-8 text-center">
-                <div className="text-4xl mb-3">📝</div>
-                <p className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>
-                  لم يتم إعداد ملخص لهذا الدرس بعد. اسأل المساعد الذكي عن أي شيء!
-                </p>
-              </div>
+              </>
             )}
           </div>
         )}
       </div>
 
-      {/* Chat Panel — 38% */}
-      <div className="w-[38%] flex flex-col h-full overflow-hidden">
-        <SubjectChat subjectId={selectedSubject?.id || null} subjectName={selectedSubject?.name || null} />
+      {/* ============ LEFT: AI Chat (38%) ============ */}
+      <div
+        className="w-full lg:w-[38%] lg:border-r"
+        style={{
+          borderColor: "var(--theme-surface-border)",
+          height: "calc(100vh - 4rem)",
+        }}
+      >
+        {/* Chat Header */}
+        <div
+          className="flex items-center gap-2 px-4 py-3 border-b"
+          style={{
+            background: "var(--theme-surface-bg)",
+            borderColor: "var(--theme-surface-border)",
+          }}
+        >
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: "var(--theme-cta-gradient)" }}
+          >
+            <Brain size={16} className="text-white" />
+          </div>
+          <div>
+            <h3
+              className="text-sm font-bold"
+              style={{ color: "var(--theme-text-primary)" }}
+            >
+              أستاذك الذكي
+            </h3>
+            <p
+              className="text-xs"
+              style={{ color: "var(--theme-text-secondary)" }}
+            >
+              اسأل عن {selectedSubject.name}
+            </p>
+          </div>
+        </div>
+
+        {/* Chat Component */}
+        <div
+          style={{
+            height: "calc(100vh - 4rem - 3.5rem)",
+            overflow: "hidden",
+          }}
+        >
+          <SubjectChat
+            subjectId={selectedSubject.id}
+            subjectName={selectedSubject.name}
+          />
+        </div>
       </div>
     </div>
   );
