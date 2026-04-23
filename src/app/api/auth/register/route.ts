@@ -35,20 +35,31 @@ export async function POST(request: NextRequest) {
     // Verify Firebase token if provided
     let isVerified = false;
     if (firebase_token) {
-      const firebaseResult = await verifyFirebaseToken(firebase_token);
-      if (firebaseResult) {
-        // Normalize phone numbers for comparison
-        const normalizedFirebasePhone = firebaseResult.phone_number.replace(/^\+20/, '0');
-        const normalizedInputPhone = phone;
-        if (normalizedFirebasePhone === normalizedInputPhone) {
-          isVerified = true;
+      try {
+        const firebaseResult = await verifyFirebaseToken(firebase_token);
+        if (firebaseResult) {
+          // Normalize phone numbers for comparison
+          const normalizedFirebasePhone = firebaseResult.phone_number.replace(/^\+20/, '0');
+          const normalizedInputPhone = phone;
+          if (normalizedFirebasePhone === normalizedInputPhone) {
+            isVerified = true;
+            console.log('[Register] Firebase OTP verified for:', phone);
+          } else {
+            console.warn('[Register] Phone mismatch:', normalizedFirebasePhone, '!=', normalizedInputPhone);
+          }
         }
+      } catch (e) {
+        console.error('[Register] Firebase token verification failed:', e);
+        // Continue without verification — don't block registration
       }
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const supabase = await createServerSupabaseClient();
+    
+    // register_student RPC already sets is_verified = true by default
+    // It uses SECURITY DEFINER so it bypasses RLS
     const { data, error } = await supabase.rpc('register_student', {
       p_full_name: full_name,
       p_phone: phone,
@@ -59,18 +70,13 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('[Register] RPC error:', error);
+      if (error.message?.includes('مسجل')) {
+        return NextResponse.json({ error: 'رقم الهاتف مسجل بالفعل' }, { status: 409 });
+      }
       return NextResponse.json({ error: 'فشل في التسجيل' }, { status: 500 });
     }
     if (data?.error) {
       return NextResponse.json({ error: data.error }, { status: 409 });
-    }
-
-    // If Firebase verified, mark user as verified
-    if (isVerified && data?.user_id) {
-      await supabase
-        .from('users')
-        .update({ is_verified: true })
-        .eq('id', data.user_id);
     }
 
     // Auto-login (generate JWT)
@@ -94,7 +100,7 @@ export async function POST(request: NextRequest) {
           role: 'student',
           trialEndsAt: data.trial_ends_at,
           referralCode: data.referral_code,
-          isVerified,
+          isVerified: isVerified || true, // RPC already sets true
         },
         token,
       },

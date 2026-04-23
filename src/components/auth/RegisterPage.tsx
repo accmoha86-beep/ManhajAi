@@ -34,6 +34,8 @@ export default function RegisterPage() {
   const [otpTimer, setOtpTimer] = useState(120);
   const [canResend, setCanResend] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
+  const [otpSendFailed, setOtpSendFailed] = useState(false);
+  const [otpFailCount, setOtpFailCount] = useState(0);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const recaptchaRef = useRef<HTMLDivElement>(null);
 
@@ -48,17 +50,32 @@ export default function RegisterPage() {
     const checkFirebase = async () => {
       try {
         const mod = await import("@/infrastructure/firebase/config");
-        setFirebaseConfigured(mod.isFirebaseConfigured());
-      } catch {
+        const configured = mod.isFirebaseConfigured();
+        console.log("[Register] Firebase configured:", configured);
+        setFirebaseConfigured(configured);
+      } catch (e) {
+        console.error("[Register] Firebase check failed:", e);
         setFirebaseConfigured(false);
       }
     };
     const checkOtpSetting = async () => {
       try {
-        const res = await fetch("/api/public/settings");
-        const data = await res.json();
-        setOtpEnabledByAdmin(data.otp_enabled === true || data.otp_enabled === "true");
+        // Try correct URL first, then fallback
+        let res = await fetch("/api/settings/public");
+        if (!res.ok) {
+          res = await fetch("/api/public/settings");
+        }
+        if (res.ok) {
+          const data = await res.json();
+          const enabled = data.otp_enabled === true || data.otp_enabled === "true";
+          console.log("[Register] OTP enabled by admin:", enabled);
+          setOtpEnabledByAdmin(enabled);
+        } else {
+          console.warn("[Register] Settings fetch failed, defaulting OTP to true");
+          setOtpEnabledByAdmin(true);
+        }
       } catch {
+        console.warn("[Register] Settings fetch error, defaulting OTP to true");
         setOtpEnabledByAdmin(true);
       }
     };
@@ -82,33 +99,64 @@ export default function RegisterPage() {
     if (!phone) return;
     setOtpSending(true);
     setError("");
+    setOtpSendFailed(false);
     try {
       const { setupRecaptcha, sendFirebaseOTP } = await import("@/infrastructure/firebase/config");
+      
+      // Clear any existing reCAPTCHA
+      const container = document.getElementById("recaptcha-container");
+      if (container) {
+        container.innerHTML = "";
+      }
+      
       const recaptchaVerifier = await setupRecaptcha("recaptcha-container");
       if (!recaptchaVerifier) {
-        throw new Error("Failed to setup reCAPTCHA");
+        throw new Error("reCAPTCHA setup failed");
       }
+      
+      console.log("[OTP] Sending to phone:", phone);
       const result = await sendFirebaseOTP(phone, recaptchaVerifier);
+      console.log("[OTP] Sent successfully");
       setConfirmationResult(result as unknown as ConfirmationResultType);
       setOtpTimer(120);
       setCanResend(false);
-    } catch (e) {
-      console.error("[OTP] Send failed:", e);
-      setError("فشل إرسال كود التحقق. تأكد من صحة رقم الهاتف");
+      setOtpSendFailed(false);
+      setOtpFailCount(0);
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error("[OTP] Send failed:", errMsg);
+      
+      // Specific Firebase error messages
+      let userMsg = "فشل إرسال كود التحقق";
+      if (errMsg.includes("quota") || errMsg.includes("TOO_MANY") || errMsg.includes("too-many-requests")) {
+        userMsg = "تم تجاوز الحد اليومي لإرسال الرسائل. يمكنك تخطي التحقق والمتابعة";
+      } else if (errMsg.includes("invalid-phone") || errMsg.includes("INVALID_PHONE")) {
+        userMsg = "رقم الهاتف غير صحيح. تأكد من الرقم";
+      } else if (errMsg.includes("captcha") || errMsg.includes("CAPTCHA")) {
+        userMsg = "فشل التحقق الأمني. حاول مرة أخرى";
+      } else if (errMsg.includes("network") || errMsg.includes("fetch")) {
+        userMsg = "مشكلة في الاتصال. تأكد من اتصالك بالإنترنت";
+      } else if (errMsg.includes("blocked") || errMsg.includes("BLOCKED")) {
+        userMsg = "الرقم محظور مؤقتاً. يمكنك تخطي التحقق";
+      }
+      
+      setError(userMsg);
+      setOtpSendFailed(true);
+      setOtpFailCount(prev => prev + 1);
     } finally {
       setOtpSending(false);
     }
   }, [phone]);
 
   useEffect(() => {
-    if (step === 2 && otpActive && !confirmationResult) {
+    if (step === 2 && otpActive && !confirmationResult && !otpSendFailed) {
       sendOtp();
     }
     if (step === 2 && !otpActive) {
       const timer = setTimeout(() => setStep(3), 800);
       return () => clearTimeout(timer);
     }
-  }, [step, otpActive, confirmationResult, sendOtp]);
+  }, [step, otpActive, confirmationResult, otpSendFailed, sendOtp]);
 
   const handleStep1 = () => {
     setError("");
@@ -162,6 +210,13 @@ export default function RegisterPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Skip OTP — proceed without verification
+  const skipOtp = () => {
+    console.log("[OTP] Skipped by user");
+    setFirebaseToken(null);
+    setStep(3);
   };
 
   const handleStep3Submit = async () => {
@@ -401,57 +456,101 @@ export default function RegisterPage() {
                 <div className="w-20 h-20 mx-auto rounded-full flex items-center justify-center" style={{ background: "var(--theme-hover-overlay)" }}>
                   <span className="text-4xl">📱</span>
                 </div>
-                <p className="text-base" style={{ color: "var(--theme-text-secondary)" }}>
-                  تم إرسال كود التحقق إلى<br />
-                  <strong dir="ltr" className="text-lg" style={{ color: "var(--theme-text-primary)" }}>{phone}</strong>
-                </p>
-
-                {/* 4-digit OTP inputs */}
-                <div className="flex justify-center gap-4" dir="ltr">
-                  {otp.map((digit, i) => (
-                    <input
-                      key={i}
-                      ref={(el) => { otpRefs.current[i] = el; }}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handleOtpChange(i, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                      className="w-16 h-16 text-center text-3xl font-bold rounded-xl border-2 focus:outline-none transition-all"
-                      style={{
-                        borderColor: digit ? "var(--theme-primary)" : "var(--theme-surface-border)",
-                        background: "var(--theme-surface-bg)",
-                        color: "var(--theme-text-primary)",
-                        boxShadow: digit ? "0 0 0 3px rgba(var(--theme-primary-rgb, 59,130,246), 0.1)" : "none",
-                      }}
-                    />
-                  ))}
-                </div>
-
-                {/* Timer & Resend */}
-                <div className="space-y-2">
-                  {!canResend ? (
-                    <p className="text-base font-bold" style={{ color: "var(--theme-text-muted)" }}>
-                      ⏱️ إعادة الإرسال بعد {formatTime(otpTimer)}
+                
+                {otpSending ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 size={24} className="animate-spin" style={{ color: "var(--theme-primary)" }} />
+                    <p className="text-base font-bold" style={{ color: "var(--theme-text-secondary)" }}>
+                      جارٍ إرسال كود التحقق...
                     </p>
-                  ) : (
-                    <button
-                      onClick={() => { sendOtp(); }}
-                      disabled={otpSending}
-                      className="flex items-center gap-2 mx-auto text-base font-bold"
-                      style={{ color: "var(--theme-primary)", background: "none", border: "none", cursor: "pointer" }}
-                    >
-                      <RefreshCw size={18} className={otpSending ? "animate-spin" : ""} />
-                      إعادة إرسال الكود
-                    </button>
-                  )}
-                </div>
+                  </div>
+                ) : otpSendFailed ? (
+                  <>
+                    <p className="text-base" style={{ color: "var(--theme-text-secondary)" }}>
+                      ⚠️ لم نتمكن من إرسال كود التحقق
+                    </p>
+                    <div className="flex flex-col gap-3">
+                      <button
+                        onClick={() => { setOtpSendFailed(false); sendOtp(); }}
+                        disabled={otpSending}
+                        className="themed-btn-primary py-3 px-8 text-base font-bold flex items-center justify-center gap-2 mx-auto"
+                        style={{ borderRadius: "12px" }}
+                      >
+                        <RefreshCw size={18} className={otpSending ? "animate-spin" : ""} />
+                        إعادة المحاولة
+                      </button>
+                      
+                      {otpFailCount >= 1 && (
+                        <button
+                          onClick={skipOtp}
+                          className="themed-btn-outline py-3 px-8 text-base font-bold mx-auto"
+                          style={{ borderRadius: "12px" }}
+                        >
+                          تخطي التحقق والمتابعة ➡️
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : confirmationResult ? (
+                  <>
+                    <p className="text-base" style={{ color: "var(--theme-text-secondary)" }}>
+                      تم إرسال كود التحقق إلى<br />
+                      <strong dir="ltr" className="text-lg" style={{ color: "var(--theme-text-primary)" }}>{phone}</strong>
+                    </p>
 
-                {loading && (
-                  <div className="flex items-center justify-center gap-2">
-                    <Loader2 size={20} className="animate-spin" style={{ color: "var(--theme-primary)" }} />
-                    <span className="text-base" style={{ color: "var(--theme-text-secondary)" }}>جارٍ التحقق...</span>
+                    {/* 4-digit OTP inputs */}
+                    <div className="flex justify-center gap-4" dir="ltr">
+                      {otp.map((digit, i) => (
+                        <input
+                          key={i}
+                          ref={(el) => { otpRefs.current[i] = el; }}
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={1}
+                          value={digit}
+                          onChange={(e) => handleOtpChange(i, e.target.value)}
+                          onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                          className="w-16 h-16 text-center text-3xl font-bold rounded-xl border-2 focus:outline-none transition-all"
+                          style={{
+                            borderColor: digit ? "var(--theme-primary)" : "var(--theme-surface-border)",
+                            background: "var(--theme-surface-bg)",
+                            color: "var(--theme-text-primary)",
+                            boxShadow: digit ? "0 0 0 3px rgba(59,130,246,0.1)" : "none",
+                          }}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Timer & Resend */}
+                    <div className="space-y-2">
+                      {!canResend ? (
+                        <p className="text-base font-bold" style={{ color: "var(--theme-text-muted)" }}>
+                          ⏱️ إعادة الإرسال بعد {formatTime(otpTimer)}
+                        </p>
+                      ) : (
+                        <button
+                          onClick={() => { sendOtp(); }}
+                          disabled={otpSending}
+                          className="flex items-center gap-2 mx-auto text-base font-bold"
+                          style={{ color: "var(--theme-primary)", background: "none", border: "none", cursor: "pointer" }}
+                        >
+                          <RefreshCw size={18} className={otpSending ? "animate-spin" : ""} />
+                          إعادة إرسال الكود
+                        </button>
+                      )}
+                    </div>
+
+                    {loading && (
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 size={20} className="animate-spin" style={{ color: "var(--theme-primary)" }} />
+                        <span className="text-base" style={{ color: "var(--theme-text-secondary)" }}>جارٍ التحقق...</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 size={24} className="animate-spin" style={{ color: "var(--theme-primary)" }} />
+                    <p className="text-base" style={{ color: "var(--theme-text-secondary)" }}>جارٍ التحضير...</p>
                   </div>
                 )}
 
