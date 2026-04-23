@@ -1,5 +1,7 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+
 import { useUIStore } from '@/store/ui-store';
 import Link from 'next/link';
 import {
@@ -208,28 +210,10 @@ const stats = [
   { value: '95%', label: 'نسبة رضا الطلاب' },
 ];
 
-const plans = [
-  {
-    name: 'مادة واحدة',
-    price: '99',
-    period: 'شهرياً',
-    features: ['مادة واحدة', 'ملخصات ذكية', 'بنك أسئلة', '50 سؤال AI يومياً'],
-    popular: false,
-  },
-  {
-    name: 'كل المواد',
-    price: '249',
-    period: 'شهرياً',
-    features: ['كل المواد', 'ملخصات ذكية', 'بنك أسئلة', '50 سؤال AI يومياً', 'تقارير أداء', 'شهادات إنجاز'],
-    popular: true,
-  },
-  {
-    name: 'الترم كامل',
-    price: '1,299',
-    period: 'لكل ترم',
-    features: ['كل المواد', 'كل المميزات', 'خصم 15%', 'أولوية الدعم'],
-    popular: false,
-  },
+const defaultPlans = [
+  { name: 'مادة واحدة', price: '89', period: 'شهرياً', features: ['مادة واحدة', 'ملخصات ذكية', 'بنك أسئلة', '50 سؤال AI يومياً'], popular: false },
+  { name: 'كل المواد', price: '349', period: 'شهرياً', features: ['كل المواد', 'ملخصات ذكية', 'بنك أسئلة', '50 سؤال AI يومياً', 'تقارير أداء', 'شهادات إنجاز'], popular: true },
+  { name: '3 مواد', price: '219', period: 'شهرياً', features: ['3 مواد', 'ملخصات ذكية', 'بنك أسئلة', '50 سؤال AI يومياً', 'تقارير أداء'], popular: false },
 ];
 
 /* ============================================================
@@ -239,6 +223,27 @@ const plans = [
 export default function Landing() {
   const theme = useUIStore((s: any) => s.theme);
   const HeroIllustration = heroMap[theme] || DefaultHero;
+  const [plans, setPlans] = useState(defaultPlans);
+
+  useEffect(() => {
+    fetch('/api/subscription/plans')
+      .then(r => r.json())
+      .then(data => {
+        if (data.plans?.length) {
+          const mapped = data.plans.map((p: any) => ({
+            name: p.name_ar || p.name,
+            price: String(p.price_monthly || 0),
+            period: 'شهرياً',
+            features: p.features || [],
+            popular: p.is_popular || false,
+          }));
+          // Sort: cheapest first, popular middle
+          mapped.sort((a: any, b: any) => Number(a.price) - Number(b.price));
+          setPlans(mapped);
+        }
+      })
+      .catch(() => {/* use defaults */});
+  }, []);
 
   return (
     <div className="font-cairo" style={{ color: 'var(--theme-text-primary)' }}>
