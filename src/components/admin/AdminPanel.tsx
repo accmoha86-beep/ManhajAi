@@ -823,6 +823,7 @@ function ThemesTab() {
   const [themes, setThemes] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activating, setActivating] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -832,44 +833,102 @@ function ThemesTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const activate = async (id: string) => {
-    try { await adminAPI("update_theme", { theme_id: id, active: true }); load(); } catch { load(); }
+  const activate = async (id: string, slug: string) => {
+    setActivating(id);
+    try {
+      await adminAPI("update_theme", { theme_id: id, is_active: true });
+      // Apply theme locally on the site immediately
+      const root = document.documentElement;
+      if (slug === "default") {
+        root.removeAttribute("data-theme");
+      } else {
+        root.setAttribute("data-theme", slug);
+      }
+      // Also update localStorage so it persists
+      try {
+        const stored = localStorage.getItem("manhaj-ui");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          parsed.state = { ...parsed.state, theme: slug };
+          localStorage.setItem("manhaj-ui", JSON.stringify(parsed));
+        }
+      } catch { /* ignore */ }
+      load();
+    } catch { load(); }
+    setActivating(null);
   };
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (themes.length === 0) return <EmptyState message="لا توجد ثيمات" icon={<Palette size={40} />} />;
 
+  const themeEmojis: Record<string, string> = { default: "🔵", golden: "✨", exams: "🔴", graduation: "🎓", dark: "🌑" };
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {themes.map((t, i) => (
-        <div key={i} className="rounded-2xl p-4 relative" style={{ background: "var(--theme-bg)", border: `2px solid ${t.active || t.is_active ? "var(--theme-primary)" : "var(--theme-surface-border)"}` }}>
-          {(t.active || t.is_active) && (
-            <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg text-xs font-medium bg-green-100 text-green-600">نشط</span>
-          )}
-          <div className="flex items-center gap-3 mb-3">
-            {t.preview_colors ? (
-              <div className="flex gap-1">
-                {(t.preview_colors as string[]).map((c: string, j: number) => <div key={j} className="w-6 h-6 rounded-full" style={{ background: c }} />)}
+    <div>
+      <h3 className="text-lg font-bold mb-4" style={{ color: "var(--theme-text-primary)" }}>🎨 إدارة الثيمات</h3>
+      <p className="text-sm mb-4" style={{ color: "var(--theme-text-secondary)" }}>اختر الثيم النشط — التغيير يظهر فوراً على الموقع لكل الطلاب</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {themes.map((t, i) => {
+          const cfg = t.config as Record<string, string> | null;
+          const slug = (t.slug as string) || "default";
+          const isActive = !!t.is_active;
+          const isLoading = activating === (t.id as string);
+          return (
+            <div key={i} className="rounded-2xl p-4 relative overflow-hidden transition-all duration-300" style={{ 
+              background: "var(--theme-surface-bg)", 
+              border: `2px solid ${isActive ? "var(--theme-primary)" : "var(--theme-surface-border)"}`,
+              opacity: isLoading ? 0.7 : 1
+            }}>
+              {isActive && (
+                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg text-xs font-bold bg-green-100 text-green-700 flex items-center gap-1">
+                  <CheckCircle size={12} /> نشط
+                </span>
+              )}
+              {/* Theme topbar gradient preview */}
+              <div className="h-8 rounded-lg mb-3 -mx-1 -mt-1" style={{ background: cfg?.topbarGradient || "var(--theme-cta-gradient)" }} />
+              
+              {/* Color circles */}
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 rounded-full border-2 border-white shadow" style={{ background: cfg?.primary || "var(--theme-primary)" }} />
+                <div className="w-7 h-7 rounded-full border-2 border-white shadow" style={{ background: cfg?.secondary || "var(--theme-secondary)" }} />
+                <div className="w-5 h-5 rounded-full border border-white shadow" style={{ background: cfg?.pageBg || "#F9FAFB" }} />
               </div>
-            ) : (
-              <div className="w-10 h-10 rounded-xl" style={{ background: (t.primary_color as string) || "var(--theme-primary)" }} />
-            )}
-          </div>
-          <h4 className="font-bold mb-1" style={{ color: "var(--theme-text-primary)" }}>{(t.name_ar as string) || (t.name as string) || "—"}</h4>
-          <p className="text-xs mb-3" style={{ color: "var(--theme-text-secondary)" }}>{(t.description as string) || ""}</p>
-          {!(t.active || t.is_active) && (
-            <button onClick={() => activate(t.id as string)} className="w-full py-2 rounded-xl text-white text-sm font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
-              تفعيل
-            </button>
-          )}
-          {t.scheduled_at && (
-            <p className="text-xs mt-2 flex items-center gap-1" style={{ color: "var(--theme-text-secondary)" }}>
-              <Calendar size={12} /> مجدول: {formatDate(t.scheduled_at as string)}
-            </p>
-          )}
-        </div>
-      ))}
+
+              <h4 className="font-bold text-base mb-1" style={{ color: "var(--theme-text-primary)" }}>
+                {themeEmojis[slug] || "🎨"} {(t.name_ar as string) || "—"}
+              </h4>
+              <p className="text-xs mb-3" style={{ color: "var(--theme-text-muted)" }}>
+                {slug === "default" ? "الثيم الأساسي — أزرق وبنفسجي" :
+                 slug === "golden" ? "ثيم ذهبي فاخر — أخضر وذهبي" :
+                 slug === "exams" ? "وضع الامتحانات — أحمر وبرتقالي" :
+                 slug === "graduation" ? "ثيم التخرج — أخضر احتفالي" :
+                 slug === "dark" ? "الوضع الداكن — نيلي أنيق" : ""}
+              </p>
+              
+              {!isActive ? (
+                <button 
+                  onClick={() => activate(t.id as string, slug)} 
+                  disabled={isLoading}
+                  className="w-full py-2.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 transition-all hover:scale-[1.02]" 
+                  style={{ background: cfg?.topbarGradient || "var(--theme-cta-gradient)" }}>
+                  {isLoading ? <><Loader2 size={16} className="animate-spin" /> جاري التفعيل...</> : <><Palette size={16} /> تفعيل هذا الثيم</>}
+                </button>
+              ) : (
+                <div className="w-full py-2.5 rounded-xl text-sm font-bold text-center" style={{ background: "var(--theme-hover-overlay)", color: "var(--theme-primary)" }}>
+                  ✅ الثيم الحالي
+                </div>
+              )}
+
+              {(t.auto_activate_at || t.auto_deactivate_at) && (
+                <p className="text-xs mt-2 flex items-center gap-1" style={{ color: "var(--theme-text-muted)" }}>
+                  <Clock size={12} /> مجدول: {t.auto_activate_at ? formatDate(t.auto_activate_at as string) : ""} {t.auto_deactivate_at ? `→ ${formatDate(t.auto_deactivate_at as string)}` : ""}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
