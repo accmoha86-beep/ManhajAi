@@ -317,7 +317,7 @@ export default function Dashboard() {
         <div className="relative z-10">
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-xl md:text-2xl font-bold" style={{ color: "var(--theme-text-primary)" }}>
-              أهلاً {user?.name || "طالب"}! 👋
+              أهلاً {user?.fullName || "طالب"}! 👋
             </h1>
           </div>
           <div className="flex items-center gap-2">
@@ -405,8 +405,8 @@ export default function Dashboard() {
                       ? "linear-gradient(135deg, #f97316, #ef4444)"
                       : "var(--theme-surface-border)",
                     color: isActive ? "#fff" : "var(--theme-text-secondary)",
-                    ringColor: isToday ? "#f97316" : undefined,
-                    ringOffsetColor: isToday ? "var(--theme-surface-bg)" : undefined,
+                    outline: isToday ? "2px solid #f97316" : undefined,
+                    outlineOffset: isToday ? "2px" : undefined,
                   }}
                 >
                   {isActive ? (

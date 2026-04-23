@@ -182,8 +182,8 @@ async function drawCertificate(
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 export default function CertificatesPage() {
-  const { profile } = useAuthStore();
-  const studentName = profile?.full_name || profile?.name || "طالب منهج";
+  const { user } = useAuthStore();
+  const studentName = user?.fullName || "طالب منهج";
 
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
