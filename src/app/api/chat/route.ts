@@ -43,9 +43,9 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('Claude API error:', errorData);
+      console.error('Claude API error:', response.status, errorData);
       return NextResponse.json(
-        { error: 'حدث خطأ في الرد - حاول تاني' },
+        { error: `خطأ AI (${response.status}): ${errorData.slice(0, 200)}` },
         { status: 500 }
       );
     }
