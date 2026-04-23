@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       supabase.from('users').select('id, created_at, governorate, is_banned, last_login_at').eq('role', 'student'),
       supabase.from('subscriptions').select('id, status, plan_name, created_at, expires_at, amount_egp'),
       supabase.from('payments').select('id, amount_egp, payment_method, status, created_at'),
-      supabase.from('exam_results').select('id, score_percent, subject_id, created_at'),
+      supabase.from('exam_results').select('id, score, subject_id, created_at'),
       supabase.from('subjects').select('id, name_ar, is_published'),
       supabase.from('chat_messages').select('id, created_at, tokens_used'),
       supabase.from('users').select('id, created_at').eq('role', 'student').order('created_at', { ascending: false }).limit(30),
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
     
     // Average exam score
     const avgScore = exams.length > 0 
-      ? Math.round(exams.reduce((sum: number, e: any) => sum + (e.score_percent || 0), 0) / exams.length) 
+      ? Math.round(exams.reduce((sum: number, e: any) => sum + (e.score || 0), 0) / exams.length) 
       : 0;
     
     // AI chat usage

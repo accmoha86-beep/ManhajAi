@@ -67,8 +67,8 @@ export async function GET(request: NextRequest) {
   ];
   const { data: subjects } = await supabase.from('subjects').select('id, name_ar').eq('is_published', true);
   for (const sub of (subjects || [])) {
-    const { data: exams } = await supabase.from('exam_results').select('score_percent').eq('subject_id', sub.id);
-    const avg = (exams || []).length > 0 ? Math.round((exams || []).reduce((s: number, e: any) => s + (e.score_percent || 0), 0) / (exams || []).length) : 0;
+    const { data: exams } = await supabase.from('exam_results').select('score').eq('subject_id', sub.id);
+    const avg = (exams || []).length > 0 ? Math.round((exams || []).reduce((s: number, e: any) => s + (e.score || 0), 0) / (exams || []).length) : 0;
     sheet3.addRow({ subject: sub.name_ar, exams: (exams || []).length, avg: `${avg}%` });
   }
   sheet3.getRow(1).font = { bold: true, size: 12, color: { argb: 'FFFFFF' } };
