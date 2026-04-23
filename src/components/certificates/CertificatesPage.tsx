@@ -586,8 +586,8 @@ export default function CertificatesPage() {
                 </button>
                 <button
                   onClick={() => copyShareText(selectedCert)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition-colors bg-gray-100 hover:bg-gray-200"
-                  style={{ color: "var(--theme-text-primary)" }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition-colors hover:opacity-80"
+                  style={{ color: "var(--theme-text-primary)", background: "var(--theme-hover-overlay)" }}
                 >
                   {copied ? (
                     <>

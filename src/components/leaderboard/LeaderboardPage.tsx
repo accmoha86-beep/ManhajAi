@@ -107,7 +107,7 @@ export default function LeaderboardPage() {
           {showFilter && (
             <div
               className="absolute top-full left-0 mt-1 w-52 max-h-60 overflow-y-auto rounded-xl shadow-lg z-20"
-              style={{ background: "var(--theme-card-bg)", border: "1px solid var(--theme-surface-border)" }}
+              style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}
             >
               <button
                 onClick={() => handleGovernorateChange("")}

@@ -164,7 +164,7 @@ export default function ParentDashboard() {
       case "active":
         return { label: "نشط", bg: "bg-green-100", text: "text-green-700", dot: "bg-green-500" };
       case "trial":
-        return { label: "تجربة", bg: "bg-blue-100", text: "text-blue-700", dot: "bg-blue-500" };
+        return { label: "تجربة", bg: "bg-primary/10", text: "text-primary", dot: "bg-primary" };
       case "expired":
         return { label: "منتهي", bg: "bg-red-100", text: "text-red-700", dot: "bg-red-500" };
       default:
@@ -332,7 +332,7 @@ export default function ParentDashboard() {
                 borderColor: "var(--theme-info-border, #bfdbfe)",
               }}
             >
-              <Shield className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <Shield className="w-5 h-5 flex-shrink-0" style={{ color: "var(--theme-primary)" }} mt-0.5" />
               <p className="text-xs leading-relaxed" style={{ color: "var(--theme-text-secondary)" }}>
                 للحصول على كود الوصول، اطلب من ابنك/بنتك الدخول على الإعدادات واختيار &quot;لوحة ولي الأمر&quot;
               </p>
@@ -451,8 +451,8 @@ export default function ParentDashboard() {
       label: "الامتحانات",
       value: stats.total_exams.toString(),
       icon: BookOpen,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50",
+      color: "text-primary",
+      bgColor: "bg-primary/5",
     },
     {
       label: "النقاط",

@@ -52,7 +52,7 @@ function getGreeting(): { greeting: string; icon: React.ReactNode } {
   } else if (hour >= 12 && hour < 18) {
     return { greeting: "يلا نكمل شوية مذاكرة 💪", icon: <Sun className="w-5 h-5 text-orange-400" /> };
   } else if (hour >= 18 && hour < 24) {
-    return { greeting: "مراجعة بالليل بتثبت المعلومة 🌙", icon: <Moon className="w-5 h-5 text-indigo-400" /> };
+    return { greeting: "مراجعة بالليل بتثبت المعلومة 🌙", icon: <Moon className="w-5 h-5" style={{ color: "var(--theme-primary)" }} /> };
   } else {
     return { greeting: "بالتوفيق في المذاكرة 🌟", icon: <Star className="w-5 h-5 text-yellow-300" /> };
   }
@@ -269,8 +269,8 @@ export default function Dashboard() {
       value: animAvg,
       suffix: "%",
       icon: TrendingUp,
-      gradient: "from-blue-500/20 to-cyan-500/20",
-      iconColor: "#3b82f6",
+      gradientStyle: "linear-gradient(135deg, color-mix(in srgb, var(--theme-primary) 20%, transparent), color-mix(in srgb, var(--theme-primary-light) 20%, transparent))",
+      iconColor: "var(--theme-primary)",
       gauge: true,
     },
     {
@@ -278,7 +278,7 @@ export default function Dashboard() {
       value: animExams,
       suffix: "",
       icon: BookOpen,
-      gradient: "from-emerald-500/20 to-green-500/20",
+      gradientStyle: "linear-gradient(135deg, rgba(16,185,129,0.2), rgba(34,197,94,0.2))",
       iconColor: "#10b981",
     },
     {
@@ -286,7 +286,7 @@ export default function Dashboard() {
       value: animPoints,
       suffix: "",
       icon: Trophy,
-      gradient: "from-amber-500/20 to-yellow-500/20",
+      gradientStyle: "linear-gradient(135deg, rgba(245,158,11,0.2), rgba(234,179,8,0.2))",
       iconColor: "#f59e0b",
     },
     {
@@ -294,7 +294,7 @@ export default function Dashboard() {
       value: animStreak,
       suffix: "",
       icon: Flame,
-      gradient: "from-red-500/20 to-orange-500/20",
+      gradientStyle: "linear-gradient(135deg, rgba(239,68,68,0.2), rgba(249,115,22,0.2))",
       iconColor: "#ef4444",
     },
   ];
@@ -344,7 +344,8 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between mb-3">
                 <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br ${stat.gradient}`}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: stat.gradientStyle }}
                 >
                   <Icon className="w-5 h-5" style={{ color: stat.iconColor }} />
                 </div>

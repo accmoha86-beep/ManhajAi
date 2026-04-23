@@ -15,34 +15,38 @@ const config: Config = {
         sans: ['Cairo', 'sans-serif'],
       },
 
-      // Theme colors using CSS variables
+      // Theme colors using CSS variables (--theme-* from globals.css)
       colors: {
         primary: {
-          DEFAULT: 'var(--color-primary)',
-          light: 'var(--color-primary-light)',
-          dark: 'var(--color-primary-dark)',
+          DEFAULT: 'var(--theme-primary)',
+          light: 'var(--theme-primary-light)',
+          dark: 'var(--theme-primary-dark)',
         },
-        secondary: 'var(--color-secondary)',
-        accent: 'var(--color-accent)',
-        background: {
-          DEFAULT: 'var(--color-bg)',
-          card: 'var(--color-bg-card)',
-          sidebar: 'var(--color-bg-sidebar)',
+        secondary: {
+          DEFAULT: 'var(--theme-secondary)',
+          light: 'var(--theme-secondary-light)',
+          dark: 'var(--theme-secondary-dark)',
         },
+        surface: {
+          DEFAULT: 'var(--theme-surface-bg)',
+          border: 'var(--theme-surface-border)',
+        },
+        page: 'var(--theme-page-bg)',
+        muted: 'var(--theme-text-muted)',
         foreground: {
-          DEFAULT: 'var(--color-text)',
-          secondary: 'var(--color-text-secondary)',
+          DEFAULT: 'var(--theme-text-primary)',
+          secondary: 'var(--theme-text-secondary)',
         },
-        border: 'var(--color-border)',
-        success: 'var(--color-success)',
-        error: 'var(--color-error)',
-        warning: 'var(--color-warning)',
+        border: 'var(--theme-border)',
+        success: '#10b981',
+        error: '#ef4444',
+        warning: '#f59e0b',
       },
 
       // Background images for gradients
       backgroundImage: {
-        'gradient-primary': 'var(--gradient-primary)',
-        'gradient-hero': 'var(--gradient-hero)',
+        'gradient-primary': 'var(--theme-cta-gradient)',
+        'gradient-hero': 'var(--theme-hero-gradient)',
       },
 
       // RTL-friendly border radius
@@ -55,8 +59,8 @@ const config: Config = {
 
       // Custom shadows
       boxShadow: {
-        card: '0 2px 8px rgba(0, 0, 0, 0.08)',
-        'card-hover': '0 4px 16px rgba(0, 0, 0, 0.12)',
+        card: 'var(--theme-card-shadow, 0 2px 8px rgba(0, 0, 0, 0.08))',
+        'card-hover': 'var(--theme-card-hover-shadow, 0 4px 16px rgba(0, 0, 0, 0.12))',
         dropdown: '0 4px 24px rgba(0, 0, 0, 0.12)',
         modal: '0 8px 32px rgba(0, 0, 0, 0.2)',
       },

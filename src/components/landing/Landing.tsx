@@ -176,7 +176,7 @@ export default function Landing() {
 
         {/* glow circles */}
         <div className="absolute top-10 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-300/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-[var(--theme-primary-light)] opacity-10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 max-w-4xl mx-auto text-center flex flex-col items-center gap-8">
           {/* floating badges – top */}
