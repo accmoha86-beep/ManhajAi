@@ -7,7 +7,7 @@ import { useUIStore } from "@/store/ui-store";
 import {
   BarChart3, Users, CreditCard, BookOpen, GraduationCap,
   Palette, TrendingUp, DollarSign, Eye,
-  Shield, Plus, Edit, Trash2, Search, Loader2, Save,
+  Shield, Plus, Edit, Trash2, Search, Loader2, Save, EyeOff,
   Settings, Package, Key, ToggleLeft, ToggleRight, X,
   CheckCircle, XCircle, RefreshCw, Bell, Tag, ChevronDown,
   Send, Filter, Calendar, Hash, Percent, AlertCircle,
@@ -1428,6 +1428,19 @@ function SecretsTab() {
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showValues, setShowValues] = useState<Record<string, boolean>>({});
+  const [addMode, setAddMode] = useState(false);
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+
+  const categories: Record<string, { label: string; icon: string; keys: string[] }> = {
+    ai: { label: "🤖 الذكاء الاصطناعي", icon: "🤖", keys: ["anthropic_api_key", "AI_MODEL", "AI_CONTENT_MODEL", "AI_DAILY_LIMIT", "AI_MONTHLY_LIMIT"] },
+    payments: { label: "💳 المدفوعات", icon: "💳", keys: ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "PAYMOB_API_KEY", "PAYMOB_HMAC_SECRET", "PAYMOB_IFRAME_ID", "PAYMOB_VODAFONE_INTEGRATION_ID", "PAYMOB_INSTAPAY_INTEGRATION_ID", "PAYMOB_FAWRY_INTEGRATION_ID"] },
+    auth: { label: "🔐 الأمان والمصادقة", icon: "🔐", keys: ["jwt_secret", "FIREBASE_API_KEY", "FIREBASE_PROJECT_ID", "SMS_PROVIDER"] },
+    site: { label: "🌐 إعدادات الموقع", icon: "🌐", keys: ["APP_URL", "SUPABASE_URL", "SUPABASE_ANON_KEY", "TRIAL_DAYS", "MAX_FILE_SIZE_MB", "WATERMARK_FONT_SIZE"] },
+    messaging: { label: "📧 التواصل والإشعارات", icon: "📧", keys: ["RESEND_API_KEY", "whatsapp_access_token", "whatsapp_phone_number_id"] },
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -1443,46 +1456,180 @@ function SecretsTab() {
     setSaving(false);
   };
 
+  const handleAdd = async () => {
+    if (!newKey.trim()) return;
+    setSaving(true);
+    try { await adminAPI("update_secret", { key: newKey.trim(), value: newValue, description: newDesc }); setAddMode(false); setNewKey(""); setNewValue(""); setNewDesc(""); load(); } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    setSaving(false);
+  };
+
+  const getSecretByKey = (k: string) => secrets.find(s => (s.key as string) === k);
+  const categorizedKeys = new Set(Object.values(categories).flatMap(c => c.keys));
+  const uncategorized = secrets.filter(s => !categorizedKeys.has(s.key as string));
+
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} onRetry={load} />;
-  if (secrets.length === 0) return <EmptyState message="لا توجد مفاتيح" icon={<Key size={40} />} />;
+
+  const totalKeys = secrets.length;
+  const filledKeys = secrets.filter(s => !!(s.value as string)).length;
+  const emptyKeys = totalKeys - filledKeys;
 
   return (
     <div>
-      <h3 className="font-bold mb-4" style={{ color: "var(--theme-text-primary)" }}>مفاتيح النظام</h3>
-      <div className="space-y-3">
-        {secrets.map((s, i) => {
-          const key = (s.key as string) || (s.name as string) || "";
-          const isEditing = editKey === key;
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-bold text-lg" style={{ color: "var(--theme-text-primary)" }}>🔑 مفاتيح النظام</h3>
+        <button onClick={() => setAddMode(!addMode)} className="px-3 py-1.5 rounded-lg text-xs text-white font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+          {addMode ? "إلغاء" : "+ إضافة مفتاح"}
+        </button>
+      </div>
+
+      {/* Stats bar */}
+      <div className="flex gap-3 mb-4">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" style={{ background: "var(--theme-surface-bg)", color: "var(--theme-text-primary)" }}>
+          📊 الإجمالي: {totalKeys}
+        </div>
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}>
+          ✅ نشط: {filledKeys}
+        </div>
+        {emptyKeys > 0 && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444" }}>
+            ⚠️ فارغ: {emptyKeys}
+          </div>
+        )}
+      </div>
+
+      {/* Add new key form */}
+      {addMode && (
+        <div className="rounded-xl p-4 mb-4" style={{ background: "var(--theme-surface-bg)", border: "2px dashed var(--theme-primary)" }}>
+          <p className="text-sm font-medium mb-3" style={{ color: "var(--theme-text-primary)" }}>إضافة مفتاح جديد</p>
+          <div className="grid grid-cols-1 gap-2 mb-3">
+            <input value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="اسم المفتاح (مثل: NEW_API_KEY)" dir="ltr"
+              className="w-full px-3 py-2 rounded-lg outline-none text-sm font-mono" style={{ background: "var(--theme-page-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+            <input value={newValue} onChange={e => setNewValue(e.target.value)} placeholder="القيمة" dir="ltr"
+              className="w-full px-3 py-2 rounded-lg outline-none text-sm font-mono" style={{ background: "var(--theme-page-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+            <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="وصف المفتاح (اختياري)"
+              className="w-full px-3 py-2 rounded-lg outline-none text-sm" style={{ background: "var(--theme-page-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+          </div>
+          <button onClick={handleAdd} disabled={saving || !newKey.trim()} className="px-4 py-2 rounded-lg text-sm text-white font-medium disabled:opacity-50" style={{ background: "var(--theme-cta-gradient)" }}>
+            {saving ? "جاري الحفظ..." : "حفظ المفتاح"}
+          </button>
+        </div>
+      )}
+
+      {/* Grouped secrets */}
+      <div className="space-y-5">
+        {Object.entries(categories).map(([catId, cat]) => {
+          const catSecrets = cat.keys.map(k => getSecretByKey(k)).filter(Boolean) as Record<string, unknown>[];
+          if (catSecrets.length === 0) return null;
+          const catFilled = catSecrets.filter(s => !!(s.value as string)).length;
           return (
-            <div key={i} className="rounded-xl p-4" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-mono text-sm font-medium" style={{ color: "var(--theme-text-primary)" }}>{key}</span>
-                {isEditing ? (
-                  <div className="flex gap-2">
-                    <button onClick={() => handleSave(key)} disabled={saving} className="px-3 py-1 rounded-lg text-xs text-white font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
-                      {saving ? <Loader2 size={12} className="animate-spin" /> : "حفظ"}
-                    </button>
-                    <button onClick={() => setEditKey(null)} className="px-3 py-1 rounded-lg text-xs font-medium" style={{ color: "var(--theme-text-secondary)" }}>إلغاء</button>
-                  </div>
-                ) : (
-                  <button onClick={() => { setEditKey(key); setEditValue((s.value as string) || ""); }} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}>
-                    <Edit size={14} />
-                  </button>
-                )}
+            <div key={catId}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="font-bold text-sm" style={{ color: "var(--theme-text-primary)" }}>{cat.label}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: catFilled === catSecrets.length ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)", color: catFilled === catSecrets.length ? "#22c55e" : "#ef4444" }}>
+                  {catFilled}/{catSecrets.length}
+                </span>
               </div>
-              {isEditing ? (
-                <input value={editValue} onChange={e => setEditValue(e.target.value)} dir="ltr"
-                  className="w-full px-3 py-2 rounded-lg outline-none text-sm font-mono mt-1" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
-              ) : (
-                <p className="text-xs font-mono" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>
-                  {(s.value as string) ? "••••••••••••" : "(فارغ)"}
-                </p>
-              )}
-              {s.description && <p className="text-xs mt-1" style={{ color: "var(--theme-text-secondary)" }}>{s.description as string}</p>}
+              <div className="space-y-2">
+                {catSecrets.map((s, i) => {
+                  const key = s.key as string;
+                  const val = s.value as string;
+                  const desc = s.description as string;
+                  const isEditing = editKey === key;
+                  const isVisible = showValues[key];
+                  const isEmpty = !val;
+                  const isRef = desc?.includes("مرجع فقط");
+                  return (
+                    <div key={i} className="rounded-xl p-3" style={{ background: "var(--theme-page-bg)", border: `1px solid ${isEmpty ? "rgba(239,68,68,0.3)" : "var(--theme-surface-border)"}` }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${isEmpty ? "bg-red-400" : "bg-green-400"}`}></span>
+                          <span className="font-mono text-xs font-medium" dir="ltr" style={{ color: "var(--theme-text-primary)" }}>{key}</span>
+                          {isRef && <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-600">مرجع</span>}
+                        </div>
+                        <div className="flex gap-1">
+                          {!isEditing && val && (
+                            <button onClick={() => setShowValues(p => ({ ...p, [key]: !p[key] }))} className="p-1 rounded hover:opacity-70" style={{ color: "var(--theme-text-secondary)" }}>
+                              {isVisible ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </button>
+                          )}
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              <button onClick={() => handleSave(key)} disabled={saving} className="px-2.5 py-1 rounded-lg text-xs text-white font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+                                {saving ? <Loader2 size={11} className="animate-spin" /> : "حفظ"}
+                              </button>
+                              <button onClick={() => setEditKey(null)} className="px-2 py-1 rounded-lg text-xs" style={{ color: "var(--theme-text-secondary)" }}>✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => { setEditKey(key); setEditValue(val || ""); }} className="p-1 rounded hover:opacity-70" style={{ color: "var(--theme-primary)" }}>
+                              <Edit size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {isEditing ? (
+                        <input value={editValue} onChange={e => setEditValue(e.target.value)} dir="ltr" autoFocus
+                          className="w-full px-3 py-2 rounded-lg outline-none text-xs font-mono mt-1" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+                      ) : (
+                        <p className="text-[11px] font-mono mr-4" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>
+                          {isEmpty ? <span className="text-red-400">(فارغ — يحتاج تعيين)</span> : isVisible ? val : "•".repeat(Math.min(val.length, 30))}
+                        </p>
+                      )}
+                      {desc && <p className="text-[11px] mt-1" style={{ color: "var(--theme-text-secondary)", opacity: 0.7 }}>{desc}</p>}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
+
+        {/* Uncategorized */}
+        {uncategorized.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-bold text-sm" style={{ color: "var(--theme-text-primary)" }}>📦 أخرى</span>
+            </div>
+            <div className="space-y-2">
+              {uncategorized.map((s, i) => {
+                const key = s.key as string;
+                const val = s.value as string;
+                const desc = s.description as string;
+                const isEditing = editKey === key;
+                const isEmpty = !val;
+                return (
+                  <div key={i} className="rounded-xl p-3" style={{ background: "var(--theme-page-bg)", border: `1px solid ${isEmpty ? "rgba(239,68,68,0.3)" : "var(--theme-surface-border)"}` }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${isEmpty ? "bg-red-400" : "bg-green-400"}`}></span>
+                        <span className="font-mono text-xs font-medium" dir="ltr" style={{ color: "var(--theme-text-primary)" }}>{key}</span>
+                      </div>
+                      {isEditing ? (
+                        <div className="flex gap-1">
+                          <button onClick={() => handleSave(key)} disabled={saving} className="px-2.5 py-1 rounded-lg text-xs text-white font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+                            {saving ? <Loader2 size={11} className="animate-spin" /> : "حفظ"}
+                          </button>
+                          <button onClick={() => setEditKey(null)} className="px-2 py-1 rounded-lg text-xs" style={{ color: "var(--theme-text-secondary)" }}>✕</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => { setEditKey(key); setEditValue(val || ""); }} className="p-1 rounded hover:opacity-70" style={{ color: "var(--theme-primary)" }}>
+                          <Edit size={13} />
+                        </button>
+                      )}
+                    </div>
+                    {isEditing ? (
+                      <input value={editValue} onChange={e => setEditValue(e.target.value)} dir="ltr" autoFocus
+                        className="w-full px-3 py-2 rounded-lg outline-none text-xs font-mono mt-1" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
+                    ) : (
+                      <p className="text-[11px] font-mono mr-4" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>{isEmpty ? <span className="text-red-400">(فارغ)</span> : "•".repeat(Math.min((val || "").length, 30))}</p>
+                    )}
+                    {desc && <p className="text-[11px] mt-1" style={{ color: "var(--theme-text-secondary)", opacity: 0.7 }}>{desc}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

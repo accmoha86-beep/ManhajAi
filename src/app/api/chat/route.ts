@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { getSecret } from '@/lib/secrets';
 
 const SYSTEM_PROMPT = `أنت أستاذ AI اسمك منهج من منصة Manhaj AI لطلاب الثانوية العامة في مصر. بتتكلم بأسلوب شبابي مصري لطيف ومحفز. بتساعد الطالب في مواد الثانوية العامة بس. ردودك واضحة ومفيدة وبتستخدم إيموجي بشكل خفيف. لو سألوك عن حاجة مش في المنهج قولهم بلطف إنك متخصص في منهج الثانوية بس.`;
+
+const DEFAULT_MODEL = 'claude-opus-4-7';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,14 +13,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'الرسالة مطلوبة' }, { status: 400 });
     }
 
-    // Get API key from DB
-    const apiKey = await getSecret('anthropic_api_key');
+    // Get API key and model from DB
+    const [apiKey, modelFromDB] = await Promise.all([
+      getSecret('anthropic_api_key'),
+      getSecret('AI_MODEL'),
+    ]);
+    
     if (!apiKey) {
       return NextResponse.json(
         { error: 'مفتاح AI غير مهيأ - تواصل مع الأدمن' },
         { status: 500 }
       );
     }
+
+    const model = modelFromDB || DEFAULT_MODEL;
 
     const messages = [
       ...conversationHistory.slice(-10),
@@ -34,7 +41,7 @@ export async function POST(request: NextRequest) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-7',
+        model,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages,
@@ -63,6 +70,7 @@ export async function POST(request: NextRequest) {
         inputTokens,
         outputTokens,
         totalTokens: inputTokens + outputTokens,
+        model,
       },
     });
   } catch (error) {

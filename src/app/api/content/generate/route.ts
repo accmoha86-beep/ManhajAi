@@ -77,11 +77,15 @@ export async function POST(request: NextRequest) {
     
     const lessonTitle = lesson.title_ar as string;
 
-    // Get Anthropic API key
-    const apiKey = await getSecret('anthropic_api_key');
+    // Get Anthropic API key + content model from DB
+    const [apiKey, contentModel] = await Promise.all([
+      getSecret('anthropic_api_key'),
+      getSecret('AI_CONTENT_MODEL'),
+    ]);
     if (!apiKey) {
       return NextResponse.json({ error: 'مفتاح AI غير مهيأ' }, { status: 500 });
     }
+    const model = contentModel || DEFAULT_CONTENT_MODEL;
 
     // Build the file content block for Claude Vision API
     const fileBlock = isPdf
@@ -95,6 +99,7 @@ export async function POST(request: NextRequest) {
       fileBlock,
       prompt: buildSummaryPrompt(lessonTitle),
       maxTokens: 8192,
+      model,
     });
 
     if (!summaryResponse.ok) {
@@ -142,11 +147,13 @@ export async function POST(request: NextRequest) {
               fileBlock,
               prompt: buildQuestionPrompt(lessonTitle, '', round, previousTexts.slice(-100)),
               maxTokens: 8192,
+              model,
             })
           : await callClaudeText(apiKey, {
               system: `أنت خبير في إعداد بنوك الأسئلة — الجولة ${round.id}: ${round.name}. أجب بصيغة JSON فقط.`,
               prompt: buildQuestionPrompt(lessonTitle, summaryText, round, previousTexts.slice(-100)),
               maxTokens: 8192,
+              model,
             });
 
         if (qResponse.ok) {
@@ -249,6 +256,7 @@ async function callClaudeVision(
     fileBlock: { type: string; source: { type: string; media_type: string; data: string } };
     prompt: string;
     maxTokens?: number;
+    model?: string;
   }
 ): Promise<ClaudeOk | ClaudeFail> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -259,7 +267,7 @@ async function callClaudeVision(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: params.model || 'claude-sonnet-4-6',
       max_tokens: params.maxTokens || 4096,
       system: params.system,
       messages: [{
@@ -289,7 +297,7 @@ async function callClaudeVision(
 // Claude Text-only (for later rounds where we already have the content)
 async function callClaudeText(
   apiKey: string,
-  params: { system: string; prompt: string; maxTokens?: number }
+  params: { system: string; prompt: string; maxTokens?: number; model?: string }
 ): Promise<ClaudeOk | ClaudeFail> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -299,7 +307,7 @@ async function callClaudeText(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: params.model || 'claude-sonnet-4-6',
       max_tokens: params.maxTokens || 4096,
       system: params.system,
       messages: [{ role: 'user', content: params.prompt }],
