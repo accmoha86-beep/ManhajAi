@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "@/store/auth-store";
 import {
   CreditCard, Check, Star, Loader2, Zap,
-  Shield, Clock,
+  Shield, Clock, Tag, X, CheckCircle2,
 } from "lucide-react";
 
 interface Plan {
@@ -17,6 +17,14 @@ interface Plan {
   discount_percent: number;
   features_ar: string[];
   is_active: boolean;
+  is_popular?: boolean;
+}
+
+interface AppliedCoupon {
+  coupon_id: string;
+  code: string;
+  discount_percent: number;
+  description: string;
 }
 
 const DEFAULT_PRICE = 89;
@@ -37,6 +45,12 @@ export default function SubscribePage() {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('monthly');
   const [processing, setProcessing] = useState(false);
 
+  // Promo code state
+  const [promoCode, setPromoCode] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+
   const loadPlans = useCallback(async () => {
     try {
       setLoading(true);
@@ -44,19 +58,20 @@ export default function SubscribePage() {
       const data = await res.json();
       if (data.plans && data.plans.length > 0) {
         setPlans(data.plans);
-        setSelectedPlan(data.plans[0]?.id || null);
+        // Select popular plan by default, or first
+        const popular = data.plans.find((p: Plan) => p.is_popular);
+        setSelectedPlan(popular?.id || data.plans[0]?.id || null);
       } else {
-        // Fallback default plans
         setPlans([
           { id: 'default-1', name_ar: 'مادة واحدة', max_subjects: 1, price_monthly: DEFAULT_PRICE, discount_percent: 0, features_ar: ['شرح تفاعلي بالذكاء الاصطناعي', 'امتحانات ذكية', 'تقارير مفصلة'], is_active: true },
-          { id: 'default-2', name_ar: 'مادتين', max_subjects: 2, price_monthly: DEFAULT_PRICE * 2, discount_percent: 10, features_ar: ['كل مميزات المادة الواحدة', 'خصم 10%', 'أولوية الدعم'], is_active: true },
-          { id: 'default-3', name_ar: 'كل المواد', max_subjects: 99, price_monthly: DEFAULT_PRICE * 3, discount_percent: 20, features_ar: ['وصول لجميع المواد', 'خصم 20%', 'دعم VIP'], is_active: true },
+          { id: 'default-2', name_ar: '3 مواد', max_subjects: 3, price_monthly: 219, discount_percent: 18, features_ar: ['كل مميزات المادة الواحدة', 'خصم 18%', 'أولوية الدعم'], is_active: true, is_popular: true },
+          { id: 'default-3', name_ar: 'كل المواد', max_subjects: 99, price_monthly: 349, discount_percent: 35, features_ar: ['وصول لجميع المواد', 'خصم 35%', 'دعم VIP'], is_active: true },
         ]);
-        setSelectedPlan('default-1');
+        setSelectedPlan('default-2');
       }
     } catch {
       setPlans([
-        { id: 'default-1', name_ar: 'مادة واحدة', max_subjects: 1, price_monthly: DEFAULT_PRICE, discount_percent: 0, features_ar: ['شرح تفاعلي بالذكاء الاصطناعي', 'امتحانات ذكية'], is_active: true },
+        { id: 'default-1', name_ar: 'مادة واحدة', max_subjects: 1, price_monthly: DEFAULT_PRICE, discount_percent: 0, features_ar: ['شرح تفاعلي'], is_active: true },
       ]);
       setSelectedPlan('default-1');
     } finally {
@@ -82,6 +97,56 @@ export default function SubscribePage() {
     return Math.round(((monthlyTotal - actualPrice) / monthlyTotal) * 100);
   };
 
+  const getFinalPrice = (plan: Plan, period: Period): number => {
+    const basePrice = getPrice(plan, period);
+    if (appliedCoupon) {
+      const discounted = basePrice * (1 - appliedCoupon.discount_percent / 100);
+      return Math.round(discounted);
+    }
+    return basePrice;
+  };
+
+  // Validate promo code
+  const validatePromo = async () => {
+    const code = promoCode.trim().toUpperCase();
+    if (!code) {
+      setPromoError("اكتب كود الخصم");
+      return;
+    }
+    setPromoLoading(true);
+    setPromoError("");
+    try {
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setAppliedCoupon({
+          coupon_id: data.coupon_id,
+          code: data.code,
+          discount_percent: data.discount_percent,
+          description: data.description,
+        });
+        setPromoError("");
+      } else {
+        setPromoError(data.error || 'كود الخصم غير صالح');
+        setAppliedCoupon(null);
+      }
+    } catch {
+      setPromoError('فشل في التحقق من كود الخصم');
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setPromoCode("");
+    setPromoError("");
+  };
+
   const handleSubscribe = async () => {
     if (!selectedPlan || !user) return;
     const plan = plans.find(p => p.id === selectedPlan);
@@ -95,7 +160,10 @@ export default function SubscribePage() {
         body: JSON.stringify({
           plan_id: plan.id,
           period: selectedPeriod,
-          amount: getPrice(plan, selectedPeriod),
+          amount: getFinalPrice(plan, selectedPeriod),
+          original_amount: getPrice(plan, selectedPeriod),
+          coupon_id: appliedCoupon?.coupon_id || null,
+          coupon_code: appliedCoupon?.code || null,
           subjects: [],
         }),
       });
@@ -187,11 +255,12 @@ export default function SubscribePage() {
 
       {/* Plans Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-        {plans.map((plan, idx) => {
+        {plans.map((plan) => {
           const isSelected = selectedPlan === plan.id;
           const price = getPrice(plan, selectedPeriod);
+          const finalPrice = getFinalPrice(plan, selectedPeriod);
           const discount = getDiscount(plan, selectedPeriod);
-          const isPopular = idx === 1 || plans.length === 1;
+          const isPopular = plan.is_popular;
           return (
             <button
               key={plan.id}
@@ -226,8 +295,13 @@ export default function SubscribePage() {
                 {plan.max_subjects >= 99 ? 'جميع المواد' : `حتى ${plan.max_subjects} ${plan.max_subjects === 1 ? 'مادة' : 'مواد'}`}
               </div>
               <div className="mb-4">
+                {appliedCoupon && (
+                  <span className="text-lg line-through ml-2" style={{ color: 'var(--theme-text-muted)' }}>
+                    {price}
+                  </span>
+                )}
                 <span className="text-3xl font-extrabold" style={{ color: 'var(--theme-primary)' }}>
-                  {price}
+                  {finalPrice}
                 </span>
                 <span className="text-sm mr-1" style={{ color: 'var(--theme-text-muted)' }}>
                   ج.م / {periodLabels[selectedPeriod]}
@@ -252,6 +326,83 @@ export default function SubscribePage() {
         })}
       </div>
 
+      {/* Promo Code Section */}
+      <div className="themed-card p-5 mb-6 max-w-md mx-auto">
+        <div className="flex items-center gap-2 mb-3">
+          <Tag size={18} style={{ color: 'var(--theme-primary)' }} />
+          <h3 className="text-sm font-extrabold" style={{ color: 'var(--theme-text-primary)' }}>
+            عندك كود خصم؟
+          </h3>
+        </div>
+
+        {appliedCoupon ? (
+          /* Applied coupon display */
+          <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#10B98110', border: '1px solid #10B981' }}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={20} style={{ color: '#10B981' }} />
+              <div>
+                <div className="text-sm font-bold" style={{ color: '#10B981' }}>
+                  {appliedCoupon.code} — خصم {appliedCoupon.discount_percent}%
+                </div>
+                <div className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
+                  {appliedCoupon.description}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={removeCoupon}
+              className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+              title="إزالة الكود"
+            >
+              <X size={16} style={{ color: '#EF4444' }} />
+            </button>
+          </div>
+        ) : (
+          /* Promo code input */
+          <div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={promoCode}
+                onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(""); }}
+                onKeyDown={(e) => e.key === 'Enter' && validatePromo()}
+                placeholder="ادخل كود الخصم..."
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold"
+                style={{
+                  background: 'var(--theme-hover-overlay)',
+                  border: promoError ? '1px solid #EF4444' : '1px solid var(--theme-surface-border)',
+                  color: 'var(--theme-text-primary)',
+                  letterSpacing: '2px',
+                  textAlign: 'center',
+                }}
+                dir="ltr"
+                maxLength={20}
+              />
+              <button
+                onClick={validatePromo}
+                disabled={promoLoading || !promoCode.trim()}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all"
+                style={{
+                  background: 'var(--theme-cta-gradient)',
+                  opacity: promoLoading || !promoCode.trim() ? 0.5 : 1,
+                }}
+              >
+                {promoLoading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  "تطبيق"
+                )}
+              </button>
+            </div>
+            {promoError && (
+              <p className="text-xs mt-2 font-bold" style={{ color: '#EF4444' }}>
+                ❌ {promoError}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Subscribe Button */}
       {currentPlan && (
         <div className="themed-card p-6 text-center max-w-md mx-auto">
@@ -262,10 +413,20 @@ export default function SubscribePage() {
             </span>
           </div>
           <div className="text-xl font-extrabold mb-1" style={{ color: 'var(--theme-text-primary)' }}>
-            {currentPlan.name_ar} — {getPrice(currentPlan, selectedPeriod)} ج.م
+            {currentPlan.name_ar} — {getFinalPrice(currentPlan, selectedPeriod)} ج.م
+            {appliedCoupon && (
+              <span className="text-sm line-through mr-2" style={{ color: 'var(--theme-text-muted)' }}>
+                {getPrice(currentPlan, selectedPeriod)} ج.م
+              </span>
+            )}
           </div>
           <div className="text-xs mb-4 flex items-center justify-center gap-1" style={{ color: 'var(--theme-text-muted)' }}>
             <Clock size={12} /> {periodLabels[selectedPeriod]}
+            {appliedCoupon && (
+              <span className="mr-2 px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#10B98120', color: '#10B981' }}>
+                🎫 {appliedCoupon.code}
+              </span>
+            )}
           </div>
           <button
             onClick={handleSubscribe}

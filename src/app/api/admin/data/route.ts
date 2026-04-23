@@ -267,12 +267,13 @@ export async function POST(request: NextRequest) {
         const { data, error } = await sb
           .from('coupons')
           .insert({
-            code: (params.code || '').toUpperCase(),
+            code: (params.code || '').toUpperCase().trim(),
             discount_percent: params.discount_percent || 10,
             max_uses: params.max_uses || null,
             used_count: 0,
             is_active: true,
-            expires_at: params.expires_at || null,
+            valid_from: params.valid_from || new Date().toISOString(),
+            valid_until: params.valid_until || null,
             description_ar: params.description_ar || null,
           })
           .select()
@@ -286,9 +287,10 @@ export async function POST(request: NextRequest) {
         if (params.is_active !== undefined) couponUpdates.is_active = params.is_active;
         if (params.discount_percent !== undefined) couponUpdates.discount_percent = params.discount_percent;
         if (params.max_uses !== undefined) couponUpdates.max_uses = params.max_uses;
-        if (params.expires_at !== undefined) couponUpdates.expires_at = params.expires_at;
+        if (params.valid_from !== undefined) couponUpdates.valid_from = params.valid_from;
+        if (params.valid_until !== undefined) couponUpdates.valid_until = params.valid_until;
         if (params.description_ar !== undefined) couponUpdates.description_ar = params.description_ar;
-        if (params.code !== undefined) couponUpdates.code = params.code.toUpperCase();
+        if (params.code !== undefined) couponUpdates.code = params.code.toUpperCase().trim();
 
         const { data, error } = await sb
           .from('coupons')

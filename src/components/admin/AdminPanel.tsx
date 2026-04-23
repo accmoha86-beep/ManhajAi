@@ -657,7 +657,7 @@ function CouponsTab() {
   const [error, setError] = useState("");
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
-  const [form, setForm] = useState({ code: "", discount_type: "percentage", discount_value: "", max_uses: "", expires_at: "" });
+  const [form, setForm] = useState({ code: "", discount_percent: "", max_uses: "", valid_until: "", description_ar: "" });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -668,20 +668,30 @@ function CouponsTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openCreate = () => { setForm({ code: "", discount_type: "percentage", discount_value: "", max_uses: "", expires_at: "" }); setEditItem(null); setModal("create"); };
+  const openCreate = () => { setForm({ code: "", discount_percent: "", max_uses: "", valid_until: "", description_ar: "" }); setEditItem(null); setModal("create"); };
   const openEdit = (c: Record<string, unknown>) => {
     setForm({
-      code: (c.code as string) || "", discount_type: (c.discount_type as string) || "percentage",
-      discount_value: String(c.discount_value || c.discount || ""), max_uses: String(c.max_uses || ""),
-      expires_at: (c.expires_at as string)?.slice(0, 10) || "",
+      code: (c.code as string) || "",
+      discount_percent: String(c.discount_percent || ""),
+      max_uses: String(c.max_uses || ""),
+      valid_until: (c.valid_until as string)?.slice(0, 10) || "",
+      description_ar: (c.description_ar as string) || "",
     });
     setEditItem(c); setModal("edit");
   };
 
   const handleSave = async () => {
+    if (!form.code.trim()) { alert("كود الخصم مطلوب"); return; }
+    if (!form.discount_percent || Number(form.discount_percent) <= 0) { alert("نسبة الخصم مطلوبة"); return; }
     setSaving(true);
     try {
-      const params = { ...form, discount_value: Number(form.discount_value), max_uses: form.max_uses ? Number(form.max_uses) : null };
+      const params = {
+        code: form.code.trim(),
+        discount_percent: Number(form.discount_percent),
+        max_uses: form.max_uses ? Number(form.max_uses) : null,
+        valid_until: form.valid_until || null,
+        description_ar: form.description_ar.trim() || null,
+      };
       if (modal === "create") await adminAPI("create_coupon", params);
       else await adminAPI("update_coupon", { coupon_id: editItem?.id, ...params });
       setModal(null); load();
@@ -692,6 +702,13 @@ function CouponsTab() {
   const handleDelete = async (id: string) => {
     if (!confirm("هل أنت متأكد من حذف هذا الكوبون؟")) return;
     try { await adminAPI("delete_coupon", { coupon_id: id }); load(); } catch { load(); }
+  };
+
+  const toggleActive = async (c: Record<string, unknown>) => {
+    try {
+      await adminAPI("update_coupon", { coupon_id: c.id, is_active: !(c.is_active as boolean) });
+      load();
+    } catch { load(); }
   };
 
   if (loading) return <LoadingState />;
@@ -711,29 +728,46 @@ function CouponsTab() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
-                {["الكود", "النوع", "القيمة", "الاستخدامات", "ينتهي", "إجراءات"].map(h => (
+                {["الكود", "الخصم", "الوصف", "الاستخدامات", "الحالة", "ينتهي", "إجراءات"].map(h => (
                   <th key={h} className="text-right py-3 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {coupons.map((c, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
-                  <td className="py-3 px-3 font-mono font-bold" style={{ color: "var(--theme-primary)" }}>{(c.code as string) || "—"}</td>
-                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{c.discount_type === "percentage" ? "نسبة %" : "مبلغ ثابت"}</td>
-                  <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>
-                    {c.discount_type === "percentage" ? `${c.discount_value || c.discount}%` : formatCurrency((c.discount_value as number) || (c.discount as number) || 0)}
-                  </td>
-                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(c.used_count as number) || 0} / {(c.max_uses as number) || "∞"}</td>
-                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{c.expires_at ? formatDate(c.expires_at as string) : "—"}</td>
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={16} /></button>
-                      <button onClick={() => handleDelete(c.id as string)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={16} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {coupons.map((c, i) => {
+                const isActive = c.is_active !== false;
+                const isExpired = c.valid_until && new Date(c.valid_until as string) < new Date();
+                const usedUp = c.max_uses && (c.used_count as number || 0) >= (c.max_uses as number);
+                return (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)", opacity: isActive && !isExpired && !usedUp ? 1 : 0.5 }}>
+                    <td className="py-3 px-3 font-mono font-bold" style={{ color: "var(--theme-primary)", letterSpacing: "1px" }}>{(c.code as string) || "—"}</td>
+                    <td className="py-3 px-3 font-bold" style={{ color: "#10B981" }}>{c.discount_percent as number}%</td>
+                    <td className="py-3 px-3 text-xs" style={{ color: "var(--theme-text-secondary)" }}>{(c.description_ar as string) || "—"}</td>
+                    <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(c.used_count as number) || 0} / {(c.max_uses as number) || "∞"}</td>
+                    <td className="py-3 px-3">
+                      <button
+                        onClick={() => toggleActive(c)}
+                        className="px-2 py-1 rounded-lg text-xs font-bold"
+                        style={{
+                          background: isActive ? "#10B98120" : "#EF444420",
+                          color: isActive ? "#10B981" : "#EF4444",
+                        }}
+                      >
+                        {isActive ? "نشط ✅" : "متوقف ❌"}
+                      </button>
+                    </td>
+                    <td className="py-3 px-3 text-xs" style={{ color: isExpired ? "#EF4444" : "var(--theme-text-secondary)" }}>
+                      {c.valid_until ? (isExpired ? "منتهي ⏰" : formatDate(c.valid_until as string)) : "بدون حد"}
+                    </td>
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={16} /></button>
+                        <button onClick={() => handleDelete(c.id as string)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={16} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -741,10 +775,10 @@ function CouponsTab() {
 
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal === "create" ? "إضافة كوبون جديد" : "تعديل الكوبون"} onSave={handleSave} saving={saving}>
         <InputField label="كود الكوبون" value={form.code} onChange={v => setForm({ ...form, code: v })} placeholder="SAVE20" dir="ltr" />
-        <SelectField label="نوع الخصم" value={form.discount_type} onChange={v => setForm({ ...form, discount_type: v })} options={[{ value: "percentage", label: "نسبة مئوية %" }, { value: "fixed", label: "مبلغ ثابت" }]} />
-        <InputField label="قيمة الخصم" value={form.discount_value} onChange={v => setForm({ ...form, discount_value: v })} type="number" placeholder="20" />
+        <InputField label="نسبة الخصم %" value={form.discount_percent} onChange={v => setForm({ ...form, discount_percent: v })} type="number" placeholder="مثال: 20" />
+        <InputField label="وصف الكوبون" value={form.description_ar} onChange={v => setForm({ ...form, description_ar: v })} placeholder="خصم بداية العام الدراسي" />
         <InputField label="أقصى عدد استخدامات" value={form.max_uses} onChange={v => setForm({ ...form, max_uses: v })} type="number" placeholder="اتركه فارغاً لغير محدود" />
-        <InputField label="تاريخ الانتهاء" value={form.expires_at} onChange={v => setForm({ ...form, expires_at: v })} type="date" />
+        <InputField label="تاريخ الانتهاء" value={form.valid_until} onChange={v => setForm({ ...form, valid_until: v })} type="date" />
       </Modal>
     </div>
   );

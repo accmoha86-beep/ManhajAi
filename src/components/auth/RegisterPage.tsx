@@ -27,6 +27,7 @@ export default function RegisterPage() {
   // Step 2: OTP via Firebase
   const [otp, setOtp] = useState(["", "", "", ""]);
   const [firebaseConfigured, setFirebaseConfigured] = useState(false);
+  const [otpEnabledByAdmin, setOtpEnabledByAdmin] = useState(true);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResultType | null>(null);
   const [firebaseToken, setFirebaseToken] = useState<string | null>(null);
   const [otpTimer, setOtpTimer] = useState(120);
@@ -41,7 +42,7 @@ export default function RegisterPage() {
   // Step 4: Success
   const [successData, setSuccessData] = useState<{ name: string; referralCode: string } | null>(null);
 
-  // Check Firebase config on mount
+  // Check Firebase config + admin OTP setting on mount
   useEffect(() => {
     const checkFirebase = async () => {
       try {
@@ -51,19 +52,29 @@ export default function RegisterPage() {
         setFirebaseConfigured(false);
       }
     };
+    const checkOtpSetting = async () => {
+      try {
+        const res = await fetch("/api/settings/public");
+        const data = await res.json();
+        setOtpEnabledByAdmin(data.otp_enabled === true || data.otp_enabled === "true");
+      } catch {
+        setOtpEnabledByAdmin(true); // default to enabled if can't fetch
+      }
+    };
     checkFirebase();
+    checkOtpSetting();
   }, []);
 
   // OTP timer countdown
   useEffect(() => {
-    if (step !== 2 || !firebaseConfigured) return;
+    if (step !== 2 || !otpActive) return;
     if (otpTimer <= 0) {
       setCanResend(true);
       return;
     }
     const interval = setInterval(() => setOtpTimer((t) => t - 1), 1000);
     return () => clearInterval(interval);
-  }, [step, otpTimer, firebaseConfigured]);
+  }, [step, otpTimer, otpActive]);
 
   const sendOtp = useCallback(async () => {
     if (!phone) return;
@@ -87,17 +98,20 @@ export default function RegisterPage() {
     }
   }, [phone]);
 
+  // OTP is active only if BOTH: admin enabled it AND Firebase is configured
+  const otpActive = otpEnabledByAdmin && firebaseConfigured;
+
   // Auto-send OTP when entering step 2
   useEffect(() => {
-    if (step === 2 && firebaseConfigured && !confirmationResult) {
+    if (step === 2 && otpActive && !confirmationResult) {
       sendOtp();
     }
-    // Auto-skip if Firebase not configured
-    if (step === 2 && !firebaseConfigured) {
+    // Auto-skip if OTP not active (admin disabled OR Firebase not configured)
+    if (step === 2 && !otpActive) {
       const timer = setTimeout(() => setStep(3), 800);
       return () => clearTimeout(timer);
     }
-  }, [step, firebaseConfigured, confirmationResult, sendOtp]);
+  }, [step, otpActive, confirmationResult, sendOtp]);
 
   const handleStep1 = () => {
     setError("");
@@ -339,13 +353,13 @@ export default function RegisterPage() {
         {/* Step 2: OTP via Firebase */}
         {step === 2 && (
           <div className="text-center space-y-6 py-4">
-            {!firebaseConfigured ? (
+            {!otpActive ? (
               <>
                 <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center" style={{ background: "var(--theme-hover-overlay)" }}>
                   <Loader2 size={32} className="animate-spin" style={{ color: "var(--theme-primary)" }} />
                 </div>
                 <p className="text-sm font-bold" style={{ color: "var(--theme-text-secondary)" }}>
-                  جارٍ التحقق... تم التخطي مؤقتاً ✅
+                  {!otpEnabledByAdmin ? "التحقق غير مفعّل حالياً ✅" : "جارٍ التحقق... تم التخطي مؤقتاً ✅"}
                 </p>
               </>
             ) : (
@@ -456,7 +470,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setStep(firebaseConfigured ? 2 : 1)} className="themed-btn-outline flex-1 py-3">
+              <button onClick={() => setStep(otpActive ? 2 : 1)} className="themed-btn-outline flex-1 py-3">
                 <ChevronRight size={18} className="inline" /> رجوع
               </button>
               <button
