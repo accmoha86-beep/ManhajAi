@@ -1,6 +1,6 @@
 {
   "name": "manhaj-ai",
-  "version": "3.6.0",
+  "version": "3.10.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
