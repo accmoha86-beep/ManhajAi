@@ -309,7 +309,7 @@ export default function Landing() {
                         {plan.price}
                       </span>
                       <span className="text-base" style={{ color: "var(--theme-text-secondary)" }}>
-                        ج.م / {plan.period || "شهر"}
+                         / {plan.period || "شهر"}
                       </span>
                     </div>
                     <ul className="flex flex-col gap-3 mb-8 flex-1">
@@ -367,7 +367,7 @@ export default function Landing() {
                         {plan.price === 0 ? "مجاناً" : plan.price}
                       </span>
                       {plan.price > 0 && (
-                        <span className="text-base" style={{ color: "var(--theme-text-secondary)" }}>ج.م / شهر</span>
+                        <span className="text-base" style={{ color: "var(--theme-text-secondary)" }}> ج.م / شهر</span>
                       )}
                     </div>
                     <ul className="flex flex-col gap-3 mb-8 flex-1">

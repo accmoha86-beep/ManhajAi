@@ -303,10 +303,10 @@ export default function SubscribePage() {
                   </span>
                 )}
                 <span className="text-3xl font-extrabold" style={{ color: 'var(--theme-primary)' }}>
-                  {finalPrice}
+                  {finalPrice} ج.م
                 </span>
                 <span className="text-sm mr-1" style={{ color: 'var(--theme-text-muted)' }}>
-                  ج.م / {periodLabels[selectedPeriod]}
+                   ج.م / {periodLabels[selectedPeriod]}
                 </span>
               </div>
               <div className="space-y-2">
@@ -415,10 +415,10 @@ export default function SubscribePage() {
             </span>
           </div>
           <div className="text-xl font-extrabold mb-1" style={{ color: 'var(--theme-text-primary)' }}>
-            {currentPlan.name_ar} — {getFinalPrice(currentPlan, selectedPeriod)} ج.م
+            {currentPlan.name_ar} — {getFinalPrice(currentPlan, selectedPeriod)} $
             {appliedCoupon && (
               <span className="text-sm line-through mr-2" style={{ color: 'var(--theme-text-muted)' }}>
-                {getPrice(currentPlan, selectedPeriod)} ج.م
+                {getPrice(currentPlan, selectedPeriod)} $
               </span>
             )}
           </div>
