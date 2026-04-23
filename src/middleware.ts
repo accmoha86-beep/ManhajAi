@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
-// Lazy JWT secret getter (avoids top-level env read issues)
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -12,7 +11,6 @@ function getJwtSecret() {
   return new TextEncoder().encode(secret);
 }
 
-// Routes that require authentication
 const PROTECTED_ROUTES = [
   '/dashboard',
   '/subjects',
@@ -25,38 +23,29 @@ const PROTECTED_ROUTES = [
   '/settings',
 ];
 
-// Routes that require admin role
 const ADMIN_ROUTES = ['/admin'];
-
-// Routes that should redirect authenticated users (login/register pages)
 const AUTH_ROUTES = ['/login', '/register', '/verify'];
-
-// Public routes that never need auth
 const PUBLIC_ROUTES = ['/', '/about', '/pricing', '/api/health', '/api/webhook'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Skip static files and Next.js internals
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
-    pathname.includes('.') // files with extensions (images, fonts, etc.)
+    pathname.includes('.')
   ) {
     return addDefaultHeaders(NextResponse.next());
   }
 
-  // Skip public API routes
   if (PUBLIC_ROUTES.some((route) => pathname.startsWith(route) && route !== '/')) {
     return addDefaultHeaders(NextResponse.next());
   }
 
-  // Allow exact match on root
   if (pathname === '/') {
     return addDefaultHeaders(NextResponse.next());
   }
 
-  // Get auth token from cookie or Authorization header
   const token =
     request.cookies.get('auth-token')?.value ??
     request.headers.get('Authorization')?.replace('Bearer ', '');
@@ -70,7 +59,6 @@ export async function middleware(request: NextRequest) {
         const { payload } = await jwtVerify(token, jwtSecret);
         user = payload as unknown as { userId?: string; sub?: string; phone: string; role: string };
       } catch (err) {
-        // Token invalid or expired — treat as unauthenticated
         console.error('JWT verification failed:', err instanceof Error ? err.message : 'unknown');
         user = null;
       }
@@ -79,35 +67,47 @@ export async function middleware(request: NextRequest) {
 
   // Redirect authenticated users away from auth pages
   if (user && AUTH_ROUTES.some((route) => pathname.startsWith(route))) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    const response = NextResponse.redirect(new URL('/dashboard', request.url));
+    response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    response.headers.set('Vary', 'Cookie');
+    return addDefaultHeaders(response);
   }
 
-  // Check protected routes
-  const isProtected = PROTECTED_ROUTES.some((route) =>
-    pathname.startsWith(route)
-  );
+  const isProtected = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
   const isAdmin = ADMIN_ROUTES.some((route) => pathname.startsWith(route));
 
   if (isProtected || isAdmin) {
     if (!user) {
-      // Redirect to login with return URL
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
+      const response = NextResponse.redirect(loginUrl);
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      response.headers.set('Vary', 'Cookie');
+      return addDefaultHeaders(response);
     }
 
-    // Check admin access
     if (isAdmin && user.role !== 'admin') {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+      const response = NextResponse.redirect(new URL('/dashboard', request.url));
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      response.headers.set('Vary', 'Cookie');
+      return addDefaultHeaders(response);
     }
   }
 
-  return addDefaultHeaders(NextResponse.next());
+  // For auth-dependent pages, prevent CDN caching
+  const isAuthDependent =
+    AUTH_ROUTES.some(r => pathname.startsWith(r)) ||
+    PROTECTED_ROUTES.some(r => pathname.startsWith(r)) ||
+    ADMIN_ROUTES.some(r => pathname.startsWith(r));
+
+  const response = NextResponse.next();
+  if (isAuthDependent) {
+    response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    response.headers.set('Vary', 'Cookie');
+  }
+  return addDefaultHeaders(response);
 }
 
-/**
- * Add RTL and Arabic-related headers to all responses.
- */
 function addDefaultHeaders(response: NextResponse): NextResponse {
   response.headers.set('X-Content-Language', 'ar');
   response.headers.set('X-Text-Direction', 'rtl');
@@ -116,12 +116,6 @@ function addDefaultHeaders(response: NextResponse): NextResponse {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico (browser icon)
-     */
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };
