@@ -21,6 +21,9 @@ const nextConfig = {
     ],
   },
 
+  // Standalone output for Docker/Railway deployment
+  output: 'standalone',
+
   // Strict mode for development
   reactStrictMode: true,
 
