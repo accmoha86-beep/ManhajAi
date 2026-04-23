@@ -128,7 +128,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'فشل في إنشاء الاشتراك' }, { status: 500 });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://manhaj-ai.com';
+    // Use request origin to ensure redirect works (handles both custom domain and Railway domain)
+    const origin = request.headers.get('origin') || request.headers.get('referer')?.replace(/\/$/, '') || process.env.NEXT_PUBLIC_APP_URL || 'https://manhaj-ai-web-production.up.railway.app';
+    const appUrl = origin.replace(/\/$/, '');
     const successUrl = `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}&sub_id=${subId}`;
     const cancelUrl = `${appUrl}/subscription/cancel?sub_id=${subId}`;
 
