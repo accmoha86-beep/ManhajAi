@@ -606,13 +606,15 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     const file = e.target.files?.[0];
     if (!file || !uploadLessonId) return;
 
-    if (file.type !== "application/pdf") {
-      alert("يجب أن يكون الملف PDF فقط");
+    const allowedTypes = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      alert("صيغة الملف غير مدعومة. الصيغ المدعومة: PDF, PNG, JPG, WEBP");
       return;
     }
 
     setGeneratingId(uploadLessonId);
-    setGenProgress("📄 جاري رفع الملف وقراءة المحتوى...");
+    const isImage = file.type.startsWith("image/");
+    setGenProgress(isImage ? "🖼️ جاري رفع الصورة وقراءتها بالذكاء الاصطناعي..." : "📄 جاري رفع الملف وقراءة المحتوى...");
     setGenResult(null);
 
     try {
@@ -681,7 +683,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       </div>
 
       {/* Hidden file input */}
-      <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} />
+      <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleFileUpload} />
 
       {/* Generation Result Banner */}
       {genResult && (
@@ -710,7 +712,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
 
       {/* Lessons List */}
       {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={loadLessons} /> : lessons.length === 0 ? (
-        <EmptyState message="لا توجد دروس — أضف درس جديد وارفع PDF المنهج" icon={<FileText size={40} />} />
+        <EmptyState message="لا توجد دروس — أضف درس جديد وارفع ملف المنهج (PDF أو صورة)" icon={<FileText size={40} />} />
       ) : (
         <div className="space-y-2">
           {lessons.map((l, i) => {
@@ -755,7 +757,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
                       {isGenerating ? (
                         <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> جاري...</>
                       ) : (
-                        <><Upload size={14} /> {hasSummary ? "إعادة توليد" : "رفع PDF 🤖"}</>
+                        <><Upload size={14} /> {hasSummary ? "إعادة توليد 🤖" : "رفع ملف 📄🖼️"}</>
                       )}
                     </button>
                     <button onClick={() => handleDeleteLesson(lessonId)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={14} /></button>

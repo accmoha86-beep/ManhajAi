@@ -1,4 +1,4 @@
-// app/api/content/generate/route.ts — Admin: Generate AI content from PDF
+// app/api/content/generate/route.ts — Admin: Generate AI content from PDF or Image
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthUser } from '@/lib/auth';
@@ -8,6 +8,15 @@ export const maxDuration = 300; // 5 min timeout for AI generation
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+// Supported file types
+const ALLOWED_TYPES: Record<string, string> = {
+  'application/pdf': 'application/pdf',
+  'image/png': 'image/png',
+  'image/jpeg': 'image/jpeg',
+  'image/jpg': 'image/jpeg',
+  'image/webp': 'image/webp',
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,9 +43,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'معرف الدرس مطلوب' }, { status: 400 });
     }
 
-    // Validate PDF
-    if (file.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'يجب أن يكون الملف بصيغة PDF فقط' }, { status: 400 });
+    // Validate file type
+    const mediaType = ALLOWED_TYPES[file.type];
+    if (!mediaType) {
+      return NextResponse.json(
+        { error: 'صيغة الملف غير مدعومة. الصيغ المدعومة: PDF, PNG, JPG, WEBP' },
+        { status: 400 }
+      );
     }
     if (file.size > 50 * 1024 * 1024) {
       return NextResponse.json({ error: 'حجم الملف يتجاوز 50 ميجابايت' }, { status: 400 });
@@ -57,25 +70,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'الدرس غير موجود' }, { status: 404 });
     }
 
-    // Extract text from PDF
+    // Convert file to base64
     const fileBuffer = Buffer.from(await file.arrayBuffer());
-    let pdfText: string;
-    try {
-      const pdfParse = (await import('pdf-parse')).default;
-      const pdfData = await pdfParse(fileBuffer);
-      pdfText = pdfData.text;
-    } catch (parseError) {
-      console.error('[ContentGenerate] PDF parse failed:', parseError);
-      return NextResponse.json({ error: 'فشل في قراءة ملف الـ PDF' }, { status: 400 });
-    }
-
-    if (!pdfText || pdfText.trim().length < 50) {
-      return NextResponse.json(
-        { error: 'محتوى الـ PDF قصير جدًا أو غير قابل للقراءة' },
-        { status: 400 }
-      );
-    }
-
+    const base64Data = fileBuffer.toString('base64');
+    const isPdf = file.type === 'application/pdf';
+    
     const lessonTitle = lesson.title_ar as string;
 
     // Get Anthropic API key
@@ -84,11 +83,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'مفتاح AI غير مهيأ' }, { status: 500 });
     }
 
-    // Step 1: Generate summary
-    console.log(`[ContentGenerate] Generating summary for: ${lessonTitle}`);
-    const summaryResponse = await callClaude(apiKey, {
-      system: 'أنت مُعلِّم خبير في إعداد الملخصات التعليمية للمنهج المصري. أجب بصيغة JSON فقط.',
-      prompt: buildSummaryPrompt(lessonTitle, pdfText),
+    // Build the file content block for Claude Vision API
+    const fileBlock = isPdf
+      ? { type: 'document' as const, source: { type: 'base64' as const, media_type: mediaType, data: base64Data } }
+      : { type: 'image' as const, source: { type: 'base64' as const, media_type: mediaType, data: base64Data } };
+
+    // Step 1: Generate summary using Claude Vision
+    console.log(`[ContentGenerate] Generating summary for: ${lessonTitle} (${isPdf ? 'PDF' : 'Image'})`);
+    const summaryResponse = await callClaudeVision(apiKey, {
+      system: 'أنت مُعلِّم خبير في إعداد الملخصات التعليمية للمنهج المصري. اقرأ المحتوى من الملف المرفق وأنشئ ملخصاً تعليمياً. أجب بصيغة JSON فقط.',
+      fileBlock,
+      prompt: buildSummaryPrompt(lessonTitle),
       maxTokens: 8192,
     });
 
@@ -96,7 +101,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `فشل الملخص: ${summaryResponse.error}` }, { status: 500 });
     }
 
-    const summary = JSON.parse(extractJSON(summaryResponse.content));
+    let summary;
+    try {
+      summary = JSON.parse(extractJSON(summaryResponse.content));
+    } catch {
+      console.error('[ContentGenerate] Failed to parse summary JSON:', summaryResponse.content.slice(0, 500));
+      summary = { title: lessonTitle, sections: [{ title: 'ملخص', content: summaryResponse.content }] };
+    }
 
     // Save summary via RPC
     const { error: summaryError } = await supabase.rpc('admin_save_summary', {
@@ -109,20 +120,34 @@ export async function POST(request: NextRequest) {
       console.error('[ContentGenerate] Save summary error:', summaryError);
     }
 
-    // Step 2: Generate questions in 5 rounds
+    // Step 2: Generate questions in 5 rounds (using extracted text from summary for speed)
     console.log(`[ContentGenerate] Generating questions for: ${lessonTitle}`);
     const allQuestions: GeneratedQuestion[] = [];
     const previousTexts: string[] = [];
     const rounds = QUESTION_ROUNDS;
 
+    // Extract text description from summary for question generation
+    const summaryText = typeof summary === 'object' 
+      ? JSON.stringify(summary, null, 2).slice(0, 15000) 
+      : String(summary).slice(0, 15000);
+
     for (const round of rounds) {
       try {
         console.log(`[ContentGenerate] Round ${round.id}: ${round.name}`);
-        const qResponse = await callClaude(apiKey, {
-          system: `أنت خبير في إعداد بنوك الأسئلة — الجولة ${round.id}: ${round.name}. أجب بصيغة JSON فقط.`,
-          prompt: buildQuestionPrompt(lessonTitle, pdfText, round, previousTexts.slice(-100)),
-          maxTokens: 8192,
-        });
+        
+        // First round uses the file directly, rest use extracted summary for speed
+        const qResponse = round.id <= 2
+          ? await callClaudeVision(apiKey, {
+              system: `أنت خبير في إعداد بنوك الأسئلة — الجولة ${round.id}: ${round.name}. أجب بصيغة JSON فقط.`,
+              fileBlock,
+              prompt: buildQuestionPrompt(lessonTitle, '', round, previousTexts.slice(-100)),
+              maxTokens: 8192,
+            })
+          : await callClaudeText(apiKey, {
+              system: `أنت خبير في إعداد بنوك الأسئلة — الجولة ${round.id}: ${round.name}. أجب بصيغة JSON فقط.`,
+              prompt: buildQuestionPrompt(lessonTitle, summaryText, round, previousTexts.slice(-100)),
+              maxTokens: 8192,
+            });
 
         if (qResponse.ok) {
           const parsed = JSON.parse(extractJSON(qResponse.content));
@@ -149,7 +174,6 @@ export async function POST(request: NextRequest) {
     // Save questions via RPC
     if (allQuestions.length > 0) {
       const BATCH_SIZE = 50;
-      let insertedTotal = 0;
 
       for (let i = 0; i < allQuestions.length; i += BATCH_SIZE) {
         const batch = allQuestions.slice(i, i + BATCH_SIZE).map(q => ({
@@ -163,29 +187,32 @@ export async function POST(request: NextRequest) {
           difficulty: q.difficulty || 'medium',
         }));
 
-        const { data: batchResult, error: batchError } = await supabase.rpc('admin_save_questions', {
+        const { error: batchError } = await supabase.rpc('admin_save_questions', {
           p_admin_id: user.id,
           p_questions: batch,
         });
 
         if (batchError) {
           console.error(`[ContentGenerate] Batch ${Math.floor(i / BATCH_SIZE) + 1} error:`, batchError);
-        } else {
-          insertedTotal += (batchResult as { inserted?: number })?.inserted || batch.length;
         }
       }
     }
 
     // Update lesson status via RPC
-    await supabase.rpc('admin_update_lesson_content', {
-      p_admin_id: user.id,
-      p_lesson_id: lessonId,
-      p_source_pdf_url: `lessons/${lessonId}/${file.name}`,
-    });
+    try {
+      await supabase.rpc('admin_update_lesson_content', {
+        p_admin_id: user.id,
+        p_lesson_id: lessonId,
+        p_source_pdf_url: `lessons/${lessonId}/${file.name}`,
+      });
+    } catch (e) {
+      console.error('[ContentGenerate] Update lesson content error:', e);
+    }
 
     return NextResponse.json({
       success: true,
       message: 'تم إنشاء المحتوى بنجاح! 🎉',
+      fileType: isPdf ? 'PDF' : 'صورة',
       summary: {
         generated: true,
         sectionsCount: summary?.sections?.length || 0,
@@ -204,18 +231,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ─── Claude API Helper ────────────────────────────────────────────
+// ─── Claude API Helpers ───────────────────────────────────────────
 
 interface ClaudeResult {
   ok: boolean;
   content: string;
   error?: string;
 }
+type ClaudeOk = ClaudeResult & { ok: true; content: string };
+type ClaudeFail = ClaudeResult & { ok: false; error: string };
 
-async function callClaude(
+// Claude Vision — sends file (image/PDF) + text prompt
+async function callClaudeVision(
   apiKey: string,
-  params: { system: string; prompt: string; maxTokens?: number }
-): Promise<ClaudeResult & { ok: true; content: string } | ClaudeResult & { ok: false; error: string }> {
+  params: {
+    system: string;
+    fileBlock: { type: string; source: { type: string; media_type: string; data: string } };
+    prompt: string;
+    maxTokens?: number;
+  }
+): Promise<ClaudeOk | ClaudeFail> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -224,7 +259,47 @@ async function callClaude(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-7',
+      model: 'claude-sonnet-4-6',
+      max_tokens: params.maxTokens || 4096,
+      system: params.system,
+      messages: [{
+        role: 'user',
+        content: [
+          params.fileBlock,
+          { type: 'text', text: params.prompt },
+        ],
+      }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    return { ok: false, content: '', error: `API error ${response.status}: ${errText.slice(0, 300)}` };
+  }
+
+  const data = await response.json();
+  const text = data.content?.[0]?.text || '';
+  if (!text) {
+    return { ok: false, content: '', error: 'لم يتم الحصول على رد' };
+  }
+
+  return { ok: true, content: text };
+}
+
+// Claude Text-only (for later rounds where we already have the content)
+async function callClaudeText(
+  apiKey: string,
+  params: { system: string; prompt: string; maxTokens?: number }
+): Promise<ClaudeOk | ClaudeFail> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
       max_tokens: params.maxTokens || 4096,
       system: params.system,
       messages: [{ role: 'user', content: params.prompt }],
@@ -233,7 +308,7 @@ async function callClaude(
 
   if (!response.ok) {
     const errText = await response.text();
-    return { ok: false, content: '', error: `API error ${response.status}: ${errText.slice(0, 200)}` };
+    return { ok: false, content: '', error: `API error ${response.status}: ${errText.slice(0, 300)}` };
   }
 
   const data = await response.json();
@@ -247,8 +322,14 @@ async function callClaude(
 
 function extractJSON(text: string): string {
   let jsonText = text.trim();
+  // Remove markdown code blocks
   if (jsonText.startsWith('```')) {
     jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+  }
+  // Try to find JSON object if wrapped in other text
+  const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return jsonMatch[0];
   }
   return jsonText;
 }
@@ -281,24 +362,20 @@ const QUESTION_ROUNDS: QuestionRound[] = [
 
 // ─── Prompts ──────────────────────────────────────────────────────
 
-function buildSummaryPrompt(title: string, text: string): string {
-  return `أنت مُعلِّم خبير في إعداد الملخصات التعليمية للمنهج المصري.
-
-## المطلوب:
-قم بإنشاء ملخص تعليمي شامل ومنظم للدرس التالي.
+function buildSummaryPrompt(title: string): string {
+  return `## المطلوب:
+اقرأ المحتوى من الملف المرفق (PDF أو صورة) وقم بإنشاء ملخص تعليمي شامل ومنظم.
 
 ## عنوان الدرس: ${title}
 
-## محتوى الدرس:
-${text.slice(0, 20000)}
-
 ## تعليمات:
-1. قسّم المحتوى إلى أقسام رئيسية واضحة
-2. استخرج النقاط الرئيسية والمفاهيم الأساسية
-3. أضف أمثلة توضيحية لكل مفهوم
-4. حدد المصطلحات المهمة مع تعريفاتها
-5. أضف ملاحظات مهمة وتنبيهات للطلاب
-6. اختم بنقاط مراجعة سريعة
+1. اقرأ كل المحتوى المرئي في الملف المرفق بعناية
+2. قسّم المحتوى إلى أقسام رئيسية واضحة
+3. استخرج النقاط الرئيسية والمفاهيم الأساسية
+4. أضف أمثلة توضيحية لكل مفهوم
+5. حدد المصطلحات المهمة مع تعريفاتها
+6. أضف ملاحظات مهمة وتنبيهات للطلاب
+7. اختم بنقاط مراجعة سريعة
 
 ## صيغة الإخراج (JSON):
 {
@@ -333,11 +410,12 @@ function buildQuestionPrompt(title: string, text: string, round: QuestionRound, 
     ? `\n## أسئلة سابقة (لا تكررها):\n${prevQuestions.slice(-50).map((q, i) => `${i + 1}. ${q}`).join('\n')}\n`
     : '';
 
+  const contentSection = text
+    ? `\n## محتوى الدرس:\n${text.slice(0, 15000)}\n`
+    : '\n## اقرأ المحتوى من الملف المرفق\n';
+
   return `## عنوان الدرس: ${title}
-
-## محتوى الدرس:
-${text.slice(0, 15000)}
-
+${contentSection}
 ## التركيز: الجولة ${round.id} — ${round.name}
 ${FOCUS_MAP[round.focus] || ''}
 ${prevSection}
