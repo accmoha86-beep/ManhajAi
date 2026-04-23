@@ -312,8 +312,12 @@ function StudentsTab() {
     if (!confirm(`🔴 تأكيد نهائي: حذف "${name}" وكل بياناته؟ لا يمكن التراجع!`)) return;
     try {
       await adminAPI("delete_student", { student_id: id });
+      alert(`✅ تم حذف "${name}" بنجاح`);
       load();
-    } catch { load(); }
+    } catch (e) {
+      alert(`❌ خطأ في الحذف: ${e instanceof Error ? e.message : 'خطأ غير معروف'}`);
+      load();
+    }
   };
 
   return (

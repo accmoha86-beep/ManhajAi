@@ -2,31 +2,17 @@
 
 import { useAuthStore } from '@/store/auth-store';
 import { useUIStore } from '@/store/ui-store';
-import type { ThemeSlug } from '@/store/ui-store';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings, LogIn, UserPlus, LogOut } from 'lucide-react';
 import NotificationBell from '@/components/notifications/NotificationBell';
 
-const THEMES: ThemeSlug[] = ['default', 'golden', 'exams', 'graduation', 'dark'];
-const THEME_NAMES: Record<ThemeSlug, string> = {
-  default: '🔵 الافتراضي',
-  golden: '✨ ذهبي',
-  exams: '🔴 امتحانات',
-  graduation: '🎓 تخرج',
-  dark: '🌑 داكن',
-};
-
 export default function TopBar() {
   const { user, isAuthenticated, logout } = useAuthStore();
-  const theme = useUIStore((s) => s.theme);
-  const setTheme = useUIStore((s) => s.setTheme);
   const router = useRouter();
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
-  const [showThemeToast, setShowThemeToast] = useState(false);
-  const [currentThemeName, setCurrentThemeName] = useState('');
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -34,16 +20,6 @@ export default function TopBar() {
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
-
-  const cycleTheme = useCallback(() => {
-    const currentIndex = THEMES.indexOf(theme);
-    const nextIndex = (currentIndex + 1) % THEMES.length;
-    const nextTheme = THEMES[nextIndex];
-    setTheme(nextTheme);
-    setCurrentThemeName(THEME_NAMES[nextTheme]);
-    setShowThemeToast(true);
-    setTimeout(() => setShowThemeToast(false), 1500);
-  }, [theme, setTheme]);
 
   const topBarBtnClass = (isActive: boolean) =>
     `flex items-center gap-[0.45rem] px-[0.9rem] py-[0.4rem] rounded-lg border cursor-pointer font-cairo text-[0.78rem] font-bold text-white whitespace-nowrap transition-all duration-250 backdrop-blur-[8px] ${
@@ -67,17 +43,13 @@ export default function TopBar() {
         boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
       }}
     >
-      {/* Brand Logo - RIGHT side (RTL) — Click to cycle themes */}
-      <div
-        onClick={cycleTheme}
-        className="flex items-center gap-2 cursor-pointer select-none group relative"
-        title="اضغط لتغيير الثيم"
-      >
+      {/* Brand Logo - RIGHT side (RTL) — Theme filter changes logo appearance */}
+      <Link href="/" className="flex items-center gap-2 select-none group">
         <div className="theme-logo flex items-center" style={{ height: '3.4rem' }}>
           <img
             src="/logo-horizontal.png"
             alt="منهج AI"
-            className="transition-transform duration-300 group-hover:scale-105 group-active:scale-95"
+            className="transition-transform duration-300 group-hover:scale-105"
             style={{
               height: isMobile ? '2rem' : '2.4rem',
               width: 'auto',
@@ -85,22 +57,7 @@ export default function TopBar() {
             }}
           />
         </div>
-
-        {/* Theme toast notification */}
-        {showThemeToast && (
-          <div
-            className="absolute top-full mt-2 right-0 px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap animate-fade-in-up z-50"
-            style={{
-              background: 'var(--theme-surface)',
-              color: 'var(--theme-text-primary)',
-              border: '1px solid var(--theme-surface-border)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-            }}
-          >
-            {currentThemeName}
-          </div>
-        )}
-      </div>
+      </Link>
 
       {/* Action buttons - LEFT side (RTL) */}
       <div className="flex items-center gap-1.5 md:gap-2">
