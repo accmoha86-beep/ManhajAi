@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     // Update last login
     try { await supabase.rpc('update_user_last_login', { p_user_id: user.id }); } catch { /* ignore */ }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       token,
       user: {
@@ -85,6 +85,17 @@ export async function POST(request: NextRequest) {
         avatarUrl: user.avatar_url,
       },
     });
+
+    // Set httpOnly cookie for middleware auth
+    response.cookies.set('auth-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(

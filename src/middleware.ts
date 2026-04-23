@@ -21,6 +21,8 @@ const PROTECTED_ROUTES = [
   '/leaderboard',
   '/certificates',
   '/settings',
+  '/emergency',
+  '/notifications',
 ];
 
 const ADMIN_ROUTES = ['/admin'];

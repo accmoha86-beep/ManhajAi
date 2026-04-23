@@ -45,8 +45,10 @@ export const useAuthStore = create<AuthState & AuthActions>()(
         }),
 
       logout: () => {
-        // Clear auth cookie
-        if (typeof document !== 'undefined') {
+        // Clear httpOnly auth cookie via server-side API
+        if (typeof window !== 'undefined') {
+          fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+          // Also clear non-httpOnly fallback
           document.cookie =
             'auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
         }

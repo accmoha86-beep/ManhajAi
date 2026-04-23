@@ -44,9 +44,7 @@ export default function LoginPage() {
         return;
       }
 
-      // Set auth cookie for middleware
-      document.cookie = `auth-token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
-
+      // Cookie is set server-side (httpOnly) by the login API
       login(
         {
           id: data.user.id,
