@@ -1,7 +1,7 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-watchPatterns = ["src/**", "package.json", "Dockerfile"]
+watchPatterns = ["app/**", "components/**", "lib/**", "public/**", "package.json", "Dockerfile", "next.config.mjs", "tailwind.config.ts", "tsconfig.json", "middleware.ts"]
 
 [deploy]
 startCommand = "node server.js"
