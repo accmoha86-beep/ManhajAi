@@ -200,6 +200,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[Subscription] Error:', error);
-    return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'حدث خطأ غير متوقع', debug: msg }, { status: 500 });
   }
 }

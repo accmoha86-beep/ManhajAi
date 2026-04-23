@@ -27,7 +27,7 @@ export async function getAuthUser(
   request: NextRequest
 ): Promise<Result<AuthenticatedUser>> {
   const token =
-    request.cookies.get('auth-token')?.value ??
+    request.cookies.get('auth_token')?.value ??
     request.headers.get('Authorization')?.replace('Bearer ', '');
 
   if (!token) {
