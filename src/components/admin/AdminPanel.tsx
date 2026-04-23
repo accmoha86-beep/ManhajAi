@@ -1,7 +1,7 @@
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthStore } from "@/store/auth-store";
 import { useUIStore } from "@/store/ui-store";
 import {
@@ -11,6 +11,7 @@ import {
   Settings, Package, Key, ToggleLeft, ToggleRight, X,
   CheckCircle, XCircle, RefreshCw, Bell, Tag, ChevronDown,
   Send, Filter, Calendar, Hash, Percent, AlertCircle,
+  Upload, FileText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -452,7 +453,7 @@ function GradesTab() {
   );
 }
 
-/* ═══════════ TAB 5: Subjects ═══════════ */
+/* ═══════════ TAB 5: Subjects with Lessons & AI Content ═══════════ */
 function SubjectsTab() {
   const [subjects, setSubjects] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -461,6 +462,7 @@ function SubjectsTab() {
   const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState({ name: "", grade_id: "", description: "" });
   const [saving, setSaving] = useState(false);
+  const [selectedSubject, setSelectedSubject] = useState<Record<string, unknown> | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -498,6 +500,11 @@ function SubjectsTab() {
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
+  // Show lessons for selected subject
+  if (selectedSubject) {
+    return <SubjectLessonsView subject={selectedSubject} onBack={() => setSelectedSubject(null)} />;
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -508,32 +515,30 @@ function SubjectsTab() {
       </div>
 
       {subjects.length === 0 ? <EmptyState message="لا توجد مواد" icon={<BookOpen size={40} />} /> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
-                {["المادة", "الصف", "الوصف", "منشور", "إجراءات"].map(h => (
-                  <th key={h} className="text-right py-3 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {subjects.map((s, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
-                  <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.name as string) || "—"}</td>
-                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(s.grade_name as string) || (s.grade_id as string) || "—"}</td>
-                  <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{((s.description as string) || "—").slice(0, 50)}</td>
-                  <td className="py-3 px-3"><ToggleSwitch checked={!!(s.published ?? s.is_published)} onChange={() => togglePublish(s.id as string, !!(s.published ?? s.is_published))} /></td>
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={16} /></button>
-                      <button onClick={() => handleDelete(s.id as string)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={16} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid gap-3">
+          {subjects.map((s, i) => (
+            <div key={i} className="p-4 rounded-xl flex items-center justify-between" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+              <div className="flex items-center gap-3 cursor-pointer flex-1" onClick={() => setSelectedSubject(s)}>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ background: "var(--theme-cta-gradient)" }}>
+                  <BookOpen size={20} />
+                </div>
+                <div>
+                  <p className="font-bold" style={{ color: "var(--theme-text-primary)" }}>{(s.name as string) || (s.name_ar as string) || "—"}</p>
+                  <p className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>
+                    {(s.description as string) || (s.description_ar as string) || "بدون وصف"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <ToggleSwitch checked={!!(s.published ?? s.is_published)} onChange={() => togglePublish(s.id as string, !!(s.published ?? s.is_published))} />
+                <button onClick={() => setSelectedSubject(s)} className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{ background: "var(--theme-primary-light, rgba(99,102,241,0.1))", color: "var(--theme-primary)" }}>
+                  الدروس 📚
+                </button>
+                <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={16} /></button>
+                <button onClick={() => handleDelete(s.id as string)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={16} /></button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -542,6 +547,225 @@ function SubjectsTab() {
         <InputField label="معرّف الصف" value={form.grade_id} onChange={v => setForm({ ...form, grade_id: v })} placeholder="grade_id" />
         <InputField label="الوصف" value={form.description} onChange={v => setForm({ ...form, description: v })} placeholder="وصف المادة" />
       </Modal>
+    </div>
+  );
+}
+
+/* ═══════════ Subject Lessons View (with PDF Upload & AI Generation) ═══════════ */
+function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unknown>; onBack: () => void }) {
+  const [lessons, setLessons] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [addingLesson, setAddingLesson] = useState(false);
+  const [newLessonTitle, setNewLessonTitle] = useState("");
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [genProgress, setGenProgress] = useState("");
+  const [genResult, setGenResult] = useState<Record<string, unknown> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadLessonId, setUploadLessonId] = useState<string | null>(null);
+
+  const subjectId = (subject.id as string) || "";
+  const subjectName = (subject.name as string) || (subject.name_ar as string) || "المادة";
+
+  const loadLessons = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const r = await adminAPI("get_lessons", { subject_id: subjectId });
+      const arr = r?.lessons || (Array.isArray(r) ? r : []);
+      // Unwrap nested lessons
+      const finalArr = Array.isArray(arr) ? arr : (arr?.lessons || []);
+      setLessons(finalArr);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, [subjectId]);
+
+  useEffect(() => { loadLessons(); }, [loadLessons]);
+
+  const handleAddLesson = async () => {
+    if (!newLessonTitle.trim()) return;
+    setAddingLesson(true);
+    try {
+      await adminAPI("create_lesson", { subject_id: subjectId, title_ar: newLessonTitle.trim(), sort_order: lessons.length + 1 });
+      setNewLessonTitle("");
+      loadLessons();
+    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    setAddingLesson(false);
+  };
+
+  const handleDeleteLesson = async (lessonId: string) => {
+    if (!confirm("حذف الدرس وكل محتواه (ملخصات + أسئلة)؟")) return;
+    try { await adminAPI("delete_lesson", { lesson_id: lessonId }); loadLessons(); } catch { loadLessons(); }
+  };
+
+  const triggerUpload = (lessonId: string) => {
+    setUploadLessonId(lessonId);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadLessonId) return;
+
+    if (file.type !== "application/pdf") {
+      alert("يجب أن يكون الملف PDF فقط");
+      return;
+    }
+
+    setGeneratingId(uploadLessonId);
+    setGenProgress("📄 جاري رفع الملف وقراءة المحتوى...");
+    setGenResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("lessonId", uploadLessonId);
+      formData.append("subjectId", subjectId);
+
+      setGenProgress("🤖 جاري توليد الملخص والأسئلة بالذكاء الاصطناعي... (قد يستغرق 2-5 دقائق)");
+
+      const token = document.cookie.split(";").find(c => c.trim().startsWith("auth-token="))?.split("=").slice(1).join("=");
+      const res = await fetch("/api/content/generate", {
+        method: "POST",
+        headers: token ? { "Authorization": `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "فشل في توليد المحتوى");
+      }
+
+      setGenResult(data);
+      setGenProgress("");
+      loadLessons();
+    } catch (err: unknown) {
+      setGenProgress("");
+      alert(err instanceof Error ? err.message : "خطأ في توليد المحتوى");
+    }
+    setGeneratingId(null);
+    e.target.value = "";
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
+        <button onClick={onBack} className="p-2 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}>
+          <ChevronDown size={20} className="rotate-90" />
+        </button>
+        <div>
+          <h3 className="font-bold text-lg" style={{ color: "var(--theme-text-primary)" }}>📚 دروس: {subjectName}</h3>
+          <p className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>{lessons.length} درس</p>
+        </div>
+      </div>
+
+      {/* Add Lesson Form */}
+      <div className="flex gap-2 mb-4">
+        <input
+          value={newLessonTitle}
+          onChange={e => setNewLessonTitle(e.target.value)}
+          placeholder="اسم الدرس الجديد..."
+          className="flex-1 px-4 py-2.5 rounded-xl outline-none text-sm"
+          style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }}
+          onKeyDown={e => e.key === "Enter" && handleAddLesson()}
+        />
+        <button
+          onClick={handleAddLesson}
+          disabled={addingLesson || !newLessonTitle.trim()}
+          className="px-4 py-2.5 rounded-xl text-white text-sm font-medium disabled:opacity-50"
+          style={{ background: "var(--theme-cta-gradient)" }}
+        >
+          {addingLesson ? "..." : "➕ إضافة"}
+        </button>
+      </div>
+
+      {/* Hidden file input */}
+      <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} />
+
+      {/* Generation Result Banner */}
+      {genResult && (
+        <div className="mb-4 p-4 rounded-xl bg-green-50 border border-green-200">
+          <p className="font-bold text-green-700 mb-2">✅ {(genResult.message as string) || "تم توليد المحتوى بنجاح!"}</p>
+          <div className="flex gap-4 text-sm text-green-600">
+            <span>📝 ملخص: {(genResult.summary as Record<string, unknown>)?.sectionsCount || 0} قسم</span>
+            <span>📋 أسئلة: {(genResult.questions as Record<string, unknown>)?.total || 0} سؤال</span>
+            <span>MCQ: {(genResult.questions as Record<string, unknown>)?.mcq || 0}</span>
+            <span>صح/خطأ: {(genResult.questions as Record<string, unknown>)?.trueFalse || 0}</span>
+            <span>مقالي: {(genResult.questions as Record<string, unknown>)?.essay || 0}</span>
+          </div>
+          <button onClick={() => setGenResult(null)} className="mt-2 text-xs text-green-500 hover:underline">إغلاق</button>
+        </div>
+      )}
+
+      {/* Generation Progress */}
+      {genProgress && (
+        <div className="mb-4 p-4 rounded-xl bg-blue-50 border border-blue-200">
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-blue-700 font-medium text-sm">{genProgress}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Lessons List */}
+      {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={loadLessons} /> : lessons.length === 0 ? (
+        <EmptyState message="لا توجد دروس — أضف درس جديد وارفع PDF المنهج" icon={<FileText size={40} />} />
+      ) : (
+        <div className="space-y-2">
+          {lessons.map((l, i) => {
+            const lessonId = l.id as string;
+            const hasSummary = l.has_summary || l.has_summary_record;
+            const hasQuestions = l.has_questions || ((l.questions_count as number) || 0) > 0;
+            const questionsCount = (l.questions_count as number) || 0;
+            const isGenerating = generatingId === lessonId;
+
+            return (
+              <div key={i} className="p-4 rounded-xl" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: hasSummary && hasQuestions ? "#22c55e20" : "#f59e0b20", color: hasSummary && hasQuestions ? "#22c55e" : "#f59e0b" }}>
+                      {i + 1}
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm" style={{ color: "var(--theme-text-primary)" }}>{(l.title_ar as string) || "—"}</p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${hasSummary ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-500"}`}>
+                          {hasSummary ? "✅ ملخص" : "❌ بدون ملخص"}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${hasQuestions ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-500"}`}>
+                          {hasQuestions ? `✅ ${questionsCount} سؤال` : "❌ بدون أسئلة"}
+                        </span>
+                        {l.content_generated_at && (
+                          <span className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>
+                            🕐 {new Date(l.content_generated_at as string).toLocaleDateString("ar-EG")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => triggerUpload(lessonId)}
+                      disabled={isGenerating}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50"
+                      style={{ background: isGenerating ? "#9ca3af" : "var(--theme-cta-gradient)" }}
+                    >
+                      {isGenerating ? (
+                        <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> جاري...</>
+                      ) : (
+                        <><Upload size={14} /> {hasSummary ? "إعادة توليد" : "رفع PDF 🤖"}</>
+                      )}
+                    </button>
+                    <button onClick={() => handleDeleteLesson(lessonId)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={14} /></button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

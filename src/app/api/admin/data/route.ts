@@ -156,7 +156,30 @@ export async function POST(request: NextRequest) {
         });
         if (error) return err(error.message);
         if (data?.error) return err(data.error, 403);
-        return ok({ lessons: data });
+        const lessonsArr = data?.lessons || (Array.isArray(data) ? data : []);
+        return ok({ lessons: lessonsArr });
+      }
+
+      case 'create_lesson': {
+        const { data, error } = await sb.rpc('admin_create_lesson', {
+          p_admin_id: aid,
+          p_subject_id: params.subject_id,
+          p_title_ar: params.title_ar || params.title,
+          p_sort_order: params.sort_order || 0,
+        });
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok(data);
+      }
+
+      case 'delete_lesson': {
+        const { data, error } = await sb.rpc('admin_delete_lesson', {
+          p_admin_id: aid,
+          p_lesson_id: params.lesson_id,
+        });
+        if (error) return err(error.message);
+        if (data?.error) return err(data.error, 403);
+        return ok(data);
       }
 
       // ===== SUBSCRIPTIONS =====
