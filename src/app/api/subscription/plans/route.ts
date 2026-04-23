@@ -9,17 +9,14 @@ export async function GET() {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
-    const { data, error } = await sb
-      .from('subscription_plans')
-      .select('*')
-      .eq('is_active', true)
-      .order('max_subjects', { ascending: true });
+    
+    // Use RPC function (SECURITY DEFINER) to bypass RLS
+    const { data, error } = await sb.rpc('get_subscription_plans');
     if (error) throw error;
 
-    return NextResponse.json({
-      plans: data || [],
-    });
-  } catch {
+    return NextResponse.json(data || { plans: [] });
+  } catch (e) {
+    console.error('[SubscriptionPlans] Error:', e);
     return NextResponse.json({ plans: [] });
   }
 }
