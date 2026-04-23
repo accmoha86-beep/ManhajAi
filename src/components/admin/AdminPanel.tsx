@@ -134,6 +134,7 @@ const TABS = [
   { id: "payment_config", label: "💳 إعدادات الدفع", icon: <CreditCard size={18} /> },
   { id: "plans", label: "📦 الخطط", icon: <Package size={18} /> },
   { id: "secrets", label: "🔑 المفاتيح", icon: <Key size={18} /> },
+  { id: "analytics", label: "📈 التحليلات", icon: <BarChart3 size={18} /> },
   { id: "settings", label: "⚙️ الإعدادات", icon: <Settings size={18} /> },
 ];
 
@@ -199,6 +200,7 @@ export default function AdminPanel() {
           {activeTab === "payment_config" && <PaymentConfigTab />}
           {activeTab === "plans" && <PlansTab />}
           {activeTab === "secrets" && <SecretsTab />}
+          {activeTab === "analytics" && <AnalyticsTab />}
           {activeTab === "settings" && <SettingsTab />}
         </div>
       </div>
@@ -630,7 +632,7 @@ function ThemesTab() {
               <div className="w-10 h-10 rounded-xl" style={{ background: (t.primary_color as string) || "var(--theme-primary)" }} />
             )}
           </div>
-          <h4 className="font-bold mb-1" style={{ color: "var(--theme-text-primary)" }}>{(t.name as string) || "—"}</h4>
+          <h4 className="font-bold mb-1" style={{ color: "var(--theme-text-primary)" }}>{(t.name_ar as string) || (t.name as string) || "—"}</h4>
           <p className="text-xs mb-3" style={{ color: "var(--theme-text-secondary)" }}>{(t.description as string) || ""}</p>
           {!(t.active || t.is_active) && (
             <button onClick={() => activate(t.id as string)} className="w-full py-2 rounded-xl text-white text-sm font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
@@ -899,7 +901,7 @@ function PlansTab() {
   const openCreate = () => { setForm({ name: "", price: "", duration_days: "", description: "", features: "" }); setEditItem(null); setModal("create"); };
   const openEdit = (p: Record<string, unknown>) => {
     setForm({
-      name: (p.name as string) || "", price: String(p.price || ""), duration_days: String(p.duration_days || p.duration || ""),
+      name: (p.name_ar as string) || (p.name as string) || "", price: String(p.price_monthly || p.price || ""), duration_days: String(p.duration_days || p.duration || ""),
       description: (p.description as string) || "",
       features: Array.isArray(p.features) ? (p.features as string[]).join("\n") : (p.features as string) || "",
     });
@@ -909,7 +911,7 @@ function PlansTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const params = { ...form, price: Number(form.price), duration_days: Number(form.duration_days), features: form.features.split("\n").filter(Boolean) };
+      const params = { name_ar: form.name, price_monthly: Number(form.price), duration_days: Number(form.duration_days), features: form.features.split("\n").filter(Boolean) };
       if (modal === "create") await adminAPI("create_plan", params);
       else await adminAPI("update_plan", { plan_id: editItem?.id, ...params });
       setModal(null); load();
@@ -939,13 +941,13 @@ function PlansTab() {
           {plans.map((p, i) => (
             <div key={i} className="rounded-2xl p-4" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)" }}>
               <div className="flex justify-between items-start mb-2">
-                <h4 className="font-bold" style={{ color: "var(--theme-text-primary)" }}>{(p.name as string) || "—"}</h4>
+                <h4 className="font-bold" style={{ color: "var(--theme-text-primary)" }}>{(p.name_ar as string) || (p.name as string) || "—"}</h4>
                 <div className="flex gap-1">
                   <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--theme-primary)" }}><Edit size={14} /></button>
                   <button onClick={() => handleDelete(p.id as string)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={14} /></button>
                 </div>
               </div>
-              <p className="text-2xl font-bold mb-1" style={{ color: "var(--theme-primary)" }}>{formatCurrency((p.price as number) || 0)}</p>
+              <p className="text-2xl font-bold mb-1" style={{ color: "var(--theme-primary)" }}>{formatCurrency((p.price_monthly as number) || (p.price as number) || 0)}</p>
               <p className="text-xs mb-2" style={{ color: "var(--theme-text-secondary)" }}>{(p.duration_days as number) || (p.duration as number) || 30} يوم</p>
               {p.description && <p className="text-xs mb-2" style={{ color: "var(--theme-text-secondary)" }}>{p.description as string}</p>}
               {Array.isArray(p.features) && (p.features as string[]).length > 0 && (
@@ -978,6 +980,128 @@ function PlansTab() {
 }
 
 /* ═══════════ TAB 12: Secrets ═══════════ */
+/* ═══════════ TAB: Analytics ═══════════ */
+function AnalyticsTab() {
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/admin/analytics", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setData(json.data);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const exportCSV = async () => {
+    try {
+      const res = await fetch("/api/admin/export", { credentials: "include" });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = `manhaj-report-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ }
+  };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (!data) return <EmptyState message="لا توجد بيانات" icon={<BarChart3 size={40} />} />;
+
+  const ov = (data.overview || {}) as Record<string, number>;
+  const govData = (data.governorate_distribution || []) as { name: string; count: number }[];
+  const monthlyRegs = (data.monthly_registrations || []) as { month: string; count: number }[];
+  const subjectPop = (data.subject_popularity || []) as { name: string; exams: number }[];
+  const maxReg = Math.max(...monthlyRegs.map(m => m.count), 1);
+  const maxExam = Math.max(...subjectPop.map(s => s.exams), 1);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold text-lg" style={{ color: "var(--theme-text-primary)" }}>📈 التحليلات والإحصائيات</h3>
+        <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-medium" style={{ background: "var(--theme-cta-gradient)" }}>
+          📥 تصدير Excel
+        </button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {[
+          { label: "إجمالي الطلاب", value: ov.total_students || 0, icon: "👥" },
+          { label: "اشتراكات نشطة", value: ov.active_subscriptions || 0, icon: "✅" },
+          { label: "تجريبية", value: ov.trial_subscriptions || 0, icon: "🔄" },
+          { label: "منتهية", value: ov.expired_subscriptions || 0, icon: "⏰" },
+          { label: "الإيرادات الشهرية", value: `${ov.monthly_revenue || 0} ج.م`, icon: "💰" },
+          { label: "إجمالي الإيرادات", value: `${ov.total_revenue || 0} ج.م`, icon: "💎" },
+          { label: "الامتحانات", value: ov.total_exams || 0, icon: "📝" },
+          { label: "متوسط الدرجات", value: `${ov.avg_score || 0}%`, icon: "🎯" },
+          { label: "رسائل AI", value: ov.total_messages || 0, icon: "🤖" },
+          { label: "جدد هذا الأسبوع", value: ov.new_this_week || 0, icon: "🆕" },
+          { label: "معرضين للخسارة", value: ov.at_risk || 0, icon: "⚠️" },
+        ].map((card, i) => (
+          <div key={i} className="rounded-xl p-3 text-center" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+            <div className="text-2xl mb-1">{card.icon}</div>
+            <p className="text-lg font-bold" style={{ color: "var(--theme-primary)" }}>{card.value}</p>
+            <p className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>{card.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Monthly Registrations Chart */}
+      <div className="rounded-xl p-4" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+        <h4 className="font-bold mb-3" style={{ color: "var(--theme-text-primary)" }}>📊 التسجيلات الشهرية</h4>
+        <div className="flex items-end gap-2 h-32">
+          {monthlyRegs.map((m, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              <span className="text-xs font-bold" style={{ color: "var(--theme-primary)" }}>{m.count}</span>
+              <div className="w-full rounded-t-lg" style={{ height: `${Math.max((m.count / maxReg) * 100, 4)}%`, background: "var(--theme-cta-gradient)" }} />
+              <span className="text-[10px]" style={{ color: "var(--theme-text-secondary)" }}>{m.month.slice(5)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Subject Popularity */}
+      <div className="rounded-xl p-4" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+        <h4 className="font-bold mb-3" style={{ color: "var(--theme-text-primary)" }}>📚 المواد الأكثر شعبية (حسب الامتحانات)</h4>
+        <div className="space-y-2">
+          {subjectPop.slice(0, 8).map((s, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <span className="text-sm w-24 truncate" style={{ color: "var(--theme-text-primary)" }}>{s.name}</span>
+              <div className="flex-1 h-5 rounded-full overflow-hidden" style={{ background: "var(--theme-bg)" }}>
+                <div className="h-full rounded-full" style={{ width: `${Math.max((s.exams / maxExam) * 100, 2)}%`, background: "var(--theme-cta-gradient)" }} />
+              </div>
+              <span className="text-xs font-bold w-8" style={{ color: "var(--theme-primary)" }}>{s.exams}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Governorate Map */}
+      <div className="rounded-xl p-4" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+        <h4 className="font-bold mb-3" style={{ color: "var(--theme-text-primary)" }}>🗺️ توزيع الطلاب حسب المحافظات</h4>
+        {govData.length === 0 ? (
+          <p className="text-sm text-center py-4" style={{ color: "var(--theme-text-secondary)" }}>لا توجد بيانات</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {govData.map((g, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "var(--theme-bg)" }}>
+                <span className="text-sm" style={{ color: "var(--theme-text-primary)" }}>{g.name}</span>
+                <span className="text-sm font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--theme-primary)", color: "white" }}>{g.count}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SecretsTab() {
   const [secrets, setSecrets] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);

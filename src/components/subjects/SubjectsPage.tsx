@@ -129,7 +129,7 @@ export default function SubjectsPage() {
       const res = await fetch(`/api/subjects/${id}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل في تحميل تفاصيل المادة");
       const data = await res.json();
-      setSelectedSubject(data.subject ?? data);
+      setSelectedSubject(data.data ?? data.subject ?? data);
     } catch (err: any) {
       setErrorDetail(err.message ?? "حدث خطأ غير متوقع");
     } finally {
@@ -157,7 +157,7 @@ export default function SubjectsPage() {
         );
         if (!res.ok) throw new Error("فشل في تحميل محتوى الدرس");
         const data = await res.json();
-        setSelectedLesson(data.lesson ?? data);
+        setSelectedLesson(data.data ?? data.lesson ?? data);
       } catch (err: any) {
         setErrorLesson(err.message ?? "حدث خطأ غير متوقع");
       } finally {
