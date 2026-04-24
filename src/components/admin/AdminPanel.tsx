@@ -715,19 +715,39 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       formData.append("lessonId", uploadLessonId);
       formData.append("subjectId", subjectId);
 
-      setGenProgress("🤖 جاري توليد الملخص والأسئلة بالذكاء الاصطناعي... (قد يستغرق 2-5 دقائق)");
+      setGenProgress(isLargeFile 
+        ? `🤖 جاري توليد الملخص والأسئلة... ملف كبير (${fileSizeMB} MB) — قد يستغرق 5-10 دقائق ⏳`
+        : "🤖 جاري توليد الملخص والأسئلة بالذكاء الاصطناعي... (قد يستغرق 2-5 دقائق)"
+      );
+
+      // AbortController for timeout (10 minutes max for large files)
+      const controller = new AbortController();
+      const timeoutMs = isLargeFile ? 600000 : 300000; // 10min or 5min
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       const token = document.cookie.split(";").find(c => c.trim().startsWith("auth-token="))?.split("=").slice(1).join("=");
       const res = await fetch("/api/content/generate", {
         method: "POST",
         headers: token ? { "Authorization": `Bearer ${token}` } : {},
         body: formData,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
-      const data = await res.json();
+      // Try parsing as JSON, fallback to text
+      let data;
+      const responseText = await res.text();
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        // Server returned non-JSON (e.g. HTML error page)
+        console.error("[ContentGenerate] Non-JSON response:", responseText.slice(0, 500));
+        throw new Error(`خطأ من السيرفر (${res.status}): ${responseText.slice(0, 200)}`);
+      }
 
       if (!res.ok) {
-        throw new Error(data.error || "فشل في توليد المحتوى");
+        const errorMsg = data.error || data.message || `خطأ ${res.status} — جرّب ملف أصغر أو تأكد من مفتاح AI`;
+        throw new Error(errorMsg);
       }
 
       setGenResult(data);
@@ -735,7 +755,15 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       loadLessons();
     } catch (err: unknown) {
       setGenProgress("");
-      alert(err instanceof Error ? err.message : "خطأ في توليد المحتوى");
+      if (err instanceof Error) {
+        if (err.name === 'AbortError') {
+          alert("⏰ انتهى وقت الانتظار — الملف كبير جداً. جرّب تقسمه لفصول أصغر ثم ارفع كل فصل على درس.");
+        } else {
+          alert(err.message);
+        }
+      } else {
+        alert("خطأ غير متوقع في توليد المحتوى — جرّب تاني");
+      }
     }
     setGeneratingId(null);
     e.target.value = "";

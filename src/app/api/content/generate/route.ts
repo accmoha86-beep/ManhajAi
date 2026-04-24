@@ -67,16 +67,25 @@ export async function POST(request: NextRequest) {
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // Get lesson info via RPC
-    const { data: lessonsResult } = await supabase.rpc('admin_list_lessons', {
+    console.log(`[ContentGenerate] Looking up lesson: ${lessonId} in subject: ${subjectId} by admin: ${user.id}`);
+    const { data: lessonsResult, error: lessonsError } = await supabase.rpc('admin_list_lessons', {
       p_admin_id: user.id,
       p_subject_id: subjectId || '00000000-0000-0000-0000-000000000000',
     });
+    
+    if (lessonsError) {
+      console.error('[ContentGenerate] admin_list_lessons RPC error:', lessonsError);
+      return NextResponse.json({ error: `خطأ في قراءة الدروس: ${lessonsError.message}` }, { status: 500 });
+    }
+
+    console.log(`[ContentGenerate] lessonsResult type: ${typeof lessonsResult}, keys: ${lessonsResult ? Object.keys(lessonsResult) : 'null'}`);
     
     const lessons = lessonsResult?.lessons || [];
     const lesson = lessons.find((l: Record<string, unknown>) => l.id === lessonId);
     
     if (!lesson) {
-      return NextResponse.json({ error: 'الدرس غير موجود' }, { status: 404 });
+      console.error(`[ContentGenerate] Lesson not found. Got ${lessons.length} lessons. LessonId: ${lessonId}, SubjectId: ${subjectId}`);
+      return NextResponse.json({ error: `الدرس غير موجود — تأكد من حفظ الدرس أولاً (عدد الدروس: ${lessons.length})` }, { status: 404 });
     }
 
     const fileBuffer = Buffer.from(await file.arrayBuffer());
@@ -89,9 +98,10 @@ export async function POST(request: NextRequest) {
       getSecret('AI_CONTENT_MODEL'),
     ]);
     if (!apiKey) {
-      return NextResponse.json({ error: 'مفتاح AI غير مهيأ' }, { status: 500 });
+      return NextResponse.json({ error: 'مفتاح AI غير مهيأ — اذهب إلى 🔑 المفاتيح وتأكد من إضافة anthropic_api_key' }, { status: 500 });
     }
     const model = contentModel || 'claude-sonnet-4-6';
+    console.log(`[ContentGenerate] Using model: ${model}, API key length: ${apiKey.length}`);
 
     // ═══════════════════════════════════════════════════════
     // SMART CHUNKING: Split large PDFs into page chunks
@@ -358,7 +368,18 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[ContentGenerate] Unexpected error:', error);
-    const msg = error instanceof Error ? error.message : 'خطأ غير متوقع';
+    let msg = 'خطأ غير متوقع';
+    if (error instanceof Error) {
+      msg = error.message;
+      // Make common errors more user-friendly
+      if (msg.includes('Body exceeded') || msg.includes('body limit')) {
+        msg = 'حجم الملف أكبر من الحد المسموح — جرّب ملف أصغر أو قسّمه لفصول';
+      } else if (msg.includes('ECONNRESET') || msg.includes('socket hang up')) {
+        msg = 'انقطع الاتصال بالسيرفر — جرّب تاني أو جرّب ملف أصغر';
+      } else if (msg.includes('timeout') || msg.includes('ETIMEDOUT')) {
+        msg = 'انتهى وقت الانتظار — الملف كبير جداً، جرّب قسّمه لفصول';
+      }
+    }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
