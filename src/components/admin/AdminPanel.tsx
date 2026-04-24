@@ -135,6 +135,7 @@ const TABS = [
   { id: "payment_config", label: "💳 إعدادات الدفع", icon: <CreditCard size={18} /> },
   { id: "plans", label: "📦 الخطط", icon: <Package size={18} /> },
   { id: "secrets", label: "🔑 المفاتيح", icon: <Key size={18} /> },
+  { id: "profitability", label: "💰 الأرباح", icon: <TrendingUp size={18} /> },
   { id: "analytics", label: "📈 التحليلات", icon: <BarChart3 size={18} /> },
   { id: "settings", label: "⚙️ الإعدادات", icon: <Settings size={18} /> },
 ];
@@ -201,6 +202,7 @@ export default function AdminPanel() {
           {activeTab === "payment_config" && <PaymentConfigTab />}
           {activeTab === "plans" && <PlansTab />}
           {activeTab === "secrets" && <SecretsTab />}
+          {activeTab === "profitability" && <ProfitabilityTab />}
           {activeTab === "analytics" && <AnalyticsTab />}
           {activeTab === "settings" && <SettingsTab />}
         </div>
@@ -480,7 +482,7 @@ function SubjectsTab() {
   const [error, setError] = useState("");
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
-  const [form, setForm] = useState({ name: "", grade_id: "", description: "" });
+  const [form, setForm] = useState({ name_ar: "", icon: "📘", color: "#3B82F6", grade_level: "3", is_published: true });
   const [saving, setSaving] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<Record<string, unknown> | null>(null);
 
@@ -492,17 +494,43 @@ function SubjectsTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openCreate = () => { setForm({ name: "", grade_id: "", description: "" }); setEditItem(null); setModal("create"); };
+  const subjectIcons = ["📘","📐","🧪","🌍","🔬","📖","🎨","💻","🧮","📊","🏛️","🌿","⚗️","🔭","📝","🎵","💪","🇬🇧","🇫🇷","🇩🇪"];
+  const subjectColors = ["#3B82F6","#8B5CF6","#10B981","#F59E0B","#EF4444","#EC4899","#6366F1","#14B8A6","#F97316","#06B6D4"];
+
+  const openCreate = () => { setForm({ name_ar: "", icon: "📘", color: "#3B82F6", grade_level: "3", is_published: true }); setEditItem(null); setModal("create"); };
   const openEdit = (s: Record<string, unknown>) => {
-    setForm({ name: (s.name as string) || "", grade_id: (s.grade_id as string) || "", description: (s.description as string) || "" });
+    setForm({
+      name_ar: (s.name_ar as string) || (s.name as string) || "",
+      icon: (s.icon as string) || "📘",
+      color: (s.color as string) || "#3B82F6",
+      grade_level: String((s.grade_level as number) || 3),
+      is_published: !!(s.is_published ?? s.published ?? true),
+    });
     setEditItem(s); setModal("edit");
   };
 
   const handleSave = async () => {
+    if (!form.name_ar.trim()) { alert("اسم المادة مطلوب"); return; }
     setSaving(true);
     try {
-      if (modal === "create") await adminAPI("create_subject", form);
-      else await adminAPI("update_subject", { subject_id: editItem?.id, ...form });
+      if (modal === "create") {
+        await adminAPI("create_subject", {
+          name_ar: form.name_ar.trim(),
+          icon: form.icon,
+          color: form.color,
+          grade_level: Number(form.grade_level),
+          is_published: form.is_published,
+        });
+      } else {
+        await adminAPI("update_subject", {
+          subject_id: editItem?.id,
+          name_ar: form.name_ar.trim(),
+          icon: form.icon,
+          color: form.color,
+          grade_level: Number(form.grade_level),
+          is_published: form.is_published,
+        });
+      }
       setModal(null); load();
     } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
     setSaving(false);
@@ -562,10 +590,40 @@ function SubjectsTab() {
         </div>
       )}
 
-      <Modal open={!!modal} onClose={() => setModal(null)} title={modal === "create" ? "إضافة مادة جديدة" : "تعديل المادة"} onSave={handleSave} saving={saving}>
-        <InputField label="اسم المادة" value={form.name} onChange={v => setForm({ ...form, name: v })} placeholder="مثال: الرياضيات" />
-        <InputField label="معرّف الصف" value={form.grade_id} onChange={v => setForm({ ...form, grade_id: v })} placeholder="grade_id" />
-        <InputField label="الوصف" value={form.description} onChange={v => setForm({ ...form, description: v })} placeholder="وصف المادة" />
+      <Modal open={!!modal} onClose={() => setModal(null)} title={modal === "create" ? "➕ إضافة مادة جديدة" : "✏️ تعديل المادة"} onSave={handleSave} saving={saving}>
+        <InputField label="اسم المادة بالعربي *" value={form.name_ar} onChange={v => setForm({ ...form, name_ar: v })} placeholder="مثال: الرياضيات البحتة" />
+        
+        <div className="mb-3">
+          <label className="block text-sm font-medium mb-2" style={{ color: "var(--theme-text-secondary)" }}>أيقونة المادة</label>
+          <div className="flex flex-wrap gap-2">
+            {subjectIcons.map(ic => (
+              <button key={ic} onClick={() => setForm({ ...form, icon: ic })}
+                className="w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all"
+                style={{ background: form.icon === ic ? "var(--theme-primary)" : "var(--theme-bg)", border: `2px solid ${form.icon === ic ? "var(--theme-primary)" : "var(--theme-surface-border)"}` }}>
+                {ic}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <label className="block text-sm font-medium mb-2" style={{ color: "var(--theme-text-secondary)" }}>لون المادة</label>
+          <div className="flex flex-wrap gap-2">
+            {subjectColors.map(cl => (
+              <button key={cl} onClick={() => setForm({ ...form, color: cl })}
+                className="w-8 h-8 rounded-full transition-all"
+                style={{ background: cl, border: `3px solid ${form.color === cl ? "var(--theme-text-primary)" : "transparent"}`, transform: form.color === cl ? "scale(1.2)" : "scale(1)" }} />
+            ))}
+          </div>
+        </div>
+
+        <SelectField label="الصف الدراسي" value={form.grade_level} onChange={v => setForm({ ...form, grade_level: v })} 
+          options={[{ value: "3", label: "الصف الثالث الثانوي" }, { value: "2", label: "الصف الثاني الثانوي" }, { value: "1", label: "الصف الأول الثانوي" }]} />
+
+        <div className="flex items-center justify-between mb-3 p-3 rounded-xl" style={{ background: "var(--theme-bg)" }}>
+          <span className="text-sm font-medium" style={{ color: "var(--theme-text-primary)" }}>نشر المادة فوراً؟</span>
+          <ToggleSwitch checked={form.is_published} onChange={v => setForm({ ...form, is_published: v })} />
+        </div>
       </Modal>
     </div>
   );
@@ -1314,6 +1372,177 @@ function PlansTab() {
             className="w-full px-3 py-2 rounded-xl outline-none text-sm resize-none" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
         </div>
       </Modal>
+    </div>
+  );
+}
+
+/* ═══════════ TAB: Profitability 💰 ═══════════ */
+function ProfitabilityTab() {
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { setData(await adminAPI("profitability")); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (!data) return <EmptyState message="لا توجد بيانات مالية بعد" icon={<TrendingUp size={40} />} />;
+
+  const summary = (data.summary || {}) as Record<string, number>;
+  const topProfit = (data.top_profitable || []) as Record<string, unknown>[];
+  const topCost = (data.top_costly || []) as Record<string, unknown>[];
+  const monthly = (data.monthly_breakdown || []) as Record<string, unknown>[];
+
+  const profitMargin = summary.total_revenue > 0 ? ((summary.net_profit / summary.total_revenue) * 100).toFixed(1) : "0";
+  const maxMonthly = Math.max(...monthly.map(m => (m.revenue as number) || 0), 1);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-lg" style={{ color: "var(--theme-text-primary)" }}>💰 تحليل الأرباح والتكاليف</h3>
+        <button onClick={load} className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}>
+          <RefreshCw size={14} /> تحديث
+        </button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "إجمالي الإيرادات", value: formatCurrency(summary.total_revenue || 0), icon: "💵", color: "#10B981", bg: "#10B98115" },
+          { label: "إجمالي التكاليف", value: formatCurrency(summary.total_costs || 0), icon: "💸", color: "#EF4444", bg: "#EF444415" },
+          { label: "صافي الربح", value: formatCurrency(summary.net_profit || 0), icon: "📈", color: (summary.net_profit || 0) >= 0 ? "#10B981" : "#EF4444", bg: (summary.net_profit || 0) >= 0 ? "#10B98115" : "#EF444415" },
+          { label: "هامش الربح", value: `${profitMargin}%`, icon: "🎯", color: "#6366F1", bg: "#6366F115" },
+        ].map((card, i) => (
+          <div key={i} className="rounded-2xl p-4" style={{ background: card.bg, border: `1px solid ${card.color}30` }}>
+            <div className="text-2xl mb-2">{card.icon}</div>
+            <p className="text-2xl font-bold" style={{ color: card.color }}>{card.value}</p>
+            <p className="text-xs mt-1 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{card.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Cost Breakdown */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { label: "تكلفة AI (شات)", value: formatCurrency(summary.ai_cost || 0), icon: "🤖", desc: `${summary.total_messages || 0} رسالة` },
+          { label: "تكلفة SMS", value: formatCurrency(summary.sms_cost || 0), icon: "📱", desc: `${summary.total_sms || 0} رسالة` },
+          { label: "تكلفة البنية", value: formatCurrency(summary.infra_cost || 0), icon: "🏗️", desc: "Railway + Supabase" },
+        ].map((item, i) => (
+          <div key={i} className="rounded-xl p-4" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">{item.icon}</span>
+              <span className="font-bold text-sm" style={{ color: "var(--theme-text-primary)" }}>{item.label}</span>
+            </div>
+            <p className="text-xl font-bold" style={{ color: "#EF4444" }}>{item.value}</p>
+            <p className="text-xs mt-1" style={{ color: "var(--theme-text-secondary)" }}>{item.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Monthly Revenue vs Cost Chart */}
+      {monthly.length > 0 && (
+        <div className="rounded-xl p-4" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+          <h4 className="font-bold mb-4" style={{ color: "var(--theme-text-primary)" }}>📊 الإيرادات مقابل التكاليف (شهرياً)</h4>
+          <div className="flex items-end gap-3 h-40">
+            {monthly.map((m, i) => {
+              const rev = (m.revenue as number) || 0;
+              const cost = (m.cost as number) || 0;
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div className="flex items-end gap-0.5 w-full justify-center" style={{ height: "120px" }}>
+                    <div className="w-[45%] rounded-t-md" style={{ height: `${Math.max((rev / maxMonthly) * 100, 4)}%`, background: "#10B981" }} title={`إيرادات: ${rev} ج.م`} />
+                    <div className="w-[45%] rounded-t-md" style={{ height: `${Math.max((cost / maxMonthly) * 100, 4)}%`, background: "#EF4444" }} title={`تكاليف: ${cost} ج.م`} />
+                  </div>
+                  <span className="text-[10px] font-medium" style={{ color: "var(--theme-text-secondary)" }}>{(m.month as string)?.slice(5) || ""}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-4 mt-3 justify-center">
+            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded" style={{ background: "#10B981" }} /><span className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>إيرادات</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded" style={{ background: "#EF4444" }} /><span className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>تكاليف</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* Top Profitable Students */}
+      {topProfit.length > 0 && (
+        <div className="rounded-xl p-4" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+          <h4 className="font-bold mb-3" style={{ color: "var(--theme-text-primary)" }}>🏆 أكثر 10 طلاب ربحية</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
+                  {["#", "الطالب", "الإيرادات", "التكلفة", "صافي الربح"].map(h => (
+                    <th key={h} className="text-right py-2 px-3 font-medium text-xs" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {topProfit.map((s, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
+                    <td className="py-2 px-3">
+                      <span className="text-sm">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}</span>
+                    </td>
+                    <td className="py-2 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.full_name as string) || "—"}</td>
+                    <td className="py-2 px-3 font-medium" style={{ color: "#10B981" }}>{formatCurrency((s.revenue as number) || 0)}</td>
+                    <td className="py-2 px-3" style={{ color: "#EF4444" }}>{formatCurrency((s.cost as number) || 0)}</td>
+                    <td className="py-2 px-3 font-bold" style={{ color: ((s.profit as number) || 0) >= 0 ? "#10B981" : "#EF4444" }}>
+                      {formatCurrency((s.profit as number) || 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Top Costly Students */}
+      {topCost.length > 0 && (
+        <div className="rounded-xl p-4" style={{ background: "var(--theme-surface-bg)", border: "1px solid var(--theme-surface-border)" }}>
+          <h4 className="font-bold mb-3" style={{ color: "var(--theme-text-primary)" }}>💣 أكثر 10 طلاب تكلفة (AI)</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
+                  {["#", "الطالب", "الرسائل", "التوكنز", "التكلفة"].map(h => (
+                    <th key={h} className="text-right py-2 px-3 font-medium text-xs" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {topCost.map((s, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
+                    <td className="py-2 px-3 text-sm">{i + 1}</td>
+                    <td className="py-2 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.full_name as string) || "—"}</td>
+                    <td className="py-2 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(s.messages as number) || 0}</td>
+                    <td className="py-2 px-3" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>{((s.tokens as number) || 0).toLocaleString()}</td>
+                    <td className="py-2 px-3 font-bold" style={{ color: "#EF4444" }}>{formatCurrency((s.cost as number) || 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tips */}
+      <div className="rounded-xl p-4" style={{ background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.2)" }}>
+        <h4 className="font-bold text-sm mb-2" style={{ color: "var(--theme-primary)" }}>💡 نصائح لزيادة الأرباح</h4>
+        <ul className="space-y-1.5 text-xs" style={{ color: "var(--theme-text-secondary)" }}>
+          <li>• أسعار AI قابلة للتعديل من تاب 🔑 المفاتيح: (<code dir="ltr">AI_INPUT_COST_PER_1M</code> / <code dir="ltr">AI_OUTPUT_COST_PER_1M</code>)</li>
+          <li>• استخدام <strong>claude-sonnet</strong> بدل <strong>claude-opus</strong> في الشات يقلل التكلفة ~80%</li>
+          <li>• تقليل <code dir="ltr">AI_DAILY_LIMIT</code> يحد استهلاك الطلاب للشات</li>
+          <li>• سعر صرف الدولار يتحدّث من: <code dir="ltr">USD_TO_EGP_RATE</code></li>
+        </ul>
+      </div>
     </div>
   );
 }
