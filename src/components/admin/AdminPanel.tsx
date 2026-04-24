@@ -325,7 +325,7 @@ function StudentsTab() {
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
           <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "var(--theme-text-secondary)" }} />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="بحث بالاسم أو البريد..."
+          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="بحث بالاسم أو الموبايل..."
             className="w-full pr-10 pl-4 py-2 rounded-xl outline-none text-sm" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
         </div>
         <button onClick={load} className="px-4 py-2 rounded-xl flex items-center gap-2 text-sm" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}>
@@ -339,7 +339,7 @@ function StudentsTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
-                  {["الاسم", "البريد الإلكتروني", "الصف", "الحالة", "تاريخ التسجيل", "إجراء"].map(h => (
+                  {["الاسم", "رقم الموبايل", "الصف", "الحالة", "تاريخ التسجيل", "إجراء"].map(h => (
                     <th key={h} className="text-right py-3 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
                   ))}
                 </tr>
@@ -348,7 +348,7 @@ function StudentsTab() {
                 {students.map((s, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
                     <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.name as string) || (s.full_name as string) || "—"}</td>
-                    <td className="py-3 px-3" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>{(s.email as string) || "—"}</td>
+                    <td className="py-3 px-3" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>{(s.phone as string) || "—"}</td>
                     <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(s.grade as string) || (s.grade_name as string) || "—"}</td>
                     <td className="py-3 px-3">
                       <span className={`px-2 py-1 rounded-lg text-xs font-medium ${s.banned ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
