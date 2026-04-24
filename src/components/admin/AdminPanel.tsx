@@ -698,7 +698,15 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
 
     setGeneratingId(uploadLessonId);
     const isImage = file.type.startsWith("image/");
-    setGenProgress(isImage ? "🖼️ جاري رفع الصورة وقراءتها بالذكاء الاصطناعي..." : "📄 جاري رفع الملف وقراءة المحتوى...");
+    const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+    const isLargeFile = file.size > 13 * 1024 * 1024;
+    setGenProgress(
+      isImage 
+        ? "🖼️ جاري رفع الصورة وقراءتها بالذكاء الاصطناعي..." 
+        : isLargeFile 
+          ? `📄 جاري رفع الملف (${fileSizeMB} MB) — سيتم تقسيمه تلقائياً ومعالجته... (قد يستغرق 5-10 دقائق) ⏳`
+          : "📄 جاري رفع الملف وقراءة المحتوى..."
+    );
     setGenResult(null);
 
     try {
@@ -773,7 +781,10 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       {genResult && (
         <div className="mb-4 p-4 rounded-xl bg-green-50 border border-green-200">
           <p className="font-bold text-green-700 mb-2">✅ {(genResult.message as string) || "تم توليد المحتوى بنجاح!"}</p>
-          <div className="flex gap-4 text-sm text-green-600">
+          {(genResult.pages as number) > 0 && (
+            <p className="text-xs text-green-500 mb-1">📄 {genResult.pages as number} صفحة | {genResult.chunks as number} جزء | {genResult.fileType as string}</p>
+          )}
+          <div className="flex gap-4 text-sm text-green-600 flex-wrap">
             <span>📝 ملخص: {(genResult.summary as Record<string, unknown>)?.sectionsCount || 0} قسم</span>
             <span>📋 أسئلة: {(genResult.questions as Record<string, unknown>)?.total || 0} سؤال</span>
             <span>MCQ: {(genResult.questions as Record<string, unknown>)?.mcq || 0}</span>
