@@ -32,6 +32,13 @@ const nextConfig = {
   // Strict mode for development
   reactStrictMode: true,
 
+  // Allow large file uploads (200MB+) for curriculum PDF/image upload
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '250mb',
+    },
+  },
+
   // ═══════════════════════════════════════
   // 🛡️ SECURITY HEADERS — Full Protection
   // ═══════════════════════════════════════

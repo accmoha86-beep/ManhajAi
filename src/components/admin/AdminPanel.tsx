@@ -689,6 +689,12 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       alert("صيغة الملف غير مدعومة. الصيغ المدعومة: PDF, PNG, JPG, WEBP");
       return;
     }
+    // Client-side size check (200MB default — matches server setting MAX_FILE_SIZE_MB)
+    const maxSizeMB = 200;
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      alert(`حجم الملف (${(file.size / 1024 / 1024).toFixed(1)} MB) يتجاوز الحد المسموح (${maxSizeMB} MB). يمكنك تغيير الحد من إعدادات المفاتيح → MAX_FILE_SIZE_MB`);
+      return;
+    }
 
     setGeneratingId(uploadLessonId);
     const isImage = file.type.startsWith("image/");

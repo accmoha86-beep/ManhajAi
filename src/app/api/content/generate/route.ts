@@ -51,8 +51,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (file.size > 50 * 1024 * 1024) {
-      return NextResponse.json({ error: 'حجم الملف يتجاوز 50 ميجابايت' }, { status: 400 });
+    // Read max file size from admin settings (default 200MB)
+    const maxSizeMB = parseInt(await getSecret('MAX_FILE_SIZE_MB') || '200', 10) || 200;
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      return NextResponse.json({ error: `حجم الملف يتجاوز ${maxSizeMB} ميجابايت` }, { status: 400 });
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

@@ -2,36 +2,38 @@
 import type { Result } from '@/lib/result';
 import { ok, err } from '@/lib/result';
 
-const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50 MB
-const ALLOWED_MIME_TYPES = ['application/pdf'];
+const DEFAULT_MAX_SIZE_MB = 200; // 200 MB default — configurable via admin settings (MAX_FILE_SIZE_MB)
+const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
 
 /**
- * Validate a PDF file upload.
- * Max 50 MB, must be a PDF.
+ * Validate a file upload (PDF or image).
+ * Max size configurable via admin settings, default 200 MB.
  */
-export function validatePdfUpload(file: {
+export function validateFileUpload(file: {
   size: number;
   type: string;
-}): Result<void> {
+}, maxSizeMB: number = DEFAULT_MAX_SIZE_MB): Result<void> {
   if (!file) {
     return err('لم يتم رفع أي ملف');
   }
 
   if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-    return err('يجب أن يكون الملف بصيغة PDF فقط');
+    return err('صيغة الملف غير مدعومة. الصيغ المدعومة: PDF, PNG, JPG, WEBP');
   }
 
   if (file.size <= 0) {
     return err('الملف فارغ');
   }
 
-  if (file.size > MAX_PDF_SIZE) {
-    const maxMB = MAX_PDF_SIZE / (1024 * 1024);
-    return err(`حجم الملف يتجاوز الحد المسموح (${maxMB} ميجابايت)`);
+  if (file.size > maxSizeMB * 1024 * 1024) {
+    return err(`حجم الملف يتجاوز الحد المسموح (${maxSizeMB} ميجابايت)`);
   }
 
   return ok(undefined);
 }
+
+// Backward compatible alias
+export const validatePdfUpload = validateFileUpload;
 
 /**
  * Build watermark data for PDF downloads to prevent sharing.
