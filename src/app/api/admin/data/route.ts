@@ -560,6 +560,19 @@ export async function POST(request: NextRequest) {
         return ok(data);
       }
 
+      // ===== 💰 PROFITABILITY =====
+      case 'profitability': {
+        const { data, error } = await sb.rpc('admin_students_profitability', { p_admin_id: aid });
+        if (error) return err(error.message);
+        return ok(data || {});
+      }
+
+      case 'student_profitability': {
+        const { data, error } = await sb.rpc('get_student_profitability', { p_user_id: params.user_id || params.student_id });
+        if (error) return err(error.message);
+        return ok(data || {});
+      }
+
       default:
         return err(`Unknown action: ${action}`, 400);
     }

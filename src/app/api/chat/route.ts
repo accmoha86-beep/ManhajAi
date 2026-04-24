@@ -282,11 +282,25 @@ export async function POST(request: NextRequest) {
     if (userId && subjectId) {
       try {
         await supabase.from('chat_messages').insert([
-          { user_id: userId, subject_id: subjectId, role: 'user', content: message },
-          { user_id: userId, subject_id: subjectId, role: 'assistant', content: assistantMessage },
+          { user_id: userId, subject_id: subjectId, role: 'user', content: message, tokens_used: inputTokens },
+          { user_id: userId, subject_id: subjectId, role: 'assistant', content: assistantMessage, tokens_used: outputTokens },
         ]);
       } catch (err) {
         console.error('Failed to save chat messages:', err);
+      }
+    }
+
+    // ━━━ 💰 Log AI cost automatically ━━━
+    if (userId) {
+      try {
+        await supabase.rpc('log_ai_chat_cost', {
+          p_user_id: userId,
+          p_tokens_input: inputTokens,
+          p_tokens_output: outputTokens,
+          p_model: model,
+        });
+      } catch (err) {
+        console.error('Failed to log AI cost:', err);
       }
     }
 
