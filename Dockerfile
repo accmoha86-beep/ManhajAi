@@ -30,8 +30,13 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Custom server wrapper with increased timeouts for large file AI processing
+COPY --from=builder --chown=nextjs:nodejs /app/server.custom.js ./server.custom.js
+
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["node", "server.js"]
+
+# Use custom server with 10-minute timeout (default is 2 min)
+CMD ["node", "server.custom.js"]

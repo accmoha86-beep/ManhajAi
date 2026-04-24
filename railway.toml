@@ -4,7 +4,7 @@ dockerfilePath = "Dockerfile"
 watchPatterns = ["src/**", "public/**", "package.json", "Dockerfile", "next.config.mjs", "tailwind.config.ts", "tsconfig.json", "middleware.ts"]
 
 [deploy]
-startCommand = "node server.js"
+startCommand = "node server.custom.js"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

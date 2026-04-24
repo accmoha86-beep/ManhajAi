@@ -6,14 +6,16 @@ import { getAuthUser } from '@/lib/auth';
 import { getSecret } from '@/lib/secrets';
 import { PDFDocument } from 'pdf-lib';
 
-export const maxDuration = 300; // 5 min timeout for AI generation
+// Railway timeout handled by server.custom.js (10 min)
+export const maxDuration = 600; // Vercel fallback: 10 min
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Max size per Claude API request (~18MB base64 = ~13.5MB raw)
-const MAX_CHUNK_SIZE_MB = 13;
-const PAGES_PER_CHUNK = 15;
+// Scanned textbooks: 1 page can be 2-5MB, so keep chunks small
+const MAX_CHUNK_BYTES = 10 * 1024 * 1024; // 10MB per chunk (safe for base64 → ~13.3MB)
+const PAGES_PER_CHUNK = 5; // Start with 5 pages, reduce if still too large
 
 // Supported file types
 const ALLOWED_TYPES: Record<string, string> = {
@@ -109,40 +111,51 @@ export async function POST(request: NextRequest) {
     
     let pdfChunks: Buffer[] = [];
     let totalPages = 0;
-    const isLargePdf = isPdf && fileBuffer.length > MAX_CHUNK_SIZE_MB * 1024 * 1024;
 
-    if (isLargePdf) {
-      // Split PDF into smaller chunks
-      console.log(`[ContentGenerate] Large PDF detected (${(fileBuffer.length / 1024 / 1024).toFixed(1)} MB) — splitting into chunks...`);
-      
+    if (isPdf) {
       try {
         const srcDoc = await PDFDocument.load(fileBuffer, { ignoreEncryption: true });
         totalPages = srcDoc.getPageCount();
-        console.log(`[ContentGenerate] PDF has ${totalPages} pages — splitting into chunks of ${PAGES_PER_CHUNK} pages`);
+        const fileSizeMB = (fileBuffer.length / 1024 / 1024).toFixed(1);
+        console.log(`[ContentGenerate] PDF: ${totalPages} pages, ${fileSizeMB} MB`);
 
-        for (let startPage = 0; startPage < totalPages; startPage += PAGES_PER_CHUNK) {
-          const endPage = Math.min(startPage + PAGES_PER_CHUNK, totalPages);
+        // Always chunk PDFs — even small ones might have large scanned pages
+        // Adaptive chunk size: start with PAGES_PER_CHUNK, reduce if chunk is too big
+        let pagesPerChunk = Math.min(PAGES_PER_CHUNK, totalPages);
+        
+        for (let startPage = 0; startPage < totalPages; ) {
+          const endPage = Math.min(startPage + pagesPerChunk, totalPages);
           const chunkDoc = await PDFDocument.create();
-          const pages = await chunkDoc.copyPages(srcDoc, Array.from({ length: endPage - startPage }, (_, i) => startPage + i));
-          pages.forEach(page => chunkDoc.addPage(page));
+          const pageIndices = Array.from({ length: endPage - startPage }, (_, i) => startPage + i);
+          const copiedPages = await chunkDoc.copyPages(srcDoc, pageIndices);
+          copiedPages.forEach(page => chunkDoc.addPage(page));
           const chunkBytes = await chunkDoc.save();
+          
+          // If chunk is too big, reduce pages and retry
+          if (chunkBytes.length > MAX_CHUNK_BYTES && pagesPerChunk > 1) {
+            pagesPerChunk = Math.max(1, Math.floor(pagesPerChunk / 2));
+            console.log(`[ContentGenerate] Chunk too big (${(chunkBytes.length / 1024 / 1024).toFixed(1)} MB) — reducing to ${pagesPerChunk} pages/chunk`);
+            continue; // Retry with fewer pages
+          }
+          
           pdfChunks.push(Buffer.from(chunkBytes));
-          console.log(`[ContentGenerate] Chunk ${pdfChunks.length}: pages ${startPage + 1}-${endPage} (${(chunkBytes.length / 1024 / 1024).toFixed(1)} MB)`);
+          console.log(`[ContentGenerate] Chunk ${pdfChunks.length}: pages ${startPage + 1}-${endPage} (${(chunkBytes.length / 1024 / 1024).toFixed(1)} MB, ${pagesPerChunk} pages/chunk)`);
+          startPage = endPage;
         }
+        
+        console.log(`[ContentGenerate] Split into ${pdfChunks.length} chunks`);
       } catch (pdfError) {
-        console.error('[ContentGenerate] PDF split error:', pdfError);
-        // Fallback: try to process first pages only
-        return NextResponse.json({ 
-          error: `فشل تقسيم الـ PDF. جرّب رفع فصل واحد بدل الكتاب كله — هيكون أسرع والنتيجة أدق 💡`
-        }, { status: 400 });
+        console.error('[ContentGenerate] PDF processing error:', pdfError);
+        // Last resort: try sending raw file (small PDFs)
+        if (fileBuffer.length < MAX_CHUNK_BYTES) {
+          pdfChunks = [fileBuffer];
+          console.log('[ContentGenerate] Fallback: using raw PDF buffer');
+        } else {
+          return NextResponse.json({ 
+            error: `الملف تالف أو مشفّر — جرّب حفظه مرة تانية كـ PDF عادي أو ارفع فصل واحد بس`
+          }, { status: 400 });
+        }
       }
-    } else if (isPdf) {
-      // Small PDF — process as single chunk
-      pdfChunks = [fileBuffer];
-      try {
-        const doc = await PDFDocument.load(fileBuffer, { ignoreEncryption: true });
-        totalPages = doc.getPageCount();
-      } catch { totalPages = 0; }
     }
 
     // ═══════════════════════════════════════════════════════
@@ -191,13 +204,25 @@ export async function POST(request: NextRequest) {
 
         console.log(`[ContentGenerate] Processing summary chunk ${i + 1}/${pdfChunks.length} (${(chunk.length / 1024 / 1024).toFixed(1)} MB)`);
 
-        const summaryResponse = await callClaudeVision(apiKey, {
+        let summaryResponse = await callClaudeVision(apiKey, {
           system: 'أنت مُعلِّم خبير في إعداد الملخصات التعليمية للمنهج المصري. اقرأ المحتوى من الملف المرفق وأنشئ ملخصاً تعليمياً. أجب بصيغة JSON فقط.',
           fileBlock,
           prompt: buildSummaryPrompt(lessonTitle + chunkLabel),
           maxTokens: 8192,
           model,
         });
+
+        // If chunk is still too large (413), skip to text-based summary
+        if (!summaryResponse.ok && summaryResponse.error === '413_TOO_LARGE') {
+          console.warn(`[ContentGenerate] Chunk ${i + 1} too large for vision — trying text extraction...`);
+          // Use a smaller prompt asking Claude to work from text description
+          summaryResponse = await callClaudeText(apiKey, {
+            system: 'أنت مُعلِّم خبير في إعداد الملخصات التعليمية للمنهج المصري.',
+            prompt: `لا يمكن قراءة الملف المرفق. أنشئ ملخصاً تعليمياً عاماً لـ "${lessonTitle}${chunkLabel}" بناءً على معرفتك بالمنهج المصري. أجب بصيغة JSON: {"title":"...","sections":[{"title":"...","content":"..."}]}`,
+            maxTokens: 4096,
+            model,
+          });
+        }
 
         if (summaryResponse.ok) {
           try {
@@ -465,13 +490,27 @@ async function callClaudeVision(
 
   if (!response.ok) {
     const errText = await response.text();
-    return { ok: false, content: '', error: `API error ${response.status}: ${errText.slice(0, 300)}` };
+    const statusCode = response.status;
+    console.error(`[Claude Vision] Error ${statusCode}: ${errText.slice(0, 200)}`);
+    
+    // Special handling for common errors
+    if (statusCode === 413) {
+      return { ok: false, content: '', error: `413_TOO_LARGE` };
+    }
+    if (statusCode === 429) {
+      // Rate limit — wait and retry would be nice, but just report for now
+      return { ok: false, content: '', error: `Claude مشغول — جرّب بعد دقيقة (429 rate limit)` };
+    }
+    if (statusCode === 401) {
+      return { ok: false, content: '', error: `مفتاح API غير صالح — تحقق من anthropic_api_key في المفاتيح` };
+    }
+    return { ok: false, content: '', error: `API error ${statusCode}: ${errText.slice(0, 300)}` };
   }
 
   const data = await response.json();
   const text = data.content?.[0]?.text || '';
   if (!text) {
-    return { ok: false, content: '', error: 'لم يتم الحصول على رد' };
+    return { ok: false, content: '', error: 'لم يتم الحصول على رد من Claude' };
   }
   return { ok: true, content: text };
 }
