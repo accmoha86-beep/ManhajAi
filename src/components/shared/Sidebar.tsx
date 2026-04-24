@@ -142,10 +142,10 @@ export default function Sidebar() {
           onClick={() => setMobileOpen(true)}
           className="fixed z-[1002] flex items-center justify-center"
           style={{
-            top: '1rem',
+            top: '0.85rem',
             right: '4.5rem',
-            width: '2.2rem',
-            height: '2.2rem',
+            width: '2.4rem',
+            height: '2.4rem',
             borderRadius: '0.5rem',
             background: 'rgba(255,255,255,0.2)',
             border: '1px solid rgba(255,255,255,0.3)',
@@ -154,7 +154,7 @@ export default function Sidebar() {
           }}
           aria-label="فتح القائمة"
         >
-          <Menu size={18} />
+          <Menu size={20} />
         </button>
 
         {/* Overlay */}

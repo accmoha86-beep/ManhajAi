@@ -593,25 +593,96 @@
 .anim-fade-in-up { animation: fadeInUp 0.6s ease forwards; }
 
 /* ============================================================= */
-/* Mobile Responsive Styles                                       */
+/* 📱 Mobile Responsive Styles — Comprehensive                    */
 /* ============================================================= */
-@media (max-width: 767px) {
-  /* Make cards stack properly */
-  .grid-cols-2, .grid-cols-3, .grid-cols-4 {
+
+/* ── Extra Small: phones (< 480px) ──────────────────────────── */
+@media (max-width: 479px) {
+  /* Hero text smaller */
+  .text-4xl { font-size: 1.5rem !important; }
+  .text-5xl { font-size: 1.75rem !important; }
+  .text-6xl { font-size: 2rem !important; }
+  .text-3xl { font-size: 1.3rem !important; }
+
+  /* Reduce padding */
+  .p-6 { padding: 0.75rem !important; }
+  .p-7 { padding: 0.85rem !important; }
+  .p-8 { padding: 1rem !important; }
+  .px-8, .px-10 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+  .py-20 { padding-top: 3rem !important; padding-bottom: 3rem !important; }
+  .py-16 { padding-top: 2.5rem !important; padding-bottom: 2.5rem !important; }
+
+  /* Gap adjustments */
+  .gap-6 { gap: 0.75rem !important; }
+  .gap-8 { gap: 1rem !important; }
+  .gap-12 { gap: 1.5rem !important; }
+  .mb-14 { margin-bottom: 2rem !important; }
+
+  /* Make 3-col and 4-col grids stack */
+  .grid-cols-3, .grid-cols-4,
+  .lg\:grid-cols-3, .lg\:grid-cols-4 {
     grid-template-columns: 1fr !important;
   }
-  
-  /* Reduce padding on mobile */
-  .p-6 { padding: 1rem !important; }
-  .p-8 { padding: 1.25rem !important; }
-  .px-8 { padding-left: 1rem !important; padding-right: 1rem !important; }
-  
-  /* Text size adjustments */
+
+  /* Keep stats as 2 columns */
+  .grid-cols-2 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Pricing cards: stack */
+  .md\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* CTA buttons: full width */
+  .flex-wrap.gap-4 > a {
+    flex: 1 1 100%;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* Footer: single column */
+  .md\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Stats counter */
+  .md\:text-5xl { font-size: 2rem !important; }
+
+  /* Subject cards */
+  .sm\:grid-cols-2 { grid-template-columns: 1fr !important; }
+
+  /* Steps: 1 column */
+  .sm\:grid-cols-2.lg\:grid-cols-4 { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+/* ── Small: phones / small tablets (< 768px) ────────────────── */
+@media (max-width: 767px) {
+  /* Prevent iOS zoom on focus */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Hero section adjustments */
+  .min-h-\[92vh\] {
+    min-height: 75vh !important;
+    padding-top: 5rem !important;
+  }
+
+  /* Hide decorative elements */
+  .hide-mobile { display: none !important; }
+
+  /* Reduce large text */
   .text-4xl { font-size: 1.75rem !important; }
   .text-5xl { font-size: 2rem !important; }
   .text-6xl { font-size: 2.25rem !important; }
-  
-  /* Subject page: stack chat and content */
+
+  /* Reduce padding */
+  .p-6 { padding: 1rem !important; }
+  .p-8 { padding: 1.25rem !important; }
+  .px-8 { padding-left: 1rem !important; padding-right: 1rem !important; }
+
+  /* Subject page: stack chat and content vertically */
   .subject-split {
     flex-direction: column !important;
     height: auto !important;
@@ -619,20 +690,178 @@
   .subject-split > * {
     width: 100% !important;
     min-width: 100% !important;
+    max-height: none !important;
   }
-  
-  /* Hide decorative elements on small screens */
-  .hide-mobile { display: none !important; }
-  
-  /* Make forms full width */
-  input, select, textarea {
-    font-size: 16px !important; /* Prevent iOS zoom */
+
+  /* Chat container on mobile: limited height */
+  .subject-split .chat-container {
+    height: 60vh !important;
+    min-height: 400px !important;
+    max-height: 70vh !important;
   }
-  
-  /* Landing hero adjustments */
-  .hero-content {
-    padding: 2rem 1rem !important;
+
+  /* Dashboard stats: 2 columns always */
+  .grid.grid-cols-2.lg\:grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
   }
+
+  /* Subject list: 1 column */
+  .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Pricing: stack on mobile */
+  .grid.grid-cols-1.md\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+  /* Remove popular card scale on mobile (causes overflow) */
+  .scale-\[1\.03\] {
+    transform: none !important;
+  }
+
+  /* Footer: stack columns */
+  .grid.grid-cols-1.md\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Stats cards on landing: 2 cols */
+  .grid.grid-cols-2.md\:grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* "How it works" steps: 2 cols */
+  .grid.grid-cols-1.sm\:grid-cols-2.lg\:grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Features: 1 column */
+  .grid.grid-cols-1.sm\:grid-cols-2.lg\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Quick action buttons: wrap properly */
+  .flex-wrap.gap-3 > a,
+  .flex-wrap.gap-3 > button {
+    flex: 1 1 calc(50% - 0.375rem);
+    min-width: 120px;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* Streak circles smaller */
+  .w-10.h-10 {
+    width: 2rem !important;
+    height: 2rem !important;
+  }
+
+  /* Modal: full screen on mobile */
+  .fixed.inset-0 > .max-w-2xl,
+  .fixed.inset-0 > .max-w-lg,
+  .fixed.inset-0 > .max-w-xl {
+    max-width: 95vw !important;
+    margin: 0.5rem !important;
+  }
+
+  /* Admin panel: make responsive */
+  .admin-tabs {
+    flex-wrap: wrap !important;
+    gap: 0.25rem !important;
+  }
+  .admin-tabs > button {
+    font-size: 0.7rem !important;
+    padding: 0.4rem 0.6rem !important;
+    flex: 1 1 auto;
+    min-width: fit-content;
+  }
+
+  /* Table scroll on mobile */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Leaderboard podium: horizontal scroll or stack */
+  .leaderboard-podium {
+    flex-direction: row !important;
+    overflow-x: auto;
+    gap: 0.5rem !important;
+  }
+  .leaderboard-podium > * {
+    min-width: 30% !important;
+    flex-shrink: 0;
+  }
+
+  /* Certificates: 1 col */
+  .grid.grid-cols-1.md\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* TopBar adjustments */
+  header.fixed {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+
+  /* Max width containers */
+  .max-w-6xl, .max-w-5xl, .max-w-4xl {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+}
+
+/* ── Medium: tablets (768px - 1023px) ────────────────────────── */
+@media (min-width: 768px) and (max-width: 1023px) {
+  /* Subject split: still stack or 60/40 */
+  .subject-split {
+    flex-direction: column !important;
+    height: auto !important;
+  }
+  .subject-split > * {
+    width: 100% !important;
+  }
+}
+
+/* ── Safe area for mobile notch (iPhone) ────────────────────── */
+@supports (padding: max(0px)) {
+  header.fixed {
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ── Touch-friendly tap targets ──────────────────────────────── */
+@media (hover: none) and (pointer: coarse) {
+  /* Make all clickable elements at least 44px tap target */
+  button, a, [role="button"] {
+    min-height: 44px;
+  }
+  /* Remove hover effects on touch devices */
+  .hover\:scale-\[1\.02\]:hover,
+  .hover\:scale-105:hover,
+  .hover\:scale-\[1\.03\]:hover {
+    transform: none !important;
+  }
+  /* Smoother scrolling */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ── Landscape phone ─────────────────────────────────────────── */
+@media (max-height: 500px) and (orientation: landscape) {
+  .min-h-\[92vh\] {
+    min-height: 100vh !important;
+    padding-top: 4.5rem !important;
+  }
+}
+
+/* ── Print styles ────────────────────────────────────────────── */
+@media print {
+  header, aside, .hide-print { display: none !important; }
+  main { margin: 0 !important; }
 }
 
 /* Theme toast animation */

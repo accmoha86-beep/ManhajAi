@@ -59,8 +59,8 @@ export default function TopBar() {
         </div>
       </Link>
 
-      {/* Action buttons - LEFT side (RTL) */}
-      <div className="flex items-center gap-1.5 md:gap-2">
+      {/* Action buttons - LEFT side (RTL) — extra padding on mobile for hamburger */}
+      <div className={`flex items-center gap-1.5 md:gap-2 ${isMobile ? 'ml-10' : ''}`}>
         {isAuthenticated && (
           <NotificationBell />
         )}

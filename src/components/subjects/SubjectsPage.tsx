@@ -409,14 +409,14 @@ export default function SubjectsPage() {
 
   return (
     <div
-      className="flex flex-col lg:flex-row gap-0 lg:gap-0"
+      className="subject-split flex flex-col lg:flex-row gap-0 lg:gap-0"
       dir="rtl"
-      style={{ height: "calc(100vh - 4rem)" }}
+      style={{ minHeight: "calc(100vh - 4rem)" }}
     >
       {/* ============ RIGHT: Content (50%) ============ */}
       <div
-        className="w-full lg:w-[50%] overflow-y-auto p-4 md:p-6"
-        style={{ height: "calc(100vh - 4rem)" }}
+        className="w-full lg:w-[50%] overflow-y-auto p-3 sm:p-4 md:p-6"
+        style={{ height: "auto", maxHeight: "none" }}
       >
         {/* Back + Header */}
         <div className="flex items-center gap-3 mb-5">
@@ -860,10 +860,11 @@ export default function SubjectsPage() {
 
       {/* ============ LEFT: AI Chat (50%) ============ */}
       <div
-        className="w-full lg:w-[50%] lg:border-r"
+        className="w-full lg:w-[50%] lg:border-r chat-container"
         style={{
           borderColor: "var(--theme-surface-border)",
           height: "calc(100vh - 4rem)",
+          minHeight: "400px",
         }}
       >
         {/* Chat Header */}
