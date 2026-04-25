@@ -841,7 +841,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       </div>
 
       {/* Hidden file input */}
-      <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleFileUpload} />
+      <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.rtf" className="hidden" onChange={handleFileUpload} />
 
       {/* Generation Result Banner */}
       {genResult && (
@@ -879,7 +879,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
 
       {/* Lessons List */}
       {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={loadLessons} /> : lessons.length === 0 ? (
-        <EmptyState message="لا توجد دروس — أضف درس جديد وارفع ملف المنهج (PDF أو صورة)" icon={<FileText size={40} />} />
+        <EmptyState message="لا توجد دروس — أضف درس جديد وارفع ملف المنهج (PDF / Word / Excel / PowerPoint / صورة)" icon={<FileText size={40} />} />
       ) : (
         <div className="space-y-2">
           {lessons.map((l, i) => {
@@ -924,7 +924,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
                       {isGenerating ? (
                         <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> جاري...</>
                       ) : (
-                        <><Upload size={14} /> {hasSummary ? "إعادة توليد 🤖" : "رفع ملف 📄🖼️"}</>
+                        <><Upload size={14} /> {hasSummary ? "إعادة توليد 🤖" : "رفع ملف 📄📝📊"}</>
                       )}
                     </button>
                     <button onClick={() => handleDeleteLesson(lessonId)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={14} /></button>

@@ -11,6 +11,46 @@ const QUESTION_ROUNDS = 5;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
+// ===== SUPPORTED FILE TYPES =====
+type FileCategory = 'pdf' | 'image' | 'word' | 'excel' | 'powerpoint' | 'text';
+
+function getFileCategory(mimeType: string, fileName: string): FileCategory {
+  const ext = fileName.toLowerCase().split('.').pop() || '';
+  
+  // PDF
+  if (mimeType === 'application/pdf' || ext === 'pdf') return 'pdf';
+  
+  // Images
+  if (mimeType.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff', 'tif'].includes(ext)) return 'image';
+  
+  // Word
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+      mimeType === 'application/msword' || ['docx', 'doc'].includes(ext)) return 'word';
+  
+  // Excel
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+      mimeType === 'application/vnd.ms-excel' || ['xlsx', 'xls', 'csv'].includes(ext)) return 'excel';
+  
+  // PowerPoint
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || 
+      mimeType === 'application/vnd.ms-powerpoint' || ['pptx', 'ppt'].includes(ext)) return 'powerpoint';
+  
+  // Text files
+  if (mimeType.startsWith('text/') || ['txt', 'md', 'rtf', 'csv'].includes(ext)) return 'text';
+  
+  // Default — try as text
+  return 'text';
+}
+
+const CATEGORY_LABELS: Record<FileCategory, string> = {
+  pdf: '📄 PDF',
+  image: '🖼️ صورة',
+  word: '📝 Word',
+  excel: '📊 Excel',
+  powerpoint: '📋 PowerPoint',
+  text: '📃 نص',
+};
+
 // ===== MAIN HANDLER =====
 export async function POST(request: NextRequest) {
   try {
@@ -37,14 +77,14 @@ export async function POST(request: NextRequest) {
     }
 
     const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const fileBase64 = fileBuffer.toString('base64');
-    const mimeType = file.type || 'application/pdf';
-    const isPdf = mimeType === 'application/pdf' || file.name?.endsWith('.pdf');
+    const mimeType = file.type || 'application/octet-stream';
+    const fileName = file.name || 'unknown';
+    const category = getFileCategory(mimeType, fileName);
 
     const { data: jobId, error: jobError } = await supabase.rpc('create_content_job', {
       p_lesson_id: lessonId,
       p_subject_id: subjectId || null,
-      p_file_name: file.name || 'unknown',
+      p_file_name: fileName,
       p_file_size: file.size,
     });
 
@@ -53,10 +93,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'فشل في إنشاء المهمة' }, { status: 500 });
     }
 
-    console.log(`[Job ${jobId}] Created — ${fileSizeMB.toFixed(1)}MB ${isPdf ? 'PDF' : 'Image'}`);
+    console.log(`[Job ${jobId}] Created — ${fileSizeMB.toFixed(1)}MB ${CATEGORY_LABELS[category]}`);
 
-    // 🔥 Fire and forget
-    processInBackground(jobId, lessonId, subjectId, fileBuffer, fileBase64, mimeType, isPdf, file.name || '', supabase)
+    // 🔥 Fire and forget — return immediately
+    processInBackground(jobId, lessonId, subjectId, fileBuffer, mimeType, fileName, category, supabase)
       .catch(err => {
         console.error(`[Job ${jobId}] FATAL:`, err);
         supabase.rpc('update_content_job', {
@@ -65,7 +105,10 @@ export async function POST(request: NextRequest) {
         }).catch(() => {});
       });
 
-    return NextResponse.json({ success: true, jobId, message: `بدأت المعالجة — ${fileSizeMB.toFixed(1)} MB` });
+    return NextResponse.json({ 
+      success: true, jobId, 
+      message: `بدأت المعالجة — ${CATEGORY_LABELS[category]} (${fileSizeMB.toFixed(1)} MB)` 
+    });
   } catch (err: any) {
     console.error('[ContentGenerate] Error:', err);
     return NextResponse.json({ error: `خطأ: ${err.message?.slice(0, 200)}` }, { status: 500 });
@@ -73,12 +116,12 @@ export async function POST(request: NextRequest) {
 }
 
 // ============================================================
-// BACKGROUND PROCESSING — 3 PHASES: OCR → Summary → Questions
+// BACKGROUND PROCESSING
 // ============================================================
 async function processInBackground(
   jobId: string, lessonId: string, subjectId: string,
-  fileBuffer: Buffer, fileBase64: string, mimeType: string,
-  isPdf: boolean, fileName: string, supabase: any
+  fileBuffer: Buffer, mimeType: string, fileName: string,
+  category: FileCategory, supabase: any
 ) {
   const updateJob = async (params: any) => {
     await supabase.rpc('update_content_job', { p_job_id: jobId, ...params })
@@ -102,92 +145,41 @@ async function processInBackground(
     const lessonTitle = lessonData?.title_ar || 'درس';
     const effectiveSubjectId = subjectId || lessonData?.subject_id;
 
-    await updateJob({ p_progress: 8, p_message: `📄 جاري تحليل "${fileName}"...` });
+    await updateJob({ p_progress: 8, p_message: `${CATEGORY_LABELS[category]} جاري تحليل "${fileName}"...` });
 
     // ================================================================
-    // 🔤 PHASE 1: TEXT EXTRACTION (OCR) — Vision on chunks → raw text
+    // 🔤 PHASE 1: TEXT EXTRACTION — method depends on file type
     // ================================================================
     let extractedText = '';
 
-    if (isPdf) {
-      // Split PDF into chunks for OCR
-      const chunks = await splitPdfIntoChunks(fileBuffer, jobId);
-      await updateJob({ p_total_pages: chunks.totalPages, p_total_chunks: chunks.items.length, p_progress: 10, 
-        p_message: `📄 ${chunks.totalPages} صفحة — جاري استخراج النص من ${chunks.items.length} جزء...` });
-
-      const textParts: string[] = [];
-      for (let i = 0; i < chunks.items.length; i++) {
-        const chunk = chunks.items[i];
-        const pct = 10 + Math.round((i / chunks.items.length) * 30); // 10-40%
-        await updateJob({ p_processed_chunks: i, p_progress: pct,
-          p_message: `🔤 استخراج النص — الجزء ${i + 1}/${chunks.items.length}${chunk.label}...` });
-
-        const ocrResult = await callClaudeVision(apiKey, {
-          model: aiModel,
-          system: 'أنت أداة OCR متقدمة. استخرج كل النص العربي والإنجليزي من الصورة/الملف بدقة عالية. أخرج النص فقط بدون أي تعليقات أو تنسيق إضافي.',
-          fileBase64: chunk.base64,
-          mimeType: 'application/pdf',
-          prompt: 'استخرج كل النص الموجود في هذا الملف بالكامل. اكتب النص فقط كما هو — بدون تعليقات أو إضافات.',
-          maxTokens: 4096,
-        });
-
-        if (ocrResult.ok && ocrResult.content.trim()) {
-          textParts.push(ocrResult.content);
-          console.log(`[Job ${jobId}] OCR chunk ${i + 1}/${chunks.items.length} ✅ (${ocrResult.content.length} chars)`);
-        } else if (ocrResult.error === '413_TOO_LARGE') {
-          // Try splitting this chunk further
-          console.warn(`[Job ${jobId}] Chunk ${i + 1} too large for OCR — trying single pages`);
-          if (chunk.pageCount > 1) {
-            // Re-split this chunk into single pages
-            const subChunks = await splitPdfIntoChunks(chunk.buffer, jobId, 1);
-            for (const sub of subChunks.items) {
-              const subResult = await callClaudeVision(apiKey, {
-                model: aiModel,
-                system: 'استخرج كل النص من هذه الصفحة.',
-                fileBase64: sub.base64,
-                mimeType: 'application/pdf',
-                prompt: 'استخرج كل النص الموجود.',
-                maxTokens: 2048,
-              });
-              if (subResult.ok) textParts.push(subResult.content);
-            }
-          }
-        } else {
-          console.error(`[Job ${jobId}] OCR chunk ${i + 1} failed:`, ocrResult.error);
-          textParts.push(`[فشل في قراءة الجزء ${i + 1}]`);
-        }
-      }
-
-      extractedText = textParts.join('\n\n---\n\n');
-
-    } else {
-      // Image file — single OCR call
-      await updateJob({ p_total_chunks: 1, p_progress: 15, p_message: '🔤 جاري استخراج النص من الصورة...' });
-
-      const ocrResult = await callClaudeVision(apiKey, {
-        model: aiModel,
-        system: 'أنت أداة OCR متقدمة. استخرج كل النص من الصورة بدقة عالية.',
-        fileBase64: fileBase64,
-        mimeType: mimeType,
-        prompt: 'استخرج كل النص الموجود في هذه الصورة بالكامل.',
-        maxTokens: 4096,
-      });
-
-      if (ocrResult.ok) {
-        extractedText = ocrResult.content;
-      } else {
-        await updateJob({ p_status: 'failed', p_error: `فشل في قراءة الصورة: ${ocrResult.error}` });
-        return;
-      }
+    switch (category) {
+      case 'word':
+        extractedText = await extractFromWord(fileBuffer, jobId, updateJob);
+        break;
+      case 'excel':
+        extractedText = await extractFromExcel(fileBuffer, jobId, updateJob);
+        break;
+      case 'powerpoint':
+        extractedText = await extractFromPowerPoint(fileBuffer, jobId, updateJob);
+        break;
+      case 'text':
+        extractedText = await extractFromText(fileBuffer, fileName, jobId, updateJob);
+        break;
+      case 'pdf':
+        extractedText = await extractFromPdf(fileBuffer, apiKey, aiModel, jobId, updateJob);
+        break;
+      case 'image':
+        extractedText = await extractFromImage(fileBuffer, mimeType, apiKey, aiModel, jobId, updateJob);
+        break;
     }
 
-    if (!extractedText || extractedText.trim().length < 50) {
-      await updateJob({ p_status: 'failed', p_error: '❌ لم يتم استخراج نص كافٍ — تأكد أن الملف يحتوي على نصوص مقروءة' });
+    if (!extractedText || extractedText.trim().length < 30) {
+      await updateJob({ p_status: 'failed', p_error: '❌ لم يتم استخراج نص كافٍ — تأكد أن الملف يحتوي على محتوى مقروء' });
       return;
     }
 
-    console.log(`[Job ${jobId}] ✅ OCR Complete — ${extractedText.length} chars extracted`);
-    await updateJob({ p_processed_chunks: 999, p_progress: 40,
+    console.log(`[Job ${jobId}] ✅ Text Extracted — ${extractedText.length} chars from ${CATEGORY_LABELS[category]}`);
+    await updateJob({ p_progress: 40,
       p_message: `✅ تم استخراج النص (${Math.round(extractedText.length / 1000)}k حرف) — جاري إنشاء الملخص...` });
 
     // ================================================================
@@ -224,6 +216,7 @@ ${extractedText.slice(0, 80000)}
         title: `ملخص ${lessonTitle}`,
         content: mergedSummary,
         source_text_length: extractedText.length,
+        source_type: category,
       }),
     });
 
@@ -231,7 +224,7 @@ ${extractedText.slice(0, 80000)}
       p_message: '✅ تم الملخص — جاري توليد الأسئلة...' });
 
     // ================================================================
-    // 📋 PHASE 3: QUESTIONS FROM TEXT (no images — fast!)
+    // 📋 PHASE 3: QUESTIONS FROM TEXT
     // ================================================================
     let totalQuestions = 0;
     const questionRounds = [
@@ -244,7 +237,7 @@ ${extractedText.slice(0, 80000)}
 
     for (let r = 0; r < QUESTION_ROUNDS; r++) {
       const round = questionRounds[r];
-      const pct = 55 + Math.round((r / QUESTION_ROUNDS) * 40); // 55-95%
+      const pct = 55 + Math.round((r / QUESTION_ROUNDS) * 40);
       await updateJob({ p_progress: pct,
         p_message: `📋 الجولة ${r + 1}/5: ${round.focus} (${totalQuestions} سؤال حتى الآن)...` });
 
@@ -284,14 +277,215 @@ ${buildQuestionsPrompt(lessonTitle, round.focus, round.types, QUESTIONS_PER_ROUN
     // ===== DONE! =====
     await updateJob({
       p_status: 'completed', p_progress: 100, p_questions_count: totalQuestions,
-      p_message: `✅ تم بنجاح! ملخص + ${totalQuestions} سؤال`,
+      p_message: `✅ تم بنجاح! ${CATEGORY_LABELS[category]} → ملخص + ${totalQuestions} سؤال`,
     });
-    console.log(`[Job ${jobId}] ✅ COMPLETED — ${totalQuestions} questions`);
+    console.log(`[Job ${jobId}] ✅ COMPLETED — ${totalQuestions} questions from ${category}`);
 
   } catch (err: any) {
     console.error(`[Job ${jobId}] Fatal:`, err);
     await updateJob({ p_status: 'failed', p_error: `خطأ: ${err.message?.slice(0, 300)}` }).catch(() => {});
   }
+}
+
+// ================================================================
+// 📝 WORD EXTRACTION — mammoth (instant, no API call!)
+// ================================================================
+async function extractFromWord(buffer: Buffer, jobId: string, updateJob: Function): Promise<string> {
+  await updateJob({ p_progress: 15, p_message: '📝 جاري قراءة ملف Word — فوري بدون OCR...' });
+  
+  try {
+    const mammoth = require('mammoth');
+    const result = await mammoth.extractRawText({ buffer });
+    console.log(`[Job ${jobId}] Word extracted: ${result.value.length} chars`);
+    return result.value;
+  } catch (err: any) {
+    console.error(`[Job ${jobId}] Word extraction error:`, err.message);
+    // Fallback: try reading as raw text
+    return buffer.toString('utf-8').replace(/[^\u0600-\u06FF\u0750-\u077Fa-zA-Z0-9\s.,!?؟،؛:()]/g, ' ');
+  }
+}
+
+// ================================================================
+// 📊 EXCEL EXTRACTION — exceljs (instant, no API call!)
+// ================================================================
+async function extractFromExcel(buffer: Buffer, jobId: string, updateJob: Function): Promise<string> {
+  await updateJob({ p_progress: 15, p_message: '📊 جاري قراءة ملف Excel — فوري بدون OCR...' });
+  
+  try {
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+    
+    const textParts: string[] = [];
+    workbook.eachSheet((worksheet: any) => {
+      textParts.push(`\n📋 شيت: ${worksheet.name}\n${'='.repeat(40)}`);
+      worksheet.eachRow((row: any, rowNumber: number) => {
+        const cells = row.values?.slice(1) || []; // values[0] is undefined
+        const rowText = cells
+          .map((cell: any) => {
+            if (cell === null || cell === undefined) return '';
+            if (typeof cell === 'object' && cell.text) return cell.text;
+            if (typeof cell === 'object' && cell.result !== undefined) return String(cell.result);
+            return String(cell);
+          })
+          .filter(Boolean)
+          .join(' | ');
+        if (rowText.trim()) textParts.push(rowText);
+      });
+    });
+    
+    const text = textParts.join('\n');
+    console.log(`[Job ${jobId}] Excel extracted: ${text.length} chars, ${workbook.worksheets.length} sheets`);
+    return text;
+  } catch (err: any) {
+    console.error(`[Job ${jobId}] Excel extraction error:`, err.message);
+    // Fallback for CSV
+    const text = buffer.toString('utf-8');
+    if (text.includes(',') || text.includes('\t')) return text;
+    throw new Error('لم يتم قراءة ملف Excel: ' + err.message);
+  }
+}
+
+// ================================================================
+// 📋 POWERPOINT EXTRACTION — XML parsing (instant, no API call!)
+// ================================================================
+async function extractFromPowerPoint(buffer: Buffer, jobId: string, updateJob: Function): Promise<string> {
+  await updateJob({ p_progress: 15, p_message: '📋 جاري قراءة ملف PowerPoint — فوري بدون OCR...' });
+  
+  try {
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip(buffer);
+    const entries = zip.getEntries();
+    
+    const textParts: string[] = [];
+    let slideNum = 0;
+    
+    // PPTX is a zip file with XML slides
+    const slideEntries = entries
+      .filter((e: any) => e.entryName.match(/ppt\/slides\/slide\d+\.xml$/))
+      .sort((a: any, b: any) => {
+        const numA = parseInt(a.entryName.match(/slide(\d+)/)?.[1] || '0');
+        const numB = parseInt(b.entryName.match(/slide(\d+)/)?.[1] || '0');
+        return numA - numB;
+      });
+    
+    for (const entry of slideEntries) {
+      slideNum++;
+      const xml = entry.getData().toString('utf-8');
+      // Extract text from XML tags: <a:t>text</a:t>
+      const texts: string[] = [];
+      const matches = xml.matchAll(/<a:t[^>]*>([^<]+)<\/a:t>/g);
+      for (const m of matches) {
+        if (m[1].trim()) texts.push(m[1].trim());
+      }
+      if (texts.length > 0) {
+        textParts.push(`\n📌 شريحة ${slideNum}:\n${texts.join(' ')}`);
+      }
+    }
+    
+    // Also try notes
+    const noteEntries = entries.filter((e: any) => e.entryName.match(/ppt\/notesSlides/));
+    for (const entry of noteEntries) {
+      const xml = entry.getData().toString('utf-8');
+      const matches = xml.matchAll(/<a:t[^>]*>([^<]+)<\/a:t>/g);
+      const notes: string[] = [];
+      for (const m of matches) {
+        if (m[1].trim() && m[1].trim() !== 'Click to edit Master text styles') notes.push(m[1].trim());
+      }
+      if (notes.length > 0) {
+        textParts.push(`📝 ملاحظات: ${notes.join(' ')}`);
+      }
+    }
+    
+    const text = textParts.join('\n');
+    console.log(`[Job ${jobId}] PPTX extracted: ${text.length} chars, ${slideNum} slides`);
+    return text;
+  } catch (err: any) {
+    console.error(`[Job ${jobId}] PPTX extraction error:`, err.message);
+    throw new Error('لم يتم قراءة ملف PowerPoint: ' + err.message);
+  }
+}
+
+// ================================================================
+// 📃 TEXT EXTRACTION — direct read
+// ================================================================
+async function extractFromText(buffer: Buffer, fileName: string, jobId: string, updateJob: Function): Promise<string> {
+  await updateJob({ p_progress: 15, p_message: '📃 جاري قراءة الملف النصي...' });
+  
+  const text = buffer.toString('utf-8');
+  console.log(`[Job ${jobId}] Text file: ${text.length} chars`);
+  return text;
+}
+
+// ================================================================
+// 📄 PDF EXTRACTION — OCR via Vision API
+// ================================================================
+async function extractFromPdf(
+  fileBuffer: Buffer, apiKey: string, aiModel: string, jobId: string, updateJob: Function
+): Promise<string> {
+  const chunks = await splitPdfIntoChunks(fileBuffer, jobId);
+  await updateJob({ p_total_pages: chunks.totalPages, p_total_chunks: chunks.items.length, p_progress: 10,
+    p_message: `📄 ${chunks.totalPages} صفحة — جاري استخراج النص من ${chunks.items.length} جزء...` });
+
+  const textParts: string[] = [];
+  for (let i = 0; i < chunks.items.length; i++) {
+    const chunk = chunks.items[i];
+    const pct = 10 + Math.round((i / chunks.items.length) * 30);
+    await updateJob({ p_processed_chunks: i, p_progress: pct,
+      p_message: `🔤 استخراج النص — الجزء ${i + 1}/${chunks.items.length}${chunk.label}...` });
+
+    const ocrResult = await callClaudeVision(apiKey, {
+      model: aiModel,
+      system: 'أنت أداة OCR متقدمة. استخرج كل النص العربي والإنجليزي من الملف بدقة عالية. أخرج النص فقط.',
+      fileBase64: chunk.base64,
+      mimeType: 'application/pdf',
+      prompt: 'استخرج كل النص الموجود في هذا الملف بالكامل. اكتب النص فقط كما هو.',
+      maxTokens: 4096,
+    });
+
+    if (ocrResult.ok && ocrResult.content.trim()) {
+      textParts.push(ocrResult.content);
+      console.log(`[Job ${jobId}] OCR chunk ${i + 1}/${chunks.items.length} ✅ (${ocrResult.content.length} chars)`);
+    } else if (ocrResult.error === '413_TOO_LARGE' && chunk.pageCount > 1) {
+      console.warn(`[Job ${jobId}] Chunk ${i + 1} too large — splitting to single pages`);
+      const subChunks = await splitPdfIntoChunks(chunk.buffer, jobId, 1);
+      for (const sub of subChunks.items) {
+        const subResult = await callClaudeVision(apiKey, {
+          model: aiModel,
+          system: 'استخرج كل النص من هذه الصفحة.',
+          fileBase64: sub.base64, mimeType: 'application/pdf',
+          prompt: 'استخرج كل النص الموجود.', maxTokens: 2048,
+        });
+        if (subResult.ok) textParts.push(subResult.content);
+      }
+    } else {
+      console.error(`[Job ${jobId}] OCR chunk ${i + 1} failed:`, ocrResult.error);
+      textParts.push(`[فشل في قراءة الجزء ${i + 1}]`);
+    }
+  }
+
+  return textParts.join('\n\n---\n\n');
+}
+
+// ================================================================
+// 🖼️ IMAGE EXTRACTION — OCR via Vision API
+// ================================================================
+async function extractFromImage(
+  fileBuffer: Buffer, mimeType: string, apiKey: string, aiModel: string, jobId: string, updateJob: Function
+): Promise<string> {
+  await updateJob({ p_total_chunks: 1, p_progress: 15, p_message: '🔤 جاري استخراج النص من الصورة...' });
+
+  const fileBase64 = fileBuffer.toString('base64');
+  const ocrResult = await callClaudeVision(apiKey, {
+    model: aiModel,
+    system: 'أنت أداة OCR متقدمة. استخرج كل النص من الصورة بدقة عالية.',
+    fileBase64, mimeType,
+    prompt: 'استخرج كل النص الموجود في هذه الصورة بالكامل.',
+    maxTokens: 4096,
+  });
+
+  if (ocrResult.ok) return ocrResult.content;
+  throw new Error(`فشل في قراءة الصورة: ${ocrResult.error}`);
 }
 
 // ===== PDF CHUNKING =====
@@ -311,7 +505,6 @@ async function splitPdfIntoChunks(
     pages.forEach(p => chunkDoc.addPage(p));
     const bytes = await chunkDoc.save();
 
-    // Auto-reduce if chunk too big
     if (bytes.length > MAX_CHUNK_BYTES && pagesPerChunk > 1) {
       pagesPerChunk = Math.max(1, Math.floor(pagesPerChunk / 2));
       console.log(`[Job ${jobId}] Chunk too big (${(bytes.length / 1024 / 1024).toFixed(1)}MB) → ${pagesPerChunk} pages/chunk`);
@@ -320,8 +513,7 @@ async function splitPdfIntoChunks(
 
     const buf = Buffer.from(bytes);
     items.push({
-      buffer: buf,
-      base64: buf.toString('base64'),
+      buffer: buf, base64: buf.toString('base64'),
       label: totalPages > pagesPerChunk ? ` (ص ${start + 1}-${end})` : '',
       pageCount: end - start,
     });
@@ -347,9 +539,7 @@ async function callClaudeVision(apiKey: string, opts: {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: opts.model,
-        max_tokens: opts.maxTokens,
-        system: opts.system,
+        model: opts.model, max_tokens: opts.maxTokens, system: opts.system,
         messages: [{
           role: 'user',
           content: [
@@ -364,10 +554,9 @@ async function callClaudeVision(apiKey: string, opts: {
       const errText = await response.text();
       if (response.status === 413) return { ok: false, content: '', error: '413_TOO_LARGE' };
       if (response.status === 429) {
-        // Rate limited — wait and retry once
         console.warn('[Claude] 429 — waiting 30s and retrying...');
         await new Promise(r => setTimeout(r, 30000));
-        return callClaudeVision(apiKey, opts); // Retry once
+        return callClaudeVision(apiKey, opts);
       }
       return { ok: false, content: '', error: `API ${response.status}: ${errText.slice(0, 200)}` };
     }
@@ -393,9 +582,7 @@ async function callClaudeText(apiKey: string, opts: {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: opts.model,
-        max_tokens: opts.maxTokens,
-        system: opts.system,
+        model: opts.model, max_tokens: opts.maxTokens, system: opts.system,
         messages: [{ role: 'user', content: opts.prompt }],
       }),
     });
@@ -405,7 +592,7 @@ async function callClaudeText(apiKey: string, opts: {
       if (response.status === 429) {
         console.warn('[Claude] 429 — waiting 20s...');
         await new Promise(r => setTimeout(r, 20000));
-        return callClaudeText(apiKey, opts); // Retry
+        return callClaudeText(apiKey, opts);
       }
       return { ok: false, content: '', error: `API ${response.status}: ${errText.slice(0, 200)}` };
     }
