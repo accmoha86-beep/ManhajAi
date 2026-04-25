@@ -709,22 +709,41 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
 
       const token = document.cookie.split(";").find(c => c.trim().startsWith("auth-token="))?.split("=").slice(1).join("=");
       
-      // Step 1: Upload file — returns immediately with jobId
-      const res = await fetch("/api/content/generate", {
-        method: "POST",
-        headers: token ? { "Authorization": `Bearer ${token}` } : {},
-        body: formData,
+      // Step 1: Upload file with REAL progress bar using XMLHttpRequest
+      const data: any = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/content/generate");
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.timeout = 600000; // 10 min timeout
+        
+        // 🔥 Real upload progress
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            const loadedMB = (e.loaded / 1024 / 1024).toFixed(1);
+            setGenProgress(`📤 جاري رفع الملف... ${pct}% (${loadedMB} من ${fileSizeMB} MB)`);
+          }
+        };
+        
+        xhr.onload = () => {
+          try {
+            const parsed = JSON.parse(xhr.responseText);
+            if (xhr.status >= 200 && xhr.status < 300 && parsed.jobId) {
+              resolve(parsed);
+            } else {
+              reject(new Error(parsed.error || `خطأ ${xhr.status}`));
+            }
+          } catch {
+            reject(new Error(`خطأ من السيرفر (${xhr.status}): ${xhr.responseText?.slice(0, 200)}`));
+          }
+        };
+        
+        xhr.onerror = () => reject(new Error("فشل الاتصال بالسيرفر — تأكد من اتصال الإنترنت"));
+        xhr.ontimeout = () => reject(new Error("⏰ انتهى وقت الرفع — الملف كبير جداً أو الإنترنت بطيء"));
+        xhr.send(formData);
       });
 
-      let data;
-      const responseText = await res.text();
-      try { data = JSON.parse(responseText); } catch {
-        throw new Error(`خطأ من السيرفر (${res.status}): ${responseText.slice(0, 200)}`);
-      }
-
-      if (!res.ok || !data.jobId) {
-        throw new Error(data.error || `خطأ ${res.status}`);
-      }
+      setGenProgress(`✅ تم الرفع — جاري بدء المعالجة...`);
 
       const jobId = data.jobId;
       setGenProgress(`🤖 بدأت المعالجة — ${fileSizeMB} MB — جاري القراءة...`);
@@ -839,6 +858,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       )}
 
       {/* Generation Progress — with real progress bar */}
+      {/* Upload + Processing Progress */}
       {genProgress && (
         <div className="mb-4 p-4 rounded-xl bg-blue-50 border border-blue-200">
           <div className="flex items-center gap-3 mb-2">
