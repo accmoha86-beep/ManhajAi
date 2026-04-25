@@ -684,9 +684,22 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     const file = e.target.files?.[0];
     if (!file || !uploadLessonId) return;
 
-    const allowedTypes = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"];
-    if (!allowedTypes.includes(file.type)) {
-      alert("صيغة الملف غير مدعومة. الصيغ المدعومة: PDF, PNG, JPG, WEBP");
+    // Supported: PDF, Images, Word, Excel, PowerPoint, Text
+    const allowedTypes = [
+      "application/pdf",
+      "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/bmp",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+      "application/msword", // .doc
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+      "application/vnd.ms-excel", // .xls
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+      "application/vnd.ms-powerpoint", // .ppt
+      "text/plain", "text/csv", "text/markdown",
+    ];
+    const ext = file.name?.toLowerCase().split('.').pop() || '';
+    const allowedExts = ['pdf','png','jpg','jpeg','webp','gif','bmp','docx','doc','xlsx','xls','csv','pptx','ppt','txt','md','rtf'];
+    if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext)) {
+      alert("صيغة الملف غير مدعومة. الصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص");
       return;
     }
     // Client-side size check (200MB default — matches server setting MAX_FILE_SIZE_MB)
@@ -702,21 +715,29 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     setGenResult(null);
 
     try {
+      // Generate jobId on client side — so we can start polling BEFORE server responds
+      const jobId = crypto.randomUUID();
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append("lessonId", uploadLessonId);
       formData.append("subjectId", subjectId);
+      formData.append("jobId", jobId); // Pre-generated UUID
 
       const token = document.cookie.split(";").find(c => c.trim().startsWith("auth-token="))?.split("=").slice(1).join("=");
       
-      // Step 1: Upload file with REAL progress bar using XMLHttpRequest
-      const data: any = await new Promise((resolve, reject) => {
+      // Track if server responded
+      let serverDone = false;
+      let serverError: string | null = null;
+
+      // 🔥 Start upload via XHR (for upload progress)
+      const xhrPromise = new Promise<any>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/content/generate");
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
         xhr.timeout = 600000; // 10 min timeout
         
-        // 🔥 Real upload progress
+        // Real upload progress
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const pct = Math.round((e.loaded / e.total) * 100);
@@ -725,42 +746,50 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
           }
         };
         
+        xhr.upload.onload = () => {
+          // Upload complete! Server received file. Start polling immediately.
+          setGenProgress("✅ تم الرفع — جاري المعالجة...");
+        };
+        
         xhr.onload = () => {
           try {
             const parsed = JSON.parse(xhr.responseText);
-            if (xhr.status >= 200 && xhr.status < 300 && parsed.jobId) {
+            if (xhr.status >= 200 && xhr.status < 300 && parsed.success) {
+              serverDone = true;
               resolve(parsed);
             } else {
-              reject(new Error(parsed.error || `خطأ ${xhr.status}`));
+              serverError = parsed.error || `خطأ ${xhr.status}`;
+              reject(new Error(serverError!));
             }
           } catch {
-            reject(new Error(`خطأ من السيرفر (${xhr.status}): ${xhr.responseText?.slice(0, 200)}`));
+            serverError = `خطأ من السيرفر (${xhr.status})`;
+            reject(new Error(serverError));
           }
         };
         
-        xhr.onerror = () => reject(new Error("فشل الاتصال بالسيرفر — تأكد من اتصال الإنترنت"));
-        xhr.ontimeout = () => reject(new Error("⏰ انتهى وقت الرفع — الملف كبير جداً أو الإنترنت بطيء"));
+        xhr.onerror = () => { serverError = "فشل الاتصال"; reject(new Error("فشل الاتصال بالسيرفر")); };
+        xhr.ontimeout = () => { serverError = "انتهى الوقت"; reject(new Error("⏰ انتهى وقت المعالجة")); };
         xhr.send(formData);
       });
 
-      setGenProgress(`✅ تم الرفع — جاري بدء المعالجة...`);
+      // 🔄 Start polling 5 seconds after upload starts (job should exist by then)
+      const pollDelay = 5000;
+      await new Promise(r => setTimeout(r, pollDelay));
 
-      const jobId = data.jobId;
-      setGenProgress(`🤖 بدأت المعالجة — ${fileSizeMB} MB — جاري القراءة...`);
-
-      // Step 2: Poll for progress every 3 seconds
+      // Poll while server is still processing
       let completed = false;
       let pollCount = 0;
-      const maxPolls = 400; // 400 × 3s = 20 minutes max
-      
-      while (!completed && pollCount < maxPolls) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      const maxPolls = 200; // 200 × 3s = 10 minutes
+
+      while (!completed && !serverDone && !serverError && pollCount < maxPolls) {
+        await new Promise(r => setTimeout(r, 3000));
         pollCount++;
-        
+
         try {
           const statusRes = await fetch(`/api/content/status?jobId=${jobId}`);
+          if (!statusRes.ok) continue;
           const status = await statusRes.json();
-          
+
           if (status.status === 'completed') {
             completed = true;
             setGenResult({
@@ -773,26 +802,31 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
             loadLessons();
           } else if (status.status === 'failed') {
             throw new Error(status.error || 'فشل في المعالجة');
-          } else {
-            // Update progress bar
+          } else if (status.progress > 0) {
             const pct = status.progress || 0;
             const msg = status.message || 'جاري المعالجة...';
-            const chunks = status.processedChunks && status.totalChunks 
-              ? ` (${status.processedChunks}/${status.totalChunks} أجزاء)` : '';
-            setGenProgress(`${msg}${chunks} — ${pct}%`);
+            setGenProgress(`${msg} — ${pct}%`);
           }
         } catch (pollErr: any) {
-          // Network error during polling — just retry
-          if (pollErr.message && !pollErr.message.includes('فشل')) {
-            console.warn('[Poll] Error:', pollErr.message);
-          } else {
-            throw pollErr;
-          }
+          if (pollErr.message?.includes('فشل')) throw pollErr;
         }
       }
 
+      // Wait for server response if polling didn't catch completion
       if (!completed) {
-        setGenProgress("⏳ المعالجة مستمرة في الخلفية — سيتم تحديث المحتوى تلقائياً عند الانتهاء");
+        try {
+          const data = await xhrPromise;
+          if (data.success) {
+            setGenResult({
+              summary: data.summary,
+              questions: data.questions,
+            });
+            setGenProgress("");
+            loadLessons();
+          }
+        } catch (xhrErr: any) {
+          throw xhrErr;
+        }
       }
 
     } catch (err: unknown) {

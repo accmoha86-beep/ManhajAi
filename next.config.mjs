@@ -39,6 +39,9 @@ const nextConfig = {
     },
   },
 
+  // Include these packages in standalone build (they use dynamic require)
+  serverExternalPackages: ['mammoth', 'exceljs', 'adm-zip', 'pdf-lib'],
+
   // ═══════════════════════════════════════
   // 🛡️ SECURITY HEADERS — Full Protection
   // ═══════════════════════════════════════
