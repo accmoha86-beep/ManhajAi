@@ -4,9 +4,12 @@ import { PDFDocument } from 'pdf-lib';
 
 // ===== CONFIG =====
 const INITIAL_PAGES_PER_CHUNK = 5;
-const MAX_CHUNK_BYTES = 8 * 1024 * 1024; // 8MB per chunk for Vision OCR
-const QUESTIONS_PER_ROUND = 40;
-const QUESTION_ROUNDS = 5;
+const MAX_CHUNK_BYTES = 8 * 1024 * 1024;
+// ⚡ OPTIMIZED: 2 rounds × 100 questions = 200 total (was 5 × 40)
+const QUESTIONS_PER_ROUND = 100;
+const QUESTION_ROUNDS = 2;
+// ⚡ Limit text for question prompts (smaller = faster Claude response)
+const MAX_TEXT_FOR_QUESTIONS = 30000;
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -30,7 +33,7 @@ const CATEGORY_LABELS: Record<FileCategory, string> = {
   excel: '📊 Excel', powerpoint: '📋 PowerPoint', text: '📃 نص',
 };
 
-// ===== MAIN HANDLER — SYNCHRONOUS (no fire-and-forget) =====
+// ===== MAIN HANDLER =====
 export async function POST(request: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseKey);
   let jobId: string | null = null;
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
     const fileName = file.name || 'unknown';
     const category = getFileCategory(mimeType, fileName);
 
-    // Create job (use client-provided jobId if available for polling)
+    // Create job
     const { data: createdJobId, error: jobError } = await supabase.rpc('create_content_job', {
       p_lesson_id: lessonId,
       p_subject_id: subjectId || null,
@@ -83,7 +86,7 @@ export async function POST(request: NextRequest) {
     jobId = createdJobId;
     console.log(`[Job ${jobId}] Started — ${fileSizeMB.toFixed(1)}MB ${CATEGORY_LABELS[category]}`);
 
-    // Helper to update job progress in DB
+    // Helper to update job
     const updateJob = async (params: any) => {
       try {
         await supabase.rpc('update_content_job', { p_job_id: jobId, ...params });
@@ -97,7 +100,7 @@ export async function POST(request: NextRequest) {
 
     const { data: apiKey } = await supabase.rpc('get_system_secret', { p_key: 'anthropic_api_key' });
     if (!apiKey) {
-      await updateJob({ p_status: 'failed', p_error: '❌ مفتاح API غير موجود — اذهب إلى 🔑 المفاتيح وأضف anthropic_api_key' });
+      await updateJob({ p_status: 'failed', p_error: '❌ مفتاح API غير موجود' });
       return NextResponse.json({ error: 'مفتاح API غير موجود' }, { status: 500 });
     }
 
@@ -134,97 +137,135 @@ export async function POST(request: NextRequest) {
     } catch (extractErr: any) {
       console.error(`[Job ${jobId}] Extract error:`, extractErr.message);
       await updateJob({ p_status: 'failed', p_error: `فشل في قراءة الملف: ${extractErr.message?.slice(0, 200)}` });
-      return NextResponse.json({ error: `فشل في قراءة الملف: ${extractErr.message}` }, { status: 500 });
+      return NextResponse.json({ error: `فشل في قراءة الملف` }, { status: 500 });
     }
 
     if (!extractedText || extractedText.length < 50) {
-      await updateJob({ p_status: 'failed', p_error: '❌ لم يتم استخراج نص كافٍ — تأكد أن الملف يحتوي على محتوى مقروء' });
+      await updateJob({ p_status: 'failed', p_error: '❌ لم يتم استخراج نص كافٍ' });
       return NextResponse.json({ error: 'لم يتم استخراج نص كافٍ' }, { status: 500 });
     }
 
-    await updateJob({
-      p_progress: 40,
-      p_message: `✅ تم استخراج النص (${Math.round(extractedText.length / 1000)}k حرف) — جاري إنشاء الملخص...`,
-    });
+    const textLen = Math.round(extractedText.length / 1000);
+    await updateJob({ p_progress: 40, p_message: `✅ تم استخراج النص (${textLen}k حرف) — جاري إنشاء الملخص...` });
 
     // ═══════════════════════════════════════
     // PHASE 3: GENERATE SUMMARY
     // ═══════════════════════════════════════
-    const summaryPrompt = `أنت معلم خبير. اكتب ملخصاً شاملاً ومنظماً للمحتوى التالي باللغة العربية. قسّم الملخص إلى عناوين رئيسية وفرعية. اشرح المفاهيم بوضوح. أضف أمثلة عملية.\n\nالمحتوى:\n${extractedText.slice(0, 100000)}`;
+    const summaryPrompt = `أنت معلم خبير في مواد الثانوية العامة المصرية. اكتب ملخصاً شاملاً ومنظماً للمحتوى التالي باللغة العربية.
+
+قسّم الملخص إلى:
+- عناوين رئيسية وفرعية واضحة
+- شرح مبسط للمفاهيم
+- أمثلة عملية
+- نقاط مهمة للحفظ
+
+المحتوى:
+${extractedText.slice(0, 80000)}`;
 
     const summaryResult = await callClaude(apiKey, aiModel, summaryPrompt, 4000);
     if (!summaryResult.success) {
       await updateJob({ p_status: 'failed', p_error: `فشل في إنشاء الملخص: ${summaryResult.error}` });
-      return NextResponse.json({ error: `فشل في إنشاء الملخص` }, { status: 500 });
+      return NextResponse.json({ error: 'فشل في إنشاء الملخص' }, { status: 500 });
     }
 
-    const mergedSummary = summaryResult.text!;
-
-    // Save summary to DB
+    // Save summary
     await supabase.rpc('admin_save_summary', {
       p_lesson_id: lessonId,
-      p_content: mergedSummary,
+      p_content: summaryResult.text!,
     });
 
-    await updateJob({
-      p_progress: 55, p_summary_text: mergedSummary.slice(0, 500),
-      p_message: '✅ تم الملخص — جاري توليد الأسئلة...',
-    });
+    await updateJob({ p_progress: 50, p_summary_text: summaryResult.text!.slice(0, 500), p_message: '✅ تم الملخص — جاري توليد الأسئلة...' });
 
     // ═══════════════════════════════════════
-    // PHASE 4: GENERATE QUESTIONS (5 rounds × 40)
+    // PHASE 4: GENERATE QUESTIONS (2 rounds × 100)
     // ═══════════════════════════════════════
-    const roundDefs = [
-      { focus: 'تذكر واستدعاء', type: 'recall' },
-      { focus: 'فهم واستيعاب', type: 'comprehension' },
-      { focus: 'تطبيق وتحليل', type: 'application' },
-      { focus: 'تحليل ومقارنة', type: 'analysis' },
-      { focus: 'أنماط الامتحانات', type: 'exam_patterns' },
-    ];
-
+    const questionText = extractedText.slice(0, MAX_TEXT_FOR_QUESTIONS);
     let totalQuestions = 0;
+
+    const roundDefs = [
+      {
+        focus: 'تذكر + فهم + تطبيق',
+        instruction: `أنشئ ${QUESTIONS_PER_ROUND} سؤال متنوع يغطي مستويات: التذكر والاستدعاء، الفهم والاستيعاب، والتطبيق.
+التوزيع: 60% اختيار من متعدد، 25% صح/غلط، 15% مقالي قصير.
+الصعوبة: 40% سهل، 40% متوسط، 20% صعب.`,
+      },
+      {
+        focus: 'تحليل + أنماط امتحانات',
+        instruction: `أنشئ ${QUESTIONS_PER_ROUND} سؤال متنوع يغطي: التحليل والمقارنة، وأنماط أسئلة الامتحانات الفعلية للثانوية العامة المصرية.
+التوزيع: 60% اختيار من متعدد، 25% صح/غلط، 15% مقالي قصير.
+الصعوبة: 20% سهل، 40% متوسط، 40% صعب.
+ركّز على الأسئلة التي تأتي فعلاً في الامتحانات.`,
+      },
+    ];
 
     for (let r = 0; r < QUESTION_ROUNDS; r++) {
       const round = roundDefs[r];
       const pct = 55 + Math.round(((r + 1) / QUESTION_ROUNDS) * 40);
       await updateJob({
-        p_progress: pct,
-        p_message: `📋 الجولة ${r + 1}/5: ${round.focus} (${totalQuestions} سؤال حتى الآن)...`,
+        p_progress: 55 + Math.round((r / QUESTION_ROUNDS) * 35),
+        p_message: `📋 الجولة ${r + 1}/${QUESTION_ROUNDS}: ${round.focus} (${totalQuestions} سؤال حتى الآن)...`,
       });
 
-      const qPrompt = `أنت خبير في إنشاء الأسئلة التعليمية. بناءً على المحتوى التالي، أنشئ ${QUESTIONS_PER_ROUND} سؤال متنوع.
-التركيز: ${round.focus}
-أنواع الأسئلة: اختيار من متعدد (4 خيارات)، صح/غلط، مقالي قصير.
+      const qPrompt = `أنت خبير في إنشاء أسئلة امتحانات الثانوية العامة المصرية.
 
-المحتوى:
-${extractedText.slice(0, 80000)}
+${round.instruction}
 
-أرجع JSON فقط بدون أي نص آخر:
-[{"question_ar": "...", "type": "mcq|true_false|essay", "options": ["أ","ب","ج","د"], "correct_answer": 0, "explanation_ar": "...", "difficulty": "easy|medium|hard"}]`;
+بناءً على المحتوى التالي:
+${questionText}
 
-      const qResult = await callClaude(apiKey, aiModel, qPrompt, 8000);
+⚠️ مهم جداً: أرجع JSON array فقط — بدون أي نص أو شرح قبله أو بعده.
+كل سؤال يكون بهذا الشكل:
+{"question_ar": "نص السؤال", "type": "mcq", "options": ["الخيار أ","الخيار ب","الخيار ج","الخيار د"], "correct_answer": 0, "explanation_ar": "شرح الإجابة", "difficulty": "medium"}
+
+أنواع type: "mcq" (اختيار من متعدد — 4 خيارات)، "true_false" (صح/غلط — خياران: ["صح","غلط"])، "essay" (مقالي — options فارغة [])
+correct_answer: رقم الخيار الصحيح (0 = أول خيار)
+
+أرجع JSON array فقط:`;
+
+      const qResult = await callClaude(apiKey, aiModel, qPrompt, 16000);
+      
       if (qResult.success && qResult.text) {
-        try {
-          let jsonStr = qResult.text.trim();
-          const jsonMatch = jsonStr.match(/\[[\s\S]*\]/);
-          if (jsonMatch) jsonStr = jsonMatch[0];
-          const questions = JSON.parse(jsonStr);
+        const parsed = parseQuestionsJSON(qResult.text);
+        
+        if (parsed.length > 0) {
+          // ⚡ BATCH SAVE — one RPC call for ALL questions in this round
+          const questionsForDB = parsed.map(q => ({
+            question_ar: q.question_ar || '',
+            type: q.type || 'mcq',
+            options: Array.isArray(q.options) ? q.options : ['أ','ب','ج','د'],
+            correct_answer: typeof q.correct_answer === 'number' ? q.correct_answer : 0,
+            explanation_ar: q.explanation_ar || '',
+            difficulty: q.difficulty || 'medium',
+          }));
 
-          if (Array.isArray(questions)) {
-            for (const q of questions) {
-              try {
-                await supabase.rpc('admin_save_questions', {
-                  p_lesson_id: lessonId,
-                  p_questions: JSON.stringify([q]),
-                });
-                totalQuestions++;
-              } catch {}
+          try {
+            const { data: saveResult, error: saveError } = await supabase.rpc('save_generated_questions', {
+              p_lesson_id: lessonId,
+              p_subject_id: subjectId || null,
+              p_questions: questionsForDB,
+            });
+
+            if (saveError) {
+              console.error(`[Job ${jobId}] Save error round ${r + 1}:`, saveError.message);
+            } else {
+              const inserted = saveResult?.inserted || parsed.length;
+              totalQuestions += inserted;
+              console.log(`[Job ${jobId}] Round ${r + 1}: saved ${inserted} questions`);
             }
+          } catch (saveErr: any) {
+            console.error(`[Job ${jobId}] Save error:`, saveErr.message);
           }
-        } catch (parseErr) {
-          console.warn(`[Job ${jobId}] Round ${r + 1} parse error — skipping`);
+        } else {
+          console.warn(`[Job ${jobId}] Round ${r + 1}: parsed 0 questions from response`);
         }
+      } else {
+        console.warn(`[Job ${jobId}] Round ${r + 1}: Claude call failed — ${qResult.error}`);
       }
+
+      await updateJob({
+        p_progress: pct,
+        p_message: `📋 الجولة ${r + 1}/${QUESTION_ROUNDS}: ${round.focus} — ${totalQuestions} سؤال ✅`,
+      });
     }
 
     // ═══════════════════════════════════════
@@ -260,9 +301,51 @@ ${extractedText.slice(0, 80000)}
 }
 
 // ═══════════════════════════════════════
+// PARSE QUESTIONS JSON — handles all edge cases
+// ═══════════════════════════════════════
+function parseQuestionsJSON(text: string): any[] {
+  try {
+    // Try direct parse first
+    const direct = JSON.parse(text.trim());
+    if (Array.isArray(direct)) return direct;
+  } catch {}
+
+  try {
+    // Remove markdown code blocks: ```json ... ``` or ``` ... ```
+    let cleaned = text.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '');
+    
+    // Extract JSON array
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+
+  try {
+    // Try to find individual objects and build array
+    const objects: any[] = [];
+    const regex = /\{[^{}]*"question_ar"[^{}]*\}/g;
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      try {
+        objects.push(JSON.parse(m[0]));
+      } catch {}
+    }
+    if (objects.length > 0) return objects;
+  } catch {}
+
+  console.warn('[ParseQ] Could not parse any questions from response');
+  return [];
+}
+
+// ═══════════════════════════════════════
 // CLAUDE API CALL
 // ═══════════════════════════════════════
-async function callClaude(apiKey: string, model: string, prompt: string, maxTokens: number, imageData?: { base64: string, mimeType: string }): Promise<{ success: boolean; text?: string; error?: string }> {
+async function callClaude(
+  apiKey: string, model: string, prompt: string, maxTokens: number,
+  imageData?: { base64: string; mimeType: string }
+): Promise<{ success: boolean; text?: string; error?: string }> {
   try {
     const content: any[] = [];
     if (imageData) {
@@ -273,6 +356,9 @@ async function callClaude(apiKey: string, model: string, prompt: string, maxToke
     }
     content.push({ type: 'text', text: prompt });
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 180000); // 3 min timeout per call
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -280,20 +366,31 @@ async function callClaude(apiKey: string, model: string, prompt: string, maxToke
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content }] }),
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content }],
+      }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!res.ok) {
       const errBody = await res.text();
       console.error(`[Claude] ${res.status}:`, errBody.slice(0, 300));
-      if (res.status === 413) return { success: false, error: 'الملف كبير جداً — حاول ملف أصغر' };
+      if (res.status === 413) return { success: false, error: 'الملف كبير جداً' };
+      if (res.status === 429) return { success: false, error: 'تم تجاوز حد الاستخدام — حاول بعد دقيقة' };
       return { success: false, error: `خطأ Claude: ${res.status}` };
     }
 
     const data = await res.json();
-    const text = data.content?.[0]?.text || '';
-    return { success: true, text };
+    const resultText = data.content?.[0]?.text || '';
+    return { success: true, text: resultText };
   } catch (err: any) {
+    if (err.name === 'AbortError') {
+      return { success: false, error: 'انتهت المهلة — حاول ملف أصغر' };
+    }
     return { success: false, error: err.message };
   }
 }
@@ -303,19 +400,18 @@ async function callClaude(apiKey: string, model: string, prompt: string, maxToke
 // ═══════════════════════════════════════
 
 async function extractFromWord(buffer: Buffer, updateJob: Function): Promise<string> {
-  await updateJob({ p_progress: 15, p_message: '📝 جاري قراءة ملف Word — فوري بدون OCR...' });
+  await updateJob({ p_progress: 15, p_message: '📝 جاري قراءة ملف Word — فوري ⚡...' });
   try {
     const mammoth = require('mammoth');
     const result = await mammoth.extractRawText({ buffer });
     return result.value || '';
   } catch (err: any) {
-    console.error('[Word Extract]', err.message);
     throw new Error('فشل في قراءة ملف Word: ' + err.message);
   }
 }
 
 async function extractFromExcel(buffer: Buffer, updateJob: Function): Promise<string> {
-  await updateJob({ p_progress: 15, p_message: '📊 جاري قراءة ملف Excel — فوري بدون OCR...' });
+  await updateJob({ p_progress: 15, p_message: '📊 جاري قراءة ملف Excel — فوري ⚡...' });
   try {
     const ExcelJS = require('exceljs');
     const workbook = new ExcelJS.Workbook();
@@ -335,18 +431,16 @@ async function extractFromExcel(buffer: Buffer, updateJob: Function): Promise<st
     });
     return text;
   } catch (err: any) {
-    console.error('[Excel Extract]', err.message);
     throw new Error('فشل في قراءة ملف Excel: ' + err.message);
   }
 }
 
 async function extractFromPowerPoint(buffer: Buffer, updateJob: Function): Promise<string> {
-  await updateJob({ p_progress: 15, p_message: '📋 جاري قراءة ملف PowerPoint — فوري بدون OCR...' });
+  await updateJob({ p_progress: 15, p_message: '📋 جاري قراءة ملف PowerPoint — فوري ⚡...' });
   try {
     const AdmZip = require('adm-zip');
     const zip = new AdmZip(buffer);
     let text = '';
-    let slideNum = 0;
     const entries = zip.getEntries();
     const slideEntries = entries
       .filter((e: any) => e.entryName.match(/ppt\/slides\/slide\d+\.xml/))
@@ -356,6 +450,7 @@ async function extractFromPowerPoint(buffer: Buffer, updateJob: Function): Promi
         return numA - numB;
       });
 
+    let slideNum = 0;
     for (const entry of slideEntries) {
       slideNum++;
       const xml = entry.getData().toString('utf8');
@@ -367,7 +462,6 @@ async function extractFromPowerPoint(buffer: Buffer, updateJob: Function): Promi
     }
     return text;
   } catch (err: any) {
-    console.error('[PPTX Extract]', err.message);
     throw new Error('فشل في قراءة ملف PowerPoint: ' + err.message);
   }
 }
@@ -384,21 +478,18 @@ async function extractFromText(buffer: Buffer, fileName: string, updateJob: Func
 async function extractFromPdf(
   fileBuffer: Buffer, apiKey: string, aiModel: string, updateJob: Function
 ): Promise<string> {
-  // Smart chunking: split PDF into small chunks for OCR
   const pdfDoc = await PDFDocument.load(fileBuffer, { ignoreEncryption: true });
   const totalPages = pdfDoc.getPageCount();
 
-  // Determine chunk size based on file size
   const fileSizeMB = fileBuffer.length / (1024 * 1024);
   let pagesPerChunk = INITIAL_PAGES_PER_CHUNK;
   if (fileSizeMB > 30) pagesPerChunk = 3;
   if (fileSizeMB > 50) pagesPerChunk = 2;
   if (fileSizeMB > 100) pagesPerChunk = 1;
 
-  const chunks: Array<{ startPage: number; endPage: number; label: string }> = [];
+  const chunks: Array<{ startPage: number; endPage: number }> = [];
   for (let start = 0; start < totalPages; start += pagesPerChunk) {
-    const end = Math.min(start + pagesPerChunk, totalPages);
-    chunks.push({ startPage: start, endPage: end, label: ` (صفحات ${start + 1}-${end})` });
+    chunks.push({ startPage: start, endPage: Math.min(start + pagesPerChunk, totalPages) });
   }
 
   await updateJob({
@@ -413,21 +504,19 @@ async function extractFromPdf(
     const pct = 10 + Math.round(((i + 1) / chunks.length) * 28);
     await updateJob({
       p_processed_chunks: i, p_progress: pct,
-      p_message: `🔤 استخراج النص — الجزء ${i + 1}/${chunks.length}${chunk.label}...`,
+      p_message: `🔤 استخراج النص — الجزء ${i + 1}/${chunks.length} (صفحات ${chunk.startPage + 1}-${chunk.endPage})...`,
     });
 
     try {
-      // Extract chunk pages as new PDF
       const chunkPdf = await PDFDocument.create();
-      const pages = await chunkPdf.copyPages(pdfDoc, Array.from({ length: chunk.endPage - chunk.startPage }, (_, j) => chunk.startPage + j));
+      const pageIndices = Array.from({ length: chunk.endPage - chunk.startPage }, (_, j) => chunk.startPage + j);
+      const pages = await chunkPdf.copyPages(pdfDoc, pageIndices);
       pages.forEach(p => chunkPdf.addPage(p));
       const chunkBytes = await chunkPdf.save();
       const chunkBase64 = Buffer.from(chunkBytes).toString('base64');
 
-      // Check if chunk is too large
       if (chunkBase64.length > MAX_CHUNK_BYTES * 1.33) {
-        // Too large for Vision — skip this chunk
-        console.warn(`[PDF] Chunk ${i + 1} too large (${(chunkBase64.length / 1024 / 1024).toFixed(1)}MB) — skipping`);
+        console.warn(`[PDF] Chunk ${i + 1} too large — skipping`);
         continue;
       }
 
@@ -466,6 +555,4 @@ async function extractFromImage(
   return result.text || '';
 }
 
-// Config for route
-export const maxDuration = 600; // 10 min (Vercel only, Railway uses custom server)
-export const dynamic = 'force-dynamic';
+export const maxDuration = 600;
