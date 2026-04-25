@@ -697,16 +697,8 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     }
 
     setGeneratingId(uploadLessonId);
-    const isImage = file.type.startsWith("image/");
     const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
-    const isLargeFile = file.size > 13 * 1024 * 1024;
-    setGenProgress(
-      isImage 
-        ? "🖼️ جاري رفع الصورة وقراءتها بالذكاء الاصطناعي..." 
-        : isLargeFile 
-          ? `📄 جاري رفع الملف (${fileSizeMB} MB) — سيتم تقسيمه تلقائياً ومعالجته... (قد يستغرق 5-10 دقائق) ⏳`
-          : "📄 جاري رفع الملف وقراءة المحتوى..."
-    );
+    setGenProgress(`📤 جاري رفع الملف (${fileSizeMB} MB)...`);
     setGenResult(null);
 
     try {
@@ -715,54 +707,81 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       formData.append("lessonId", uploadLessonId);
       formData.append("subjectId", subjectId);
 
-      setGenProgress(isLargeFile 
-        ? `🤖 جاري توليد الملخص والأسئلة... ملف كبير (${fileSizeMB} MB) — قد يستغرق 5-10 دقائق ⏳`
-        : "🤖 جاري توليد الملخص والأسئلة بالذكاء الاصطناعي... (قد يستغرق 2-5 دقائق)"
-      );
-
-      // AbortController for timeout (10 minutes max for large files)
-      const controller = new AbortController();
-      const timeoutMs = isLargeFile ? 600000 : 300000; // 10min or 5min
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
       const token = document.cookie.split(";").find(c => c.trim().startsWith("auth-token="))?.split("=").slice(1).join("=");
+      
+      // Step 1: Upload file — returns immediately with jobId
       const res = await fetch("/api/content/generate", {
         method: "POST",
         headers: token ? { "Authorization": `Bearer ${token}` } : {},
         body: formData,
-        signal: controller.signal,
       });
-      clearTimeout(timeoutId);
 
-      // Try parsing as JSON, fallback to text
       let data;
       const responseText = await res.text();
-      try {
-        data = JSON.parse(responseText);
-      } catch {
-        // Server returned non-JSON (e.g. HTML error page)
-        console.error("[ContentGenerate] Non-JSON response:", responseText.slice(0, 500));
+      try { data = JSON.parse(responseText); } catch {
         throw new Error(`خطأ من السيرفر (${res.status}): ${responseText.slice(0, 200)}`);
       }
 
-      if (!res.ok) {
-        const errorMsg = data.error || data.message || `خطأ ${res.status} — جرّب ملف أصغر أو تأكد من مفتاح AI`;
-        throw new Error(errorMsg);
+      if (!res.ok || !data.jobId) {
+        throw new Error(data.error || `خطأ ${res.status}`);
       }
 
-      setGenResult(data);
-      setGenProgress("");
-      loadLessons();
+      const jobId = data.jobId;
+      setGenProgress(`🤖 بدأت المعالجة — ${fileSizeMB} MB — جاري القراءة...`);
+
+      // Step 2: Poll for progress every 3 seconds
+      let completed = false;
+      let pollCount = 0;
+      const maxPolls = 400; // 400 × 3s = 20 minutes max
+      
+      while (!completed && pollCount < maxPolls) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        pollCount++;
+        
+        try {
+          const statusRes = await fetch(`/api/content/status?jobId=${jobId}`);
+          const status = await statusRes.json();
+          
+          if (status.status === 'completed') {
+            completed = true;
+            setGenResult({
+              summary: true,
+              questions: { total: status.questionsCount || 0 },
+              pages: status.totalPages,
+              chunks: status.totalChunks,
+            });
+            setGenProgress("");
+            loadLessons();
+          } else if (status.status === 'failed') {
+            throw new Error(status.error || 'فشل في المعالجة');
+          } else {
+            // Update progress bar
+            const pct = status.progress || 0;
+            const msg = status.message || 'جاري المعالجة...';
+            const chunks = status.processedChunks && status.totalChunks 
+              ? ` (${status.processedChunks}/${status.totalChunks} أجزاء)` : '';
+            setGenProgress(`${msg}${chunks} — ${pct}%`);
+          }
+        } catch (pollErr: any) {
+          // Network error during polling — just retry
+          if (pollErr.message && !pollErr.message.includes('فشل')) {
+            console.warn('[Poll] Error:', pollErr.message);
+          } else {
+            throw pollErr;
+          }
+        }
+      }
+
+      if (!completed) {
+        setGenProgress("⏳ المعالجة مستمرة في الخلفية — سيتم تحديث المحتوى تلقائياً عند الانتهاء");
+      }
+
     } catch (err: unknown) {
       setGenProgress("");
       if (err instanceof Error) {
-        if (err.name === 'AbortError') {
-          alert("⏰ انتهى وقت الانتظار — الملف كبير جداً. جرّب تقسمه لفصول أصغر ثم ارفع كل فصل على درس.");
-        } else {
-          alert(err.message);
-        }
+        alert(err.message);
       } else {
-        alert("خطأ غير متوقع في توليد المحتوى — جرّب تاني");
+        alert("خطأ غير متوقع — جرّب تاني");
       }
     }
     setGeneratingId(null);
@@ -808,28 +827,33 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       {/* Generation Result Banner */}
       {genResult && (
         <div className="mb-4 p-4 rounded-xl bg-green-50 border border-green-200">
-          <p className="font-bold text-green-700 mb-2">✅ {(genResult.message as string) || "تم توليد المحتوى بنجاح!"}</p>
-          {(genResult.pages as number) > 0 && (
-            <p className="text-xs text-green-500 mb-1">📄 {genResult.pages as number} صفحة | {genResult.chunks as number} جزء | {genResult.fileType as string}</p>
-          )}
+          <p className="font-bold text-green-700 mb-2">✅ تم توليد المحتوى بنجاح!</p>
           <div className="flex gap-4 text-sm text-green-600 flex-wrap">
-            <span>📝 ملخص: {(genResult.summary as Record<string, unknown>)?.sectionsCount || 0} قسم</span>
-            <span>📋 أسئلة: {(genResult.questions as Record<string, unknown>)?.total || 0} سؤال</span>
-            <span>MCQ: {(genResult.questions as Record<string, unknown>)?.mcq || 0}</span>
-            <span>صح/خطأ: {(genResult.questions as Record<string, unknown>)?.trueFalse || 0}</span>
-            <span>مقالي: {(genResult.questions as Record<string, unknown>)?.essay || 0}</span>
+            {(genResult.summary) && <span>📝 تم إنشاء الملخص</span>}
+            <span>📋 {(genResult.questions as Record<string, unknown>)?.total || 0} سؤال</span>
+            {(genResult.pages as number) > 0 && <span>📄 {genResult.pages as number} صفحة</span>}
+            {(genResult.chunks as number) > 1 && <span>✂️ {genResult.chunks as number} جزء</span>}
           </div>
-          <button onClick={() => setGenResult(null)} className="mt-2 text-xs text-green-500 hover:underline">إغلاق</button>
+          <button onClick={() => setGenResult(null)} className="mt-2 text-xs text-green-500 hover:underline">إغلاق ✕</button>
         </div>
       )}
 
-      {/* Generation Progress */}
+      {/* Generation Progress — with real progress bar */}
       {genProgress && (
         <div className="mb-4 p-4 rounded-xl bg-blue-50 border border-blue-200">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-2">
             <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-blue-700 font-medium text-sm">{genProgress}</p>
+            <p className="text-blue-700 font-medium text-sm flex-1">{genProgress.replace(/— \d+%$/, '')}</p>
           </div>
+          {genProgress.includes('%') && (() => {
+            const pctMatch = genProgress.match(/(\d+)%/);
+            const pct = pctMatch ? parseInt(pctMatch[1]) : 0;
+            return (
+              <div className="w-full bg-blue-200 rounded-full h-2.5 mt-1">
+                <div className="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+              </div>
+            );
+          })()}
         </div>
       )}
 
