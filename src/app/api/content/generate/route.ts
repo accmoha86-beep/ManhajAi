@@ -85,8 +85,9 @@ export async function POST(request: NextRequest) {
 
     // Helper to update job progress in DB
     const updateJob = async (params: any) => {
-      await supabase.rpc('update_content_job', { p_job_id: jobId, ...params })
-        .catch((e: any) => console.error('[Job Update]', e.message));
+      try {
+        await supabase.rpc('update_content_job', { p_job_id: jobId, ...params });
+      } catch (e: any) { console.error('[Job Update]', e.message); }
     };
 
     // ═══════════════════════════════════════
@@ -247,10 +248,12 @@ ${extractedText.slice(0, 80000)}
   } catch (err: any) {
     console.error('[ContentGenerate] FATAL:', err);
     if (jobId) {
-      await supabase.rpc('update_content_job', {
-        p_job_id: jobId, p_status: 'failed',
-        p_error: `خطأ: ${err.message?.slice(0, 300)}`,
-      }).catch(() => {});
+      try {
+        await supabase.rpc('update_content_job', {
+          p_job_id: jobId, p_status: 'failed',
+          p_error: `خطأ: ${err.message?.slice(0, 300)}`,
+        });
+      } catch (_) {}
     }
     return NextResponse.json({ error: `خطأ: ${err.message?.slice(0, 200)}` }, { status: 500 });
   }
