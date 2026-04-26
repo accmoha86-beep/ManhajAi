@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useChatStore } from "@/store/chat-store";
 import type { ChatMessage } from "@/store/chat-store";
 import { Send, Bot, User, Loader2, Trash2 } from "lucide-react";
@@ -14,34 +14,49 @@ const GENERAL_KEY = "__general__";
 
 export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps) {
   const chatKey = subjectId || GENERAL_KEY;
-  const { messages: allMessages, addMessage, clearChat } = useChatStore();
+  const { messages: allMessages, addMessage, updateMessage, clearChat } = useChatStore();
   const messages = allMessages[chatKey] ?? [];
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
+  // Auto-scroll on new messages
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    const el = scrollRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
   }, [messages]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed || streaming) return;
 
+    // Add user message
     const userMsg: ChatMessage = {
-      id: Date.now().toString(),
+      id: `u_${Date.now()}`,
       role: "user",
       content: trimmed,
       timestamp: new Date().toISOString(),
     };
     addMessage(chatKey, userMsg);
     setInput("");
-    setSending(true);
+    setStreaming(true);
+
+    // Add placeholder assistant message
+    const assistantId = `a_${Date.now()}`;
+    const placeholder: ChatMessage = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+      isLoading: true,
+    };
+    addMessage(chatKey, placeholder);
 
     try {
+      abortRef.current = new AbortController();
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,39 +65,91 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
           subject_id: subjectId || undefined,
           message: trimmed,
         }),
+        signal: abortRef.current.signal,
       });
-      const data = await res.json();
 
-      if (res.ok) {
-        const reply = data.data?.reply || data.message || "لم أتمكن من الإجابة";
-        const aiMsg: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: reply,
-          timestamp: new Date().toISOString(),
-        };
-        addMessage(chatKey, aiMsg);
-      } else {
-        const errorMsg: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: data.error || "حدث خطأ. يرجى المحاولة مرة أخرى",
-          timestamp: new Date().toISOString(),
-        };
-        addMessage(chatKey, errorMsg);
+      // Non-streaming error response
+      if (!res.ok || !res.body) {
+        let errorText = "حدث خطأ. يرجى المحاولة مرة أخرى";
+        try {
+          const errData = await res.json();
+          errorText = errData.error || errorText;
+        } catch {}
+        updateMessage(chatKey, assistantId, { content: errorText, isLoading: false });
+        setStreaming(false);
+        return;
       }
-    } catch {
-      const errorMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
+
+      // ━━━ Read SSE stream ━━━
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          try {
+            const event = JSON.parse(jsonStr);
+
+            if (event.type === "delta" && event.text) {
+              fullContent += event.text;
+              updateMessage(chatKey, assistantId, {
+                content: fullContent,
+                isLoading: false,
+              });
+            }
+
+            if (event.type === "error") {
+              updateMessage(chatKey, assistantId, {
+                content: event.error || "حدث خطأ",
+                isLoading: false,
+              });
+            }
+
+            if (event.type === "done") {
+              // Stream complete
+              updateMessage(chatKey, assistantId, {
+                content: fullContent,
+                isLoading: false,
+              });
+            }
+          } catch {
+            // Skip malformed JSON
+          }
+        }
+      }
+
+      // Ensure final state is correct
+      if (fullContent) {
+        updateMessage(chatKey, assistantId, { content: fullContent, isLoading: false });
+      } else {
+        updateMessage(chatKey, assistantId, {
+          content: "لم أتمكن من الإجابة. حاول مرة أخرى",
+          isLoading: false,
+        });
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      updateMessage(chatKey, assistantId, {
         content: "فشل الاتصال بالخادم. يرجى المحاولة مرة أخرى",
-        timestamp: new Date().toISOString(),
-      };
-      addMessage(chatKey, errorMsg);
+        isLoading: false,
+      });
     } finally {
-      setSending(false);
+      setStreaming(false);
+      abortRef.current = null;
     }
-  };
+  }, [input, streaming, chatKey, subjectId, addMessage, updateMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -92,6 +159,9 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
   };
 
   const handleClear = () => {
+    if (streaming && abortRef.current) {
+      abortRef.current.abort();
+    }
     clearChat(chatKey);
   };
 
@@ -114,10 +184,10 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
           </div>
           <div>
             <div className="text-sm font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
-              المساعد الذكي 🤖
+              أستاذك الذكي 🤖
             </div>
             <div className="text-[0.65rem]" style={{ color: "var(--theme-text-muted)" }}>
-              {subjectName || "اسألني عن أي شيء"}
+              {subjectName ? `متخصص في ${subjectName}` : "اختر مادة للبدء"}
             </div>
           </div>
         </div>
@@ -139,18 +209,18 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
           <div className="text-center py-12">
             <div className="text-5xl mb-4">🤖</div>
             <h3 className="text-base font-extrabold mb-2" style={{ color: "var(--theme-text-primary)" }}>
-              أهلاً! أنا مساعدك الذكي
+              أهلاً! أنا أستاذك الذكي
             </h3>
             <p className="text-sm mb-6" style={{ color: "var(--theme-text-secondary)" }}>
               {subjectName
-                ? `اسألني أي سؤال عن ${subjectName}`
+                ? `اسألني أي سؤال عن ${subjectName} — هجاوبك فوراً! ⚡`
                 : "اختر مادة ثم اسألني عن أي شيء"}
             </p>
             <div className="flex flex-wrap gap-2 justify-center">
               {[
                 "اشرحلي الدرس ده",
                 "عايز أسئلة تدريبية",
-                "فهمني النقطة دي",
+                "لخصلي أهم النقاط",
               ].map((q, i) => (
                 <button
                   key={i}
@@ -204,24 +274,6 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
             </div>
           </div>
         ))}
-
-        {sending && (
-          <div className="flex gap-2">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: "var(--theme-hover-overlay)", color: "var(--theme-primary)" }}
-            >
-              <Bot size={14} />
-            </div>
-            <div
-              className="rounded-2xl px-4 py-3 text-sm flex items-center gap-2"
-              style={{ background: "var(--theme-hover-overlay)", color: "var(--theme-text-secondary)" }}
-            >
-              <Loader2 size={14} className="animate-spin" />
-              جارٍ التفكير...
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Input */}
@@ -236,20 +288,20 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
           <textarea
             className="themed-input flex-1 resize-none"
             rows={1}
-            placeholder="اكتب سؤالك هنا..."
+            placeholder={subjectName ? `اسأل عن ${subjectName}...` : "اكتب سؤالك هنا..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={sending}
+            disabled={streaming}
             style={{ minHeight: "40px", maxHeight: "120px" }}
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || sending}
+            disabled={!input.trim() || streaming}
             className="themed-btn-primary p-2.5 rounded-xl flex-shrink-0"
-            style={{ opacity: !input.trim() || sending ? 0.5 : 1 }}
+            style={{ opacity: !input.trim() || streaming ? 0.5 : 1 }}
           >
-            {sending ? (
+            {streaming ? (
               <Loader2 size={18} className="animate-spin" />
             ) : (
               <Send size={18} />
