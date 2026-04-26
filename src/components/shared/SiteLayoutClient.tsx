@@ -2,13 +2,12 @@
 
 import { useUIStore } from '@/store/ui-store';
 import { useAuthStore } from '@/store/auth-store';
-import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 
 export default function SiteLayoutClient({ children }: { children: React.ReactNode }) {
   const sidebarCollapsed = useUIStore((s: any) => s.sidebarCollapsed);
+  const forceHide = useUIStore((s: any) => s.forceHideSidebar);
   const { user } = useAuthStore();
-  const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -18,13 +17,8 @@ export default function SiteLayoutClient({ children }: { children: React.ReactNo
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Hide sidebar on subjects page — full width for content + chat
-  const isSubjectsPage = pathname.startsWith('/subjects');
-
-  // On mobile: no sidebar margin (sidebar is overlay)
-  // On subjects page: no margin (sidebar hidden)
-  // On desktop: respect sidebar width
-  const marginRight = (isMobile || isSubjectsPage || !user) ? '0' : (sidebarCollapsed ? '3.75rem' : '15rem');
+  // No margin when: mobile, sidebar force-hidden, or no user
+  const marginRight = (isMobile || forceHide || !user) ? '0' : (sidebarCollapsed ? '3.75rem' : '15rem');
 
   return (
     <main

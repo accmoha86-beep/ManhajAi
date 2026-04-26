@@ -58,11 +58,13 @@ export default function Sidebar() {
     setMobileOpen(false);
   }, [pathname]);
 
+  const forceHide = useUIStore((s: any) => s.forceHideSidebar);
+
   // Hide sidebar for non-authenticated users
   if (!user) return null;
 
-  // Hide sidebar on subjects page (full-width for content + chat)
-  if (pathname.startsWith('/subjects')) return null;
+  // Hide sidebar when SubjectsPage says so (inside a subject detail)
+  if (forceHide) return null;
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';

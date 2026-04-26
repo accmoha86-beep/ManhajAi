@@ -21,6 +21,7 @@ interface UIState {
   notifications: Notification[];
   isOnline: boolean;
   isMobileMenuOpen: boolean;
+  forceHideSidebar: boolean;
 }
 
 interface UIActions {
@@ -35,6 +36,7 @@ interface UIActions {
   clearNotifications: () => void;
   setOnline: (online: boolean) => void;
   setMobileMenuOpen: (open: boolean) => void;
+  setForceHideSidebar: (hide: boolean) => void;
 }
 
 const DEFAULT_NOTIFICATION_DURATION = 5000;
@@ -50,6 +52,7 @@ export const useUIStore = create<UIState & UIActions>()(
       notifications: [],
       isOnline: true,
       isMobileMenuOpen: false,
+      forceHideSidebar: false,
 
       // Actions
       setTheme: (theme) => {
@@ -109,6 +112,8 @@ export const useUIStore = create<UIState & UIActions>()(
       setOnline: (isOnline) => set({ isOnline }),
 
       setMobileMenuOpen: (isMobileMenuOpen) => set({ isMobileMenuOpen }),
+
+      setForceHideSidebar: (forceHideSidebar) => set({ forceHideSidebar }),
     }),
     {
       name: 'manhaj-ui',

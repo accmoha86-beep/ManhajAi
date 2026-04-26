@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { useUIStore } from "@/store/ui-store";
 import {
   BookOpen,
   ChevronLeft,
@@ -140,6 +141,18 @@ export default function SubjectsPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSection, setActiveSection] = useState(0);
+
+  const setForceHideSidebar = useUIStore((s) => s.setForceHideSidebar);
+
+  // ─── Hide sidebar when inside a subject, show when on list ───
+  useEffect(() => {
+    setForceHideSidebar(!!selectedSubject);
+  }, [selectedSubject, setForceHideSidebar]);
+
+  // ─── Restore sidebar on unmount ───
+  useEffect(() => {
+    return () => { setForceHideSidebar(false); };
+  }, [setForceHideSidebar]);
 
   // ─── Fetch subjects ───
   const fetchSubjects = useCallback(async () => {
