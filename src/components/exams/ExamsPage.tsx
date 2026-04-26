@@ -681,7 +681,7 @@ export default function ExamsPage() {
               </div>
             )}
 
-            {/* True/False */}
+            {/* True/False fallback (if no options) */}
             {currentQuestion.type === "true_false" && !currentQuestion.options && (
               <div className="grid grid-cols-2 gap-4">
                 {["صح", "خطأ"].map((opt) => {
@@ -696,6 +696,14 @@ export default function ExamsPage() {
                     </button>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Fallback — question has no options (shouldn't happen) */}
+            {!currentQuestion.options && currentQuestion.type !== "true_false" && (
+              <div className="p-4 rounded-xl text-center" style={{ background: "var(--theme-hover-overlay)", border: "2px solid var(--theme-surface-border)" }}>
+                <p className="text-sm font-bold mb-2" style={{ color: "var(--theme-text-secondary)" }}>⚠️ هذا السؤال مقالي ولا يمكن تصحيحه تلقائياً</p>
+                <button onClick={() => setCurrentQ(p => Math.min(questions.length - 1, p + 1))} className="themed-btn-sm">تخطي ← التالي</button>
               </div>
             )}
           </div>
