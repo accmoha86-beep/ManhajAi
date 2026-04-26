@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       subjectId
         ? supabase.rpc('get_subject_context', { p_subject_id: subjectId })
         : Promise.resolve({ data: null }),
-      getSecret('anthropic_api_key'),
+      getSecret('ANTHROPIC_API_KEY'),
       getSecret('AI_MODEL'),
     ]);
 

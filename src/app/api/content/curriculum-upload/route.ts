@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
 
     // Only need API key if not pre-analyzed OR if generating questions
     if (!preAnalyzed || generateQuestions) {
-      const { data: rawApiKey } = await supabase.rpc('get_system_secret', { p_key: 'anthropic_api_key' });
+      const { data: rawApiKey } = await supabase.rpc('get_system_secret', { p_key: 'ANTHROPIC_API_KEY' });
       apiKey = (rawApiKey || '').replace(/^["']+|["']+$/g, '').trim();
       if (!apiKey) {
         if (!preAnalyzed) {

@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     // ═══════════════════════════════════════
     await updateJob({ p_status: 'processing', p_progress: 5, p_message: '⚙️ جاري تحميل الإعدادات...' });
 
-    const { data: rawApiKey } = await supabase.rpc('get_system_secret', { p_key: 'anthropic_api_key' });
+    const { data: rawApiKey } = await supabase.rpc('get_system_secret', { p_key: 'ANTHROPIC_API_KEY' });
     // Strip wrapping quotes from jsonb values
     const apiKey = (rawApiKey || '').replace(/^["']+|["']+$/g, '').trim();
     if (!apiKey) {

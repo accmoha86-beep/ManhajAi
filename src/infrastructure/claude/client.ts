@@ -16,7 +16,7 @@ let cachedKeyHash: string | null = null;
 async function getClient(): Promise<Anthropic> {
   let apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    apiKey = (await getSecret('anthropic_api_key')) || '';
+    apiKey = (await getSecret('ANTHROPIC_API_KEY')) || '';
   }
   if (!apiKey) {
     throw new Error('Anthropic API key not configured');

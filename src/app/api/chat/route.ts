@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
 
     // Get API key and model from DB
     const [apiKey, modelFromDB] = await Promise.all([
-      getSecret('anthropic_api_key'),
+      getSecret('ANTHROPIC_API_KEY'),
       getSecret('AI_MODEL'),
     ]);
 

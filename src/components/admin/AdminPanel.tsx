@@ -2213,7 +2213,7 @@ function SecretsTab() {
   const [newDesc, setNewDesc] = useState("");
 
   const categories: Record<string, { label: string; icon: string; keys: string[] }> = {
-    ai: { label: "🤖 الذكاء الاصطناعي", icon: "🤖", keys: ["anthropic_api_key", "AI_MODEL", "AI_CONTENT_MODEL", "AI_DAILY_LIMIT", "AI_MONTHLY_LIMIT"] },
+    ai: { label: "🤖 الذكاء الاصطناعي", icon: "🤖", keys: ["ANTHROPIC_API_KEY", "AI_MODEL", "AI_CONTENT_MODEL", "AI_DAILY_LIMIT", "AI_MONTHLY_LIMIT"] },
     payments: { label: "💳 المدفوعات", icon: "💳", keys: ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "PAYMOB_API_KEY", "PAYMOB_HMAC_SECRET", "PAYMOB_IFRAME_ID", "PAYMOB_VODAFONE_INTEGRATION_ID", "PAYMOB_INSTAPAY_INTEGRATION_ID", "PAYMOB_FAWRY_INTEGRATION_ID"] },
     auth: { label: "🔐 الأمان والمصادقة", icon: "🔐", keys: ["jwt_secret", "FIREBASE_API_KEY", "FIREBASE_PROJECT_ID", "SMS_PROVIDER"] },
     site: { label: "🌐 إعدادات الموقع", icon: "🌐", keys: ["APP_URL", "SUPABASE_URL", "SUPABASE_ANON_KEY", "TRIAL_DAYS", "MAX_FILE_SIZE_MB", "WATERMARK_FONT_SIZE"] },
