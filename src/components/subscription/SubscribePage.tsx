@@ -44,6 +44,7 @@ export default function SubscribePage() {
   const [loading, setLoading] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('monthly');
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'vodafone' | 'instapay' | 'fawry'>('stripe');
   const [processing, setProcessing] = useState(false);
 
   // Promo code state
@@ -165,7 +166,7 @@ export default function SubscribePage() {
         body: JSON.stringify({
           planId: plan.id,
           period: selectedPeriod,
-          paymentMethod: 'stripe',
+          paymentMethod,
           couponCode: appliedCoupon?.code || undefined,
           subjects: [],
         }),
@@ -436,6 +437,22 @@ export default function SubscribePage() {
                 🎫 {appliedCoupon.code}
               </span>
             )}
+          </div>
+          {/* Payment Method Selection */}
+          <div className="mb-4">
+            <p className="text-xs font-bold mb-2 text-center" style={{ color: 'var(--theme-text-secondary)' }}>اختر طريقة الدفع</p>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { id: 'stripe' as const, label: '💳 بطاقة ائتمان', icon: '💳' },
+                { id: 'vodafone' as const, label: '📱 فودافون كاش', icon: '📱' },
+                { id: 'instapay' as const, label: '🏦 إنستاباي', icon: '🏦' },
+                { id: 'fawry' as const, label: '🏪 فوري', icon: '🏪' },
+              ]).map(m => (
+                <button key={m.id} onClick={() => setPaymentMethod(m.id)} className="px-3 py-2 rounded-lg text-xs font-bold transition-all" style={{ background: paymentMethod === m.id ? 'var(--theme-primary)' : 'var(--theme-surface-bg)', color: paymentMethod === m.id ? '#fff' : 'var(--theme-text-primary)', border: paymentMethod === m.id ? '2px solid var(--theme-primary)' : '2px solid var(--theme-border)' }}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
           <button
             onClick={handleSubscribe}

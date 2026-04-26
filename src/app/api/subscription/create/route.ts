@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createCheckoutSession } from '@/infrastructure/stripe/client';
+import { createPayment as createPaymobPayment } from '@/infrastructure/paymob/client';
 import { getAuthUser } from '@/lib/auth';
 import { createServerSupabaseClient } from '@/infrastructure/supabase/server';
 
@@ -164,7 +165,33 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // TODO: Paymob integration (when keys are configured)
+    // Paymob (Vodafone Cash / InstaPay / Fawry)
+    if (['vodafone', 'fawry', 'instapay'].includes(paymentMethod)) {
+      const paymobResult = await createPaymobPayment({
+        amount: finalPrice * 100, // Paymob expects amount in piasters (cents)
+        userId: user.id,
+        method: paymentMethod as 'vodafone' | 'fawry' | 'instapay',
+        phone: user.phone || undefined,
+      });
+
+      if (!paymobResult.ok) {
+        return NextResponse.json({ error: paymobResult.error }, { status: 500 });
+      }
+
+      // Update subscription with Paymob order ID
+      await supabase.rpc('update_subscription_paymob', {
+        p_sub_id: subId,
+        p_paymob_order_id: paymobResult.data.orderId,
+      });
+
+      return NextResponse.json({
+        success: true,
+        subscriptionId: subId,
+        url: paymobResult.data.paymentUrl,
+        pricing: { basePrice, discount: discountAmount, finalPrice, discountPercent },
+      });
+    }
+
     return NextResponse.json({ error: 'طريقة الدفع غير متاحة حالياً' }, { status: 400 });
   } catch (error) {
     console.error('[Subscription] Error:', error);
