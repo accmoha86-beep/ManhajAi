@@ -306,6 +306,7 @@ function StudentsTab() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({ fullName: "", phone: "", password: "", governorate: "القاهرة" });
   const [addSaving, setAddSaving] = useState(false);
+  const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
 
   const governorates = ["القاهرة","الجيزة","الإسكندرية","الدقهلية","البحيرة","المنيا","الشرقية","الغربية","المنوفية","القليوبية","كفر الشيخ","الفيوم","بني سويف","أسيوط","سوهاج","قنا","الأقصر","أسوان","البحر الأحمر","الوادي الجديد","مطروح","شمال سيناء","جنوب سيناء","بورسعيد","السويس","الإسماعيلية","دمياط"];
 
@@ -325,18 +326,18 @@ function StudentsTab() {
     try {
       await adminAPI(banned ? "unban_student" : "ban_student", { student_id: id });
       load();
-    } catch { /* reload anyway */ load(); }
+    } catch { load(); }
   };
 
   const deleteStudent = async (id: string, name: string) => {
-    if (!await showConfirm({ message: `⚠️ هل أنت متأكد من حذف الطالب "${name}"؟\n\nسيتم حذف جميع بياناته (اشتراكات، امتحانات، شهادات، محادثات) نهائياً!`, danger: true, confirmText: "حذف" })) return;
-    if (!await showConfirm({ message: `🔴 تأكيد نهائي: حذف "${name}" وكل بياناته؟ لا يمكن التراجع!`, danger: true, confirmText: "حذف" })) return;
+    if (!await showConfirm({ message: "⚠️ هل أنت متأكد من حذف الطالب \"" + name + "\"?\n\nسيتم حذف جميع بياناته نهائياً!", danger: true, confirmText: "حذف" })) return;
+    if (!await showConfirm({ message: "🔴 تأكيد نهائي: حذف \"" + name + "\" وكل بياناته؟ لا يمكن التراجع!", danger: true, confirmText: "حذف" })) return;
     try {
       await adminAPI("delete_student", { student_id: id });
-      showToast(`✅ تم حذف "${name}" بنجاح`, "success");
+      showToast("✅ تم حذف \"" + name + "\" بنجاح", "success");
       load();
     } catch (e) {
-      showToast(`❌ خطأ في الحذف: ${e instanceof Error ? e.message : 'خطأ غير معروف'}`, "error");
+      showToast("❌ خطأ في الحذف: " + (e instanceof Error ? e.message : "خطأ غير معروف"), "error");
       load();
     }
   };
@@ -354,9 +355,39 @@ function StudentsTab() {
       setAddForm({ fullName: "", phone: "", password: "", governorate: "القاهرة" });
       load();
     } catch (e) {
-      showToast(`❌ ${e instanceof Error ? e.message : "خطأ في إضافة الطالب"}`, "error");
+      showToast("❌ " + (e instanceof Error ? e.message : "خطأ في إضافة الطالب"), "error");
     }
     setAddSaving(false);
+  };
+
+  const getStatusBadge = (s: Record<string, unknown>) => {
+    const subStatus = s.sub_status as string;
+    if (s.is_banned) return { text: "محظور 🚫", bg: "rgba(239,68,68,0.12)", color: "#DC2626" };
+    if (!subStatus) return { text: "بدون اشتراك", bg: "rgba(156,163,175,0.12)", color: "#6B7280" };
+    if (subStatus === "trial") {
+      const trialEnd = s.trial_ends_at || s.expires_at;
+      const isExpired = trialEnd && new Date(trialEnd as string) < new Date();
+      if (isExpired) return { text: "تجربة منتهية ⏰", bg: "rgba(245,158,11,0.12)", color: "#D97706" };
+      return { text: "تجربة مجانية 🎁", bg: "rgba(59,130,246,0.12)", color: "#2563EB" };
+    }
+    if (subStatus === "active") return { text: "مشترك ✅", bg: "rgba(16,185,129,0.12)", color: "#059669" };
+    if (subStatus === "expired") return { text: "منتهي ❌", bg: "rgba(239,68,68,0.12)", color: "#DC2626" };
+    if (subStatus === "cancelled") return { text: "ملغي", bg: "rgba(156,163,175,0.12)", color: "#6B7280" };
+    if (subStatus === "pending") return { text: "قيد الدفع ⏳", bg: "rgba(245,158,11,0.12)", color: "#D97706" };
+    return { text: subStatus, bg: "rgba(156,163,175,0.12)", color: "#6B7280" };
+  };
+
+  const getPaymentLabel = (m: string | null) => {
+    if (!m) return "—";
+    const map: Record<string, string> = { stripe: "💳 بطاقة", vodafone: "📱 فودافون كاش", instapay: "🏦 إنستاباي", fawry: "🏪 فوري" };
+    return map[m] || m;
+  };
+
+  const getPlanLabel = (plan: string | null, period: string | null) => {
+    if (!plan) return "—";
+    if (plan === "trial") return "تجربة مجانية";
+    const pm: Record<string, string> = { monthly: "شهري", term: "فصلي", annual: "سنوي" };
+    return pm[period || ""] || plan;
   };
 
   return (
@@ -375,7 +406,6 @@ function StudentsTab() {
         </button>
       </div>
 
-      {/* Add Student Modal */}
       <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="➕ إضافة طالب جديد" onSave={handleAddStudent} saving={addSaving}>
         <InputField label="اسم الطالب *" value={addForm.fullName} onChange={v => setAddForm({ ...addForm, fullName: v })} placeholder="الاسم الكامل" />
         <InputField label="رقم الموبايل *" value={addForm.phone} onChange={v => setAddForm({ ...addForm, phone: v })} placeholder="01xxxxxxxxx" />
@@ -388,49 +418,83 @@ function StudentsTab() {
 
       {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={load} /> : students.length === 0 ? <EmptyState message="لا يوجد طلاب" icon={<Users size={40} />} /> : (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ borderBottom: "2px solid var(--theme-surface-border)" }}>
-                  {["الاسم", "رقم الموبايل", "الصف", "الحالة", "تاريخ التسجيل", "إجراء"].map(h => (
-                    <th key={h} className="text-right py-3 px-3 font-medium" style={{ color: "var(--theme-text-secondary)" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {students.map((s, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid var(--theme-surface-border)" }}>
-                    <td className="py-3 px-3 font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.name as string) || (s.full_name as string) || "—"}</td>
-                    <td className="py-3 px-3" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>{(s.phone as string) || "—"}</td>
-                    <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{(s.grade as string) || (s.grade_name as string) || "—"}</td>
-                    <td className="py-3 px-3">
-                      <span className={`px-2 py-1 rounded-lg text-xs font-medium ${s.banned ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
-                        {s.banned ? "محظور" : "نشط"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3" style={{ color: "var(--theme-text-secondary)" }}>{formatDate(s.created_at as string)}</td>
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => toggleBan(s.id as string, !!s.banned)}
-                          className={`px-3 py-1 rounded-lg text-xs font-medium ${s.banned ? "bg-green-100 text-green-600 hover:bg-green-200" : "bg-red-100 text-red-600 hover:bg-red-200"}`}>
-                          {s.banned ? "إلغاء الحظر" : "حظر"}
+          <div className="space-y-3">
+            {students.map((s) => {
+              const badge = getStatusBadge(s);
+              const isExpanded = expandedStudent === (s.id as string);
+              const subjects = (s.subscribed_subjects || []) as Array<{id: string; name: string}>;
+              return (
+                <div key={s.id as string} className="rounded-xl overflow-hidden" style={{ background: "var(--theme-surface)", border: "1px solid var(--theme-surface-border)" }}>
+                  <div className="flex items-center gap-3 p-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setExpandedStudent(isExpanded ? null : s.id as string)}>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ background: "var(--theme-cta-gradient, linear-gradient(135deg, #6366f1, #a78bfa))" }}>
+                      {((s.full_name as string) || "?")[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-sm truncate" style={{ color: "var(--theme-text-primary)" }}>{(s.full_name as string) || "—"}</div>
+                      <div className="text-xs mt-0.5" dir="ltr" style={{ color: "var(--theme-text-secondary)" }}>{(s.phone as string) || "—"}</div>
+                    </div>
+                    <span className="px-3 py-1 rounded-lg text-xs font-medium flex-shrink-0" style={{ background: badge.bg, color: badge.color }}>{badge.text}</span>
+                    <span className="text-xs hidden sm:inline flex-shrink-0" style={{ color: "var(--theme-text-secondary)" }}>📍 {(s.governorate as string) || "—"}</span>
+                    <ChevronDown size={16} style={{ color: "var(--theme-text-secondary)", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+                  </div>
+                  {isExpanded && (
+                    <div className="px-4 pb-4 pt-0" style={{ borderTop: "1px solid var(--theme-surface-border)" }}>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 mb-4">
+                        {[
+                          { val: (s.exam_count as number) || 0, label: "📝 امتحان" },
+                          { val: (s.chat_count as number) || 0, label: "💬 رسالة شات" },
+                          { val: (s.certificate_count as number) || 0, label: "🏆 شهادة" },
+                          { val: subjects.length, label: "📚 مادة مشترك" },
+                        ].map((stat, idx) => (
+                          <div key={idx} className="text-center p-2 rounded-lg" style={{ background: "var(--theme-bg)" }}>
+                            <div className="text-lg font-bold" style={{ color: "var(--theme-text-primary)" }}>{stat.val}</div>
+                            <div className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>{stat.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="rounded-xl p-3 mb-3" style={{ background: "var(--theme-bg)" }}>
+                        <h4 className="font-bold text-sm mb-2" style={{ color: "var(--theme-text-primary)" }}>📋 بيانات الاشتراك</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          <div><span style={{ color: "var(--theme-text-secondary)" }}>نوع الخطة: </span><span className="font-medium" style={{ color: "var(--theme-text-primary)" }}>{getPlanLabel(s.plan_type as string, s.period as string)}</span></div>
+                          <div><span style={{ color: "var(--theme-text-secondary)" }}>طريقة الدفع: </span><span className="font-medium" style={{ color: "var(--theme-text-primary)" }}>{getPaymentLabel(s.payment_method as string)}</span></div>
+                          <div><span style={{ color: "var(--theme-text-secondary)" }}>بداية الاشتراك: </span><span className="font-medium" style={{ color: "var(--theme-text-primary)" }}>{s.starts_at ? formatDate(s.starts_at as string) : "—"}</span></div>
+                          <div><span style={{ color: "var(--theme-text-secondary)" }}>انتهاء الاشتراك: </span><span className="font-medium" style={{ color: s.expires_at && new Date(s.expires_at as string) < new Date() ? "#DC2626" : "var(--theme-text-primary)" }}>{s.expires_at ? formatDate(s.expires_at as string) : "—"}</span></div>
+                          <div><span style={{ color: "var(--theme-text-secondary)" }}>المبلغ: </span><span className="font-medium" style={{ color: "var(--theme-text-primary)" }}>{s.final_price ? s.final_price + " ج.م" : "—"}</span></div>
+                          <div><span style={{ color: "var(--theme-text-secondary)" }}>كوبون: </span><span className="font-medium" style={{ color: "var(--theme-text-primary)" }}>{(s.coupon_code as string) || "—"}</span></div>
+                          <div><span style={{ color: "var(--theme-text-secondary)" }}>تاريخ التسجيل: </span><span className="font-medium" style={{ color: "var(--theme-text-primary)" }}>{s.registered_at ? formatDate(s.registered_at as string) : "—"}</span></div>
+                          <div><span style={{ color: "var(--theme-text-secondary)" }}>آخر دخول: </span><span className="font-medium" style={{ color: "var(--theme-text-primary)" }}>{s.last_login_at ? formatDate(s.last_login_at as string) : "لم يسجل دخول"}</span></div>
+                        </div>
+                      </div>
+                      {subjects.length > 0 && (
+                        <div className="rounded-xl p-3 mb-3" style={{ background: "var(--theme-bg)" }}>
+                          <h4 className="font-bold text-sm mb-2" style={{ color: "var(--theme-text-primary)" }}>📚 المواد المشترك فيها</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {subjects.map((sub) => (
+                              <span key={sub.id} className="px-3 py-1 rounded-lg text-xs font-medium" style={{ background: "rgba(99,102,241,0.1)", color: "#6366f1" }}>{sub.name}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 mt-3">
+                        <button onClick={(e) => { e.stopPropagation(); toggleBan(s.id as string, !!s.is_banned); }}
+                          className={"px-4 py-1.5 rounded-lg text-xs font-medium transition-colors " + (s.is_banned ? "bg-green-100 text-green-600 hover:bg-green-200" : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200")}>
+                          {s.is_banned ? "✅ إلغاء الحظر" : "🚫 حظر"}
                         </button>
-                        <button onClick={() => deleteStudent(s.id as string, (s.full_name as string) || (s.name as string) || "طالب")}
-                          className="px-3 py-1 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
-                          title="حذف الطالب نهائياً">
-                          🗑️ حذف
+                        <button onClick={(e) => { e.stopPropagation(); deleteStudent(s.id as string, (s.full_name as string) || "طالب"); }}
+                          className="px-4 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+                          🗑️ حذف نهائي
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
           {total > perPage && (
             <div className="flex items-center justify-center gap-2 mt-4">
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded-lg text-sm disabled:opacity-40" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}>السابق</button>
-              <span className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>صفحة {page} من {Math.ceil(total / perPage)}</span>
+              <span className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>{"صفحة " + page + " من " + Math.ceil(total / perPage)}</span>
               <button onClick={() => setPage(p => p + 1)} disabled={page >= Math.ceil(total / perPage)} className="px-3 py-1 rounded-lg text-sm disabled:opacity-40" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}>التالي</button>
             </div>
           )}

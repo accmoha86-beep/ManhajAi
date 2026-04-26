@@ -54,11 +54,11 @@ export async function POST(request: NextRequest) {
 
       // ===== STUDENTS =====
       case 'get_students': {
-        const { data, error } = await sb.rpc('admin_list_students_v2', {
+        const { data, error } = await sb.rpc('admin_list_students_v3', {
           p_admin_id: aid,
           p_search: params.search || null,
           p_page: params.page || 1,
-          p_limit: params.limit || 50
+          p_limit: params.per_page || params.limit || 50
         });
         if (error) return err(error.message);
         if (data?.error) return err(data.error, 403);
