@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 import SubjectChat from "@/components/chat/SubjectChat";
 
+// Load Cairo font for better Arabic readability
+const STUDY_FONT_LINK = "https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap";
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
@@ -583,7 +586,8 @@ export default function SubjectsPage() {
                 {/* ─── Expanded Lesson Content ─── */}
                 {activeLessonId === lesson.id && (
                   <div
-                    className="border-t px-4 py-4"
+                    className="border-t px-5 py-5"
+                    style={{ fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif" }}
                     style={{ borderColor: "var(--theme-surface-border)" }}
                   >
                     {/* Loading */}
@@ -678,7 +682,7 @@ export default function SubjectsPage() {
                                             return (
                                               <h2
                                                 key={i}
-                                                className="text-lg font-bold mt-4 mb-2"
+                                                className="text-xl font-bold mt-5 mb-3"
                                                 style={{
                                                   color:
                                                     "var(--theme-primary)",
@@ -691,7 +695,7 @@ export default function SubjectsPage() {
                                             return (
                                               <h3
                                                 key={i}
-                                                className="text-base font-bold mt-3 mb-1.5 flex items-center gap-1.5"
+                                                className="text-lg font-bold mt-4 mb-2 flex items-center gap-2"
                                                 style={{
                                                   color:
                                                     "var(--theme-primary)",
@@ -708,7 +712,7 @@ export default function SubjectsPage() {
                                             return (
                                               <h4
                                                 key={i}
-                                                className="text-sm font-bold mt-2 mb-0.5"
+                                                className="text-base font-bold mt-3 mb-1"
                                                 style={{
                                                   color:
                                                     "var(--theme-primary)",
@@ -728,15 +732,15 @@ export default function SubjectsPage() {
                                             return (
                                               <div
                                                 key={i}
-                                                className="flex items-start gap-2 text-sm leading-relaxed"
+                                                className="flex items-start gap-2.5 text-[16px] leading-[1.85]"
                                                 style={{
                                                   color:
                                                     "var(--theme-text-primary)",
                                                 }}
                                               >
                                                 <CheckCircle
-                                                  size={14}
-                                                  className="mt-1 flex-shrink-0"
+                                                  size={16}
+                                                  className="mt-1.5 flex-shrink-0"
                                                   style={{
                                                     color:
                                                       "var(--theme-primary)",
@@ -760,7 +764,7 @@ export default function SubjectsPage() {
                                           return (
                                             <p
                                               key={i}
-                                              className="text-sm leading-relaxed"
+                                              className="text-[16px] leading-[1.85]"
                                               style={{
                                                 color:
                                                   "var(--theme-text-primary)",
@@ -784,12 +788,12 @@ export default function SubjectsPage() {
                                   0 && (
                                   <div>
                                     <h4
-                                      className="text-sm font-bold mb-2 flex items-center gap-1.5"
+                                      className="text-base font-bold mb-3 flex items-center gap-2"
                                       style={{
                                         color: "var(--theme-primary)",
                                       }}
                                     >
-                                      <CheckCircle size={15} />
+                                      <CheckCircle size={17} />
                                       النقاط الرئيسية
                                     </h4>
                                     <ul className="space-y-1.5">
@@ -800,7 +804,7 @@ export default function SubjectsPage() {
                                         ) => (
                                           <li
                                             key={i}
-                                            className="flex items-start gap-2 text-sm"
+                                            className="flex items-start gap-2.5 text-[16px] leading-[1.85]"
                                             style={{
                                               color:
                                                 "var(--theme-text-primary)",
@@ -827,12 +831,12 @@ export default function SubjectsPage() {
                                   0 && (
                                   <div>
                                     <h4
-                                      className="text-sm font-bold mb-2 flex items-center gap-1.5"
+                                      className="text-base font-bold mb-3 flex items-center gap-2"
                                       style={{
                                         color: "var(--theme-primary)",
                                       }}
                                     >
-                                      <BookOpen size={15} />
+                                      <BookOpen size={17} />
                                       التعريفات
                                     </h4>
                                     <div className="space-y-2">
@@ -846,7 +850,7 @@ export default function SubjectsPage() {
                                         ) => (
                                           <div
                                             key={i}
-                                            className="rounded-lg p-3 text-sm"
+                                            className="rounded-xl p-4 text-[16px] leading-[1.85]"
                                             style={{
                                               background:
                                                 "var(--theme-primary-light, rgba(99,102,241,0.04))",
@@ -876,7 +880,7 @@ export default function SubjectsPage() {
                                   0 && (
                                   <div>
                                     <h4
-                                      className="text-sm font-bold mb-2"
+                                      className="text-base font-bold mb-3"
                                       style={{
                                         color: "var(--theme-primary)",
                                       }}
@@ -895,7 +899,7 @@ export default function SubjectsPage() {
                                         ) => (
                                           <div
                                             key={i}
-                                            className="rounded-lg p-3 border text-sm"
+                                            className="rounded-xl p-4 border text-[16px] leading-[1.85]"
                                             style={{
                                               borderColor:
                                                 "var(--theme-surface-border)",
