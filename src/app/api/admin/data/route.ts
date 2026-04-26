@@ -607,7 +607,55 @@ export async function POST(request: NextRequest) {
         return ok(data || {});
       }
 
-      default:
+  
+    // ═══ ADD STUDENT (Admin creates student account) ═══
+    case 'add_student': {
+      const { fullName, phone, password, governorate, gradeLevel } = body;
+      
+      if (!fullName || !phone || !password) {
+        return NextResponse.json({ error: 'الاسم ورقم الهاتف وكلمة المرور مطلوبين' }, { status: 400 });
+      }
+
+      const cleanPhone = phone.replace(/[^0-9]/g, '');
+      if (!/^01[0-9]{9}$/.test(cleanPhone)) {
+        return NextResponse.json({ error: 'رقم الهاتف لازم يكون مصري صحيح' }, { status: 400 });
+      }
+
+      // Hash password
+      const bcrypt = await import('bcryptjs');
+      const passwordHash = await bcrypt.hash(password, 12);
+
+      const { data: newStudent, error: addErr } = await supabase.rpc('register_student', {
+        p_full_name: fullName,
+        p_phone: cleanPhone,
+        p_password_hash: passwordHash,
+        p_governorate: governorate || 'القاهرة',
+      });
+
+      if (addErr) {
+        if (addErr.message?.includes('مسجل') || addErr.message?.includes('already')) {
+          return NextResponse.json({ error: 'رقم الهاتف مسجل بالفعل' }, { status: 409 });
+        }
+        return NextResponse.json({ error: addErr.message }, { status: 500 });
+      }
+
+      // Check if RPC returned error in data
+      if (newStudent?.error) {
+        return NextResponse.json({ error: newStudent.error }, { status: 409 });
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        message: 'تم إضافة الطالب بنجاح',
+        student: {
+          id: newStudent?.user_id,
+          name: fullName,
+          phone: cleanPhone,
+        }
+      });
+    }
+
+    default:
         return err(`Unknown action: ${action}`, 400);
     }
   } catch (error) {

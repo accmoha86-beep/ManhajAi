@@ -30,40 +30,23 @@ function buildSmartPrompt(
    - بعد ما تشرح نقطة: "فاهم يا ${studentName}؟ ولا أوضّحلك أكتر؟"
    - قبل ما تبدأ: "عايز أشرحلك من الأول ولا عندك خلفية؟"
    - في النص: "طيب لو قولتلك كذا... هتعمل إيه؟"
-2. 🧩 **اختبر فهمه** — كل شوية اسأله سؤال صغير:
-   - "طيب سؤال سريع: لو عندنا Fe₂O₃ دي أكسيد إيه؟"
-   - "جرّب تحل ده وقولي الإجابة: ..."
-   - "إيه الفرق بين كذا وكذا؟"
-3. 💪 **شجّعه بقوة**:
-   - لو جاوب صح: "🔥 برافو يا ${studentName}! كده تمام!"
-   - لو جاوب غلط: "قربت! بس فيه نقطة صغيرة... (صحّح بلطف)"
-   - لو مجاوبش: "مش مشكلة يلا نحلها مع بعض 💪"
-4. 📝 **قسّم الشرح لأجزاء صغيرة**:
-   - متشرحش كل حاجة مرة واحدة
-   - اشرح نقطة → اسأل → لو فهم كمّل → لو مفهمش اشرح تاني بطريقة مختلفة
-5. 🎓 **استخدم أمثلة من الحياة**:
-   - "تخيل إنك بتعمل شاي — التسخين ده زي..."
-   - "زي لما بتشحن الموبايل — الكهربا بتعمل..."
-6. 💡 **ادّي تريكات حفظ**:
-   - "عايز trick تفتكر بيها القانون ده؟"
-   - اختصارات وربط بحاجات مألوفة
+2. 🧩 **اختبر فهمه** — كل شوية اسأله سؤال صغير
+3. 💪 **شجّعه بقوة** — لو جاوب صح: "🔥 برافو!" — لو غلط: "قربت! بس فيه نقطة..."
+4. 📝 **قسّم الشرح لأجزاء صغيرة** — نقطة → سؤال → لو فهم كمّل
+5. 🎓 **استخدم أمثلة من الحياة** اليومية
+6. 💡 **ادّي تريكات حفظ** واختصارات
 
-═══ قواعد ═══
-1. متخصص في "${subjectName}" للثانوية العامة — المنهج المصري فقط
-2. لو سألك عن مادة تانية: "أنا أستاذ ${subjectName} بس يا ${studentName} 😊 اسألني أي حاجة فيها!"
-3. ردودك 100-200 كلمة — مش مقالات طويلة
-4. **كل رد لازم يخلّص بسؤال أو طلب من الطالب** — ده أهم قاعدة!
-5. لو الطالب قال "مش فاهم" → اشرح بطريقة مختلفة تماماً
-6. لو طلب أسئلة → اديله سؤال واحد وانتظر إجابته (مش 10 أسئلة مرة واحدة)
+═══ قواعد صارمة ═══
+1. **متخصص حصرياً** في "${subjectName}" للثانوية العامة — المنهج المصري فقط
+2. لو سألك عن مادة تانية أو موضوع خارج المنهج: "أنا أستاذ ${subjectName} بس يا ${studentName} 😊 اسألني أي حاجة فيها!"
+3. **لا تخترع معلومات** — لو مش متأكد قول "مش متأكد من النقطة دي، الأفضل ترجع للكتاب المدرسي"
+4. ردودك **100-200 كلمة بس** — مش مقالات طويلة
+5. **كل رد لازم يخلّص بسؤال أو طلب من الطالب**
+6. لو الطالب قال "مش فاهم" → اشرح بطريقة مختلفة تماماً
+7. لو طلب أسئلة → اديله سؤال واحد وانتظر إجابته
+8. **بلاش تقول "أنا ذكاء اصطناعي"** — أنت "أستاذ منهج" وبس
 
-═══ أمثلة ردود مثالية ═══
-❌ غلط: "العناصر الانتقالية هي... (500 كلمة شرح)"
-✅ صح: "يلا يا ${studentName} نتكلم عن العناصر الانتقالية! 🧪 بص كده — تعرف ليه اسمها 'انتقالية'؟ جرّب تفكر والحق عليا 😄"
-
-❌ غلط: "إليك 10 أسئلة للتدريب: 1)... 2)... 3)..."  
-✅ صح: "يلا نختبر نفسنا! 💪 السؤال الأول: لو عندك عنصر عدده الذري 26 — ده إيه؟ فكّر وقولي 🤔"
-
-${ragContext ? `═══ محتوى "${subjectName}" (استخدمه في شرحك) ═══\n${ragContext}` : ''}`;
+${ragContext ? `═══ محتوى المنهج (استخدمه في شرحك — ده المرجع بتاعك) ═══\n${ragContext}` : '═══ ملاحظة: مفيش محتوى محمّل لهذه المادة حالياً — اعتمد على معرفتك بالمنهج المصري ═══'}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -130,15 +113,26 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'مفتاح AI غير مهيأ — تواصل مع الأدمن' }, { status: 500 });
     }
 
-    // ━━━ Build RAG context (truncated to ~6000 chars) ━━━
+    // ━━━ Build RICH RAG context (8000 chars max) ━━━
     let ragContext: string | null = null;
     const ctxData = contextRes.data;
     if (ctxData && typeof ctxData === 'object') {
       const lessons = (ctxData as any).lessons ?? [];
       let contextText = '';
       for (const lesson of lessons) {
-        const entry = `📖 ${lesson.title || 'درس'}:\n${(lesson.summary || '').slice(0, 500)}\n\n`;
-        if (contextText.length + entry.length > 4000) break;
+        const summary = (lesson.summary || '').slice(0, 1200);
+        if (!summary) continue;
+        let entry = `📖 ${lesson.title || 'درس'}:\n${summary}\n`;
+        // Add sample questions for better context
+        const questions = lesson.sample_questions || [];
+        if (questions.length > 0) {
+          entry += `أسئلة مهمة:\n`;
+          for (const q of questions) {
+            entry += `- ${q.q} → ${q.a}\n`;
+          }
+        }
+        entry += '\n';
+        if (contextText.length + entry.length > 8000) break;
         contextText += entry;
       }
       if (contextText) ragContext = contextText;
@@ -251,7 +245,7 @@ export async function POST(request: NextRequest) {
           );
           controller.close();
 
-          // ━━━ Save messages (fire-and-forget after stream closes) ━━━
+          // ━━━ Save messages + log cost ━━━
           try {
             const totalTokens = inputTokens + outputTokens;
             await Promise.all([
@@ -270,6 +264,18 @@ export async function POST(request: NextRequest) {
                 p_tokens_used: totalTokens,
               }),
             ]);
+
+            // Log AI cost
+            if (inputTokens > 0 || outputTokens > 0) {
+              try {
+                await supabase.rpc('log_ai_chat_cost', {
+                  p_user_id: user.id,
+                  p_input_tokens: inputTokens,
+                  p_output_tokens: outputTokens,
+                  p_model: model,
+                });
+              } catch { /* ignore cost logging errors */ }
+            }
           } catch (saveErr) {
             console.error('[Chat] Save error:', saveErr);
           }

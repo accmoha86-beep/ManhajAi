@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const userId = data?.id || data?.[0]?.id || data;
+    const userId = data?.user_id || data?.id || data?.[0]?.id || data;
 
     // ═══ Get JWT Secret ═══
     const jwtSecret = await getSecret('jwt_secret');
