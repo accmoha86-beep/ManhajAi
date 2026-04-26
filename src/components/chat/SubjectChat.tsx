@@ -27,8 +27,7 @@ const typingDotsStyle = `
 /* ── Enhanced markdown renderer for chat messages ── */
 function renderChatContent(text: string) {
   if (!text) return null;
-  const lines = text.split("
-");
+  const lines = text.split("\n");
   const elements: React.ReactNode[] = [];
   let inCode = false;
   let codeLines: string[] = [];
@@ -58,8 +57,7 @@ function renderChatContent(text: string) {
             margin: "6px 0", fontSize: "0.85em", fontFamily: "monospace",
             lineHeight: 1.6, overflowX: "auto", whiteSpace: "pre-wrap",
           }}>
-            {codeLines.join("
-")}
+            {codeLines.join("\n")}
           </pre>
         );
         codeLines = [];
