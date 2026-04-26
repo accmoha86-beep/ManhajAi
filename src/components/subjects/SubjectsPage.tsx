@@ -128,8 +128,8 @@ export default function SubjectsPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
-  // ─── Navigation level ───
-  const [viewLevel, setViewLevel] = useState<"units" | "lessons" | "lesson-detail">("units");
+  // ─── Navigation ───
+  const [expandedUnits, setExpandedUnits] = useState<Set<string>>(new Set());
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [selectedUnitIndex, setSelectedUnitIndex] = useState(0);
 
@@ -201,13 +201,9 @@ export default function SubjectsPage() {
 
       setSelectedSubject(detail);
 
-      // If no units, go directly to lessons view
-      const hasUnits = detail.units && detail.units.length > 0;
-      if (!hasUnits) {
-        setViewLevel("lessons");
-        setSelectedUnit(null);
-      } else {
-        setViewLevel("units");
+      // Auto-expand all units in sidebar
+      if (detail.units && detail.units.length > 0) {
+        setExpandedUnits(new Set(detail.units.map((u: Unit) => u.id)));
       }
     } catch (err: any) {
       setErrorDetail(err.message || "حدث خطأ");
@@ -216,14 +212,13 @@ export default function SubjectsPage() {
     }
   }, []);
 
-  // ─── Open unit ───
-  const openUnit = (unit: Unit, index: number) => {
-    setSelectedUnit(unit);
-    setSelectedUnitIndex(index);
-    setViewLevel("lessons");
-    setSelectedLesson(null);
-    setActiveLessonId(null);
-    setActiveSection(0);
+  // ─── Toggle unit expand/collapse ───
+  const toggleUnit = (unitId: string) => {
+    setExpandedUnits(prev => {
+      const next = new Set(prev);
+      if (next.has(unitId)) next.delete(unitId); else next.add(unitId);
+      return next;
+    });
   };
 
   // ─── Open lesson ───
@@ -248,7 +243,12 @@ export default function SubjectsPage() {
           summary: raw.summary || lessonObj.summary || null,
           question_count: lessonObj.question_count ?? lessonObj.questions_count ?? 0,
         });
-        setViewLevel("lesson-detail");
+        // Find parent unit
+        if (selectedSubject?.units) {
+          const pidx = selectedSubject.units.findIndex(u => u.lessons.some(l => l.id === lessonId));
+          if (pidx >= 0) { setSelectedUnit(selectedSubject.units[pidx]); setSelectedUnitIndex(pidx); }
+          else { setSelectedUnit(null); }
+        }
       } catch (err: any) {
         setErrorLesson(err.message || "فشل تحميل الدرس");
       } finally {
@@ -260,33 +260,16 @@ export default function SubjectsPage() {
 
   // ─── Navigation ───
   const goBack = () => {
-    if (viewLevel === "lesson-detail") {
+    if (selectedLesson) {
       setSelectedLesson(null);
       setActiveLessonId(null);
       setActiveSection(0);
       setErrorLesson(null);
-      // If subject has units, go to lessons; if no units, go to subjects list
-      if (selectedUnit) {
-        setViewLevel("lessons");
-      } else {
-        setViewLevel("lessons");
-      }
-    } else if (viewLevel === "lessons") {
-      const hasUnits = selectedSubject?.units && selectedSubject.units.length > 0;
-      if (hasUnits && selectedUnit) {
-        setSelectedUnit(null);
-        setViewLevel("units");
-      } else {
-        // No units — back to subjects
-        setSelectedSubject(null);
-        setSelectedUnit(null);
-        setSelectedLesson(null);
-      }
     } else {
-      // units view — back to subjects
       setSelectedSubject(null);
       setSelectedUnit(null);
       setSelectedLesson(null);
+      setExpandedUnits(new Set());
     }
   };
 
@@ -295,7 +278,7 @@ export default function SubjectsPage() {
     setSelectedUnit(null);
     setSelectedLesson(null);
     setActiveLessonId(null);
-    setViewLevel("units");
+    setExpandedUnits(new Set());
     setActiveSection(0);
   };
 
@@ -310,10 +293,7 @@ export default function SubjectsPage() {
   ];
   const totalLessons = allFlatLessons.length;
 
-  // Current lessons to show
-  const currentLessons = selectedUnit
-    ? selectedUnit.lessons
-    : allFlatLessons.sort((a, b) => a.sort_order - b.sort_order);
+
 
   /* ================================================================ */
   /*  Markdown Helpers                                                 */
@@ -923,290 +903,221 @@ export default function SubjectsPage() {
   if (!selectedSubject) return null;
 
   /* ================================================================ */
-  /*  RENDER — Subject Detail (Split Layout — 3 Level Navigation)      */
+  /*  RENDER — Subject Detail (Sidebar + Content + Chat)               */
   /* ================================================================ */
 
   return (
     <div className="subject-split flex flex-col lg:flex-row gap-0" dir="rtl" style={{ height: "calc(100vh - 4rem)", overflow: "hidden" }}>
       <link rel="stylesheet" href={STUDY_FONT_LINK} />
 
-      {/* ============ RIGHT: Content (50%) ============ */}
-      <div className="w-full lg:w-[50%] overflow-y-auto p-3 sm:p-4 md:p-6" style={{ height: "100%" }}>
-
-        {/* ── Navigation Bar ── */}
-        <div className="flex items-center gap-2 mb-4">
-          <button
-            onClick={goBack}
-            className="w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:shadow-md"
-            style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)", color: "var(--theme-text-primary)" }}
-            title="رجوع"
-          >
-            <ArrowRight size={18} />
-          </button>
+      {/* ============ RIGHT: Curriculum Sidebar (280px) ============ */}
+      <aside
+        className="hidden lg:flex flex-col w-[280px] flex-shrink-0 border-l overflow-hidden"
+        style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)", height: "100%" }}
+      >
+        {/* Subject Header */}
+        <div className="p-4 border-b flex-shrink-0" style={{ borderColor: "var(--theme-surface-border)" }}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "var(--theme-cta-gradient)" }}>
+              <SubjectIcon icon={selectedSubject.icon} size={20} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="font-extrabold text-sm truncate" style={{ color: "var(--theme-text-primary)" }}>
+                {selectedSubject.name}
+              </h2>
+              <p className="text-xs truncate" style={{ color: "var(--theme-text-secondary)" }}>
+                {totalLessons} درس
+              </p>
+            </div>
+          </div>
           <button
             onClick={goHome}
-            className="w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:shadow-md"
-            style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)", color: "var(--theme-text-primary)" }}
-            title="الصفحة الرئيسية"
+            className="mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold border transition-all hover:shadow-sm"
+            style={{ borderColor: "var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}
           >
-            <Home size={18} />
+            <ArrowRight size={14} />
+            <span>العودة للمواد</span>
           </button>
         </div>
 
-        {/* ── Breadcrumb ── */}
-        <Breadcrumb items={[
-          { label: selectedSubject.name, onClick: viewLevel !== "units" ? () => { setViewLevel("units"); setSelectedUnit(null); setSelectedLesson(null); setActiveLessonId(null); } : undefined },
-          ...(viewLevel === "lessons" && selectedUnit ? [{ label: selectedUnit.name_ar }] : []),
-          ...(viewLevel === "lessons" && !selectedUnit ? [{ label: "الدروس" }] : []),
-          ...(viewLevel === "lesson-detail" && selectedUnit ? [{ label: selectedUnit.name_ar, onClick: () => { setViewLevel("lessons"); setSelectedLesson(null); setActiveLessonId(null); } }] : []),
-          ...(viewLevel === "lesson-detail" && selectedLesson ? [{ label: selectedLesson.title }] : []),
-        ]} />
-
-        {/* ═════════════════════════════════════════════ */}
-        {/*  VIEW 1: Units / Chapters Cards               */}
-        {/* ═════════════════════════════════════════════ */}
-
-        {viewLevel === "units" && (
-          <div>
-            {/* Subject Header */}
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "var(--theme-cta-gradient)" }}>
-                <SubjectIcon icon={selectedSubject.icon} size={24} />
-              </div>
-              <div>
-                <h1 style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--theme-text-primary)" }}>
-                  {selectedSubject.name}
-                </h1>
-                <p className="text-xs mt-0.5" style={{ color: "var(--theme-text-secondary)" }}>
-                  {selectedSubject.description} · {totalLessons} درس
-                </p>
-              </div>
-            </div>
-
-            {/* Units Grid */}
-            {hasUnits ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {selectedSubject.units!.map((unit, idx) => {
-                  const color = UNIT_COLORS[idx % UNIT_COLORS.length];
-                  const icon = UNIT_ICONS[idx % UNIT_ICONS.length];
-                  const summaryCount = unit.lessons.filter(l => l.has_summary).length;
-                  const questionCount = unit.lessons.reduce((sum, l) => sum + l.question_count, 0);
-
-                  return (
+        {/* Units + Lessons Tree */}
+        <div className="flex-1 overflow-y-auto p-2" style={{ scrollbarWidth: "thin" }}>
+          {hasUnits ? (
+            <div className="space-y-1">
+              {selectedSubject.units!.map((unit, idx) => {
+                const color = UNIT_COLORS[idx % UNIT_COLORS.length];
+                const isExpanded = expandedUnits.has(unit.id);
+                return (
+                  <div key={unit.id}>
                     <button
-                      key={unit.id}
-                      onClick={() => openUnit(unit, idx)}
-                      className="group text-right rounded-2xl border overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
-                      style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)" }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = color.accent; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--theme-surface-border)"; }}
-                    >
-                      {/* Color strip */}
-                      <div className="h-2" style={{ background: color.bg }} />
-
-                      <div className="p-5">
-                        {/* Icon + Unit Number */}
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl" style={{ background: color.light }}>
-                            {icon}
-                          </div>
-                          <span className="text-xs px-3 py-1.5 rounded-full font-bold" style={{ background: color.light, color: color.accent }}>
-                            الباب {idx + 1}
-                          </span>
-                        </div>
-
-                        {/* Unit Name */}
-                        <h3 className="font-extrabold mb-2 leading-tight" style={{ fontSize: "1.1rem", color: "var(--theme-text-primary)" }}>
-                          {unit.name_ar}
-                        </h3>
-
-                        {/* Stats */}
-                        <div className="flex items-center gap-3 text-xs mb-4" style={{ color: "var(--theme-text-secondary)" }}>
-                          <span className="flex items-center gap-1">
-                            <FileText size={13} /> {unit.lessons.length} درس
-                          </span>
-                          {summaryCount > 0 && (
-                            <span className="flex items-center gap-1">
-                              <CheckCircle size={13} style={{ color: color.accent }} /> {summaryCount} ملخّص
-                            </span>
-                          )}
-                          {questionCount > 0 && (
-                            <span className="flex items-center gap-1">
-                              <MessageSquare size={13} /> {questionCount} سؤال
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: "var(--theme-surface-border)" }}>
-                          <div className="h-full rounded-full transition-all duration-500" style={{
-                            width: `${unit.lessons.length > 0 ? (summaryCount / unit.lessons.length) * 100 : 0}%`,
-                            background: color.bg,
-                          }} />
-                        </div>
-
-                        {/* CTA */}
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>
-                            {summaryCount}/{unit.lessons.length} مكتمل
-                          </span>
-                          <span className="flex items-center gap-1 text-xs font-bold group-hover:gap-2 transition-all" style={{ color: color.accent }}>
-                            استكشف <ChevronLeft size={14} style={{ transform: "scaleX(-1)" }} />
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {/* Unassigned lessons card */}
-                {selectedSubject.unassigned_lessons && selectedSubject.unassigned_lessons.length > 0 && (
-                  <button
-                    onClick={() => { setSelectedUnit(null); setViewLevel("lessons"); }}
-                    className="text-right rounded-2xl border overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
-                    style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)" }}
-                  >
-                    <div className="h-2" style={{ background: "var(--theme-surface-border)" }} />
-                    <div className="p-5">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl" style={{ background: "var(--theme-hover-overlay)" }}>
-                          📄
-                        </div>
-                        <span className="text-xs px-3 py-1.5 rounded-full font-bold" style={{ background: "var(--theme-hover-overlay)", color: "var(--theme-text-secondary)" }}>
-                          دروس إضافية
-                        </span>
-                      </div>
-                      <h3 className="font-extrabold mb-2" style={{ fontSize: "1.1rem", color: "var(--theme-text-primary)" }}>
-                        دروس أخرى
-                      </h3>
-                      <p className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>
-                        {selectedSubject.unassigned_lessons.length} درس
-                      </p>
-                    </div>
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-10">
-                <BookOpen size={36} className="mx-auto mb-3 opacity-30" style={{ color: "var(--theme-text-secondary)" }} />
-                <p className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>لا توجد أبواب متاحة حالياً</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ═════════════════════════════════════════════ */}
-        {/*  VIEW 2: Lessons List                         */}
-        {/* ═════════════════════════════════════════════ */}
-
-        {viewLevel === "lessons" && (
-          <div>
-            {/* Unit Header */}
-            <div className="rounded-2xl p-5 mb-5" style={{
-              background: selectedUnit ? UNIT_COLORS[selectedUnitIndex % UNIT_COLORS.length].light : "var(--theme-hover-overlay)",
-              border: `1px solid ${selectedUnit ? UNIT_COLORS[selectedUnitIndex % UNIT_COLORS.length].accent + "33" : "var(--theme-surface-border)"}`,
-            }}>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl" style={{
-                  background: selectedUnit ? UNIT_COLORS[selectedUnitIndex % UNIT_COLORS.length].bg : "var(--theme-cta-gradient)",
-                }}>
-                  {selectedUnit ? (
-                    <span className="text-white text-xl">{UNIT_ICONS[selectedUnitIndex % UNIT_ICONS.length]}</span>
-                  ) : (
-                    <Layers size={22} className="text-white" />
-                  )}
-                </div>
-                <div>
-                  <h2 className="font-extrabold" style={{ fontSize: "1.2rem", color: "var(--theme-text-primary)" }}>
-                    {selectedUnit ? `الباب ${selectedUnitIndex + 1}: ${selectedUnit.name_ar}` : "جميع الدروس"}
-                  </h2>
-                  <p className="text-xs mt-0.5" style={{ color: "var(--theme-text-secondary)" }}>
-                    {currentLessons.length} درس
-                    {currentLessons.filter(l => l.has_summary).length > 0 &&
-                      ` · ${currentLessons.filter(l => l.has_summary).length} ملخّص متاح`}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Lessons List */}
-            {currentLessons.length === 0 ? (
-              <div className="text-center py-12">
-                <FileText size={36} className="mx-auto mb-3 opacity-30" style={{ color: "var(--theme-text-secondary)" }} />
-                <p className="text-sm" style={{ color: "var(--theme-text-secondary)" }}>لا توجد دروس في هذا الباب بعد</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {currentLessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson, idx) => {
-                  const unitColor = selectedUnit ? UNIT_COLORS[selectedUnitIndex % UNIT_COLORS.length] : UNIT_COLORS[0];
-                  return (
-                    <button
-                      key={lesson.id}
-                      onClick={() => openLesson(lesson.id)}
-                      className="w-full text-right rounded-2xl border p-4 flex items-center gap-4 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 group"
+                      onClick={() => toggleUnit(unit.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-right transition-all hover:shadow-sm"
                       style={{
-                        background: "var(--theme-surface-bg)",
-                        borderColor: activeLessonId === lesson.id ? unitColor.accent : "var(--theme-surface-border)",
+                        background: isExpanded ? color.light : "transparent",
+                        border: isExpanded ? `1px solid ${color.accent}22` : "1px solid transparent",
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = unitColor.accent; }}
-                      onMouseLeave={(e) => { if (activeLessonId !== lesson.id) (e.currentTarget as HTMLElement).style.borderColor = "var(--theme-surface-border)"; }}
                     >
-                      {/* Lesson Number */}
-                      <div
-                        className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-base font-extrabold transition-all"
-                        style={{
-                          background: unitColor.bg,
-                          color: "#fff",
-                          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-                        }}
-                      >
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ background: color.bg, color: "#fff" }}>
                         {idx + 1}
                       </div>
-
-                      {/* Lesson Info */}
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold mb-1 group-hover:text-opacity-90" style={{ fontSize: "1rem", color: "var(--theme-text-primary)" }}>
-                          {lesson.title}
-                        </h3>
-                        <div className="flex items-center gap-3 text-xs" style={{ color: "var(--theme-text-secondary)" }}>
-                          {lesson.has_summary && (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: unitColor.light, color: unitColor.accent }}>
-                              <CheckCircle size={11} /> ملخّص
-                            </span>
-                          )}
-                          {lesson.question_count > 0 && (
-                            <span className="flex items-center gap-1">
-                              <MessageSquare size={11} /> {lesson.question_count} سؤال
-                            </span>
-                          )}
-                          {!lesson.has_summary && lesson.question_count === 0 && (
-                            <span className="opacity-60">قريباً</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Arrow */}
-                      <ChevronLeft size={18} className="flex-shrink-0 group-hover:-translate-x-1 transition-transform" style={{ color: "var(--theme-text-secondary)", transform: "scaleX(-1)" }} />
+                      <span className="flex-1 text-xs font-bold truncate" style={{ color: "var(--theme-text-primary)" }}>
+                        {unit.name_ar}
+                      </span>
+                      <ChevronDown size={14} className="flex-shrink-0 transition-transform duration-200" style={{ color: "var(--theme-text-secondary)", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }} />
                     </button>
+                    {isExpanded && (
+                      <div className="mr-4 mt-1 mb-2 space-y-0.5 border-r-2 pr-2" style={{ borderColor: color.accent + "33" }}>
+                        {unit.lessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => {
+                          const isActive = activeLessonId === lesson.id;
+                          return (
+                            <button
+                              key={lesson.id}
+                              onClick={() => openLesson(lesson.id)}
+                              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-right transition-all"
+                              style={{
+                                background: isActive ? color.accent + "15" : "transparent",
+                                borderRight: isActive ? `3px solid ${color.accent}` : "3px solid transparent",
+                              }}
+                            >
+                              <span className="flex-1 text-xs truncate" style={{ color: isActive ? color.accent : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>
+                                {lesson.title}
+                              </span>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {lesson.has_summary && <CheckCircle size={11} style={{ color: color.accent }} />}
+                                {lesson.question_count > 0 && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "var(--theme-hover-overlay)", color: "var(--theme-text-secondary)" }}>
+                                    {lesson.question_count}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {selectedSubject.unassigned_lessons && selectedSubject.unassigned_lessons.length > 0 && (
+                <div>
+                  <div className="px-3 py-2 text-xs font-bold" style={{ color: "var(--theme-text-secondary)" }}>دروس أخرى</div>
+                  <div className="mr-4 space-y-0.5">
+                    {selectedSubject.unassigned_lessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => {
+                      const isActive = activeLessonId === lesson.id;
+                      return (
+                        <button key={lesson.id} onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-right transition-all" style={{ background: isActive ? "var(--theme-hover-overlay)" : "transparent", borderRight: isActive ? "3px solid var(--theme-primary)" : "3px solid transparent" }}>
+                          <span className="flex-1 text-xs truncate" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>{lesson.title}</span>
+                          {lesson.has_summary && <CheckCircle size={11} style={{ color: "var(--theme-primary)" }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {allFlatLessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => {
+                const isActive = activeLessonId === lesson.id;
+                return (
+                  <button key={lesson.id} onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-right transition-all" style={{ background: isActive ? "var(--theme-primary)" + "12" : "transparent", borderRight: isActive ? "3px solid var(--theme-primary)" : "3px solid transparent" }}>
+                    <span className="flex-1 text-xs font-medium truncate" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>{lesson.title}</span>
+                    {lesson.has_summary && <CheckCircle size={11} style={{ color: "var(--theme-primary)" }} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* ============ CENTER: Content Area ============ */}
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6" style={{ height: "100%" }}>
+        {/* Mobile: back button */}
+        <div className="lg:hidden flex items-center gap-2 mb-4">
+          <button onClick={selectedLesson ? () => { setSelectedLesson(null); setActiveLessonId(null); setActiveSection(0); } : goHome} className="w-9 h-9 rounded-xl flex items-center justify-center border" style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)", color: "var(--theme-text-primary)" }}>
+            <ArrowRight size={18} />
+          </button>
+          <h2 className="text-sm font-bold truncate" style={{ color: "var(--theme-text-primary)" }}>
+            {selectedLesson ? selectedLesson.title : selectedSubject.name}
+          </h2>
+        </div>
+
+        {/* Desktop breadcrumb */}
+        <div className="hidden lg:block">
+          <Breadcrumb items={[
+            { label: selectedSubject.name, onClick: selectedLesson ? () => { setSelectedLesson(null); setActiveLessonId(null); setActiveSection(0); } : undefined },
+            ...(selectedLesson && selectedUnit ? [{ label: selectedUnit.name_ar }] : []),
+            ...(selectedLesson ? [{ label: selectedLesson.title }] : []),
+          ]} />
+        </div>
+
+        {selectedLesson ? (
+          renderLessonDetail()
+        ) : (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-6" style={{ background: "var(--theme-cta-gradient)" }}>
+              <GraduationCap size={36} className="text-white" />
+            </div>
+            <h2 className="text-xl font-extrabold mb-3" style={{ color: "var(--theme-text-primary)" }}>
+              {selectedSubject.name}
+            </h2>
+            <p className="text-sm mb-6 max-w-md leading-relaxed" style={{ color: "var(--theme-text-secondary)" }}>
+              {selectedSubject.description || "اختر درس من القائمة على اليمين لبدء المذاكرة"}
+            </p>
+            <div className="flex items-center gap-4 text-xs" style={{ color: "var(--theme-text-secondary)" }}>
+              <span className="flex items-center gap-1.5 px-3 py-2 rounded-xl" style={{ background: "var(--theme-hover-overlay)" }}>
+                <Layers size={14} /> {totalLessons} درس
+              </span>
+              <span className="flex items-center gap-1.5 px-3 py-2 rounded-xl" style={{ background: "var(--theme-hover-overlay)" }}>
+                <CheckCircle size={14} /> {allFlatLessons.filter(l => l.has_summary).length} ملخّص
+              </span>
+            </div>
+            <p className="text-xs mt-8 animate-pulse" style={{ color: "var(--theme-primary)" }}>
+              👈 اختر درس من القائمة لبدء المذاكرة
+            </p>
+
+            {/* Mobile: lessons accordion */}
+            <div className="lg:hidden w-full mt-8 space-y-2 text-right">
+              {hasUnits ? (
+                selectedSubject.units!.map((unit, idx) => {
+                  const color = UNIT_COLORS[idx % UNIT_COLORS.length];
+                  const isExpanded = expandedUnits.has(unit.id);
+                  return (
+                    <div key={unit.id} className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--theme-surface-border)" }}>
+                      <button onClick={() => toggleUnit(unit.id)} className="w-full flex items-center gap-3 px-4 py-3 text-right" style={{ background: color.light }}>
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold" style={{ background: color.bg, color: "#fff" }}>{idx + 1}</div>
+                        <span className="flex-1 text-sm font-bold" style={{ color: "var(--theme-text-primary)" }}>{unit.name_ar}</span>
+                        <ChevronDown size={16} style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0)", transition: "0.2s", color: "var(--theme-text-secondary)" }} />
+                      </button>
+                      {isExpanded && (
+                        <div className="px-4 pb-3 space-y-1">
+                          {unit.lessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => (
+                            <button key={lesson.id} onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-right" style={{ background: "var(--theme-surface-bg)" }}>
+                              <span className="flex-1 text-xs" style={{ color: "var(--theme-text-primary)" }}>{lesson.title}</span>
+                              {lesson.has_summary && <CheckCircle size={11} style={{ color: color.accent }} />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   );
-                })}
-              </div>
-            )}
+                })
+              ) : (
+                allFlatLessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => (
+                  <button key={lesson.id} onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-right" style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)" }}>
+                    <span className="flex-1 text-sm" style={{ color: "var(--theme-text-primary)" }}>{lesson.title}</span>
+                    {lesson.has_summary && <CheckCircle size={11} style={{ color: "var(--theme-primary)" }} />}
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         )}
-
-        {/* ═════════════════════════════════════════════ */}
-        {/*  VIEW 3: Lesson Detail                        */}
-        {/* ═════════════════════════════════════════════ */}
-
-        {viewLevel === "lesson-detail" && renderLessonDetail()}
       </div>
 
-      {/* ============ LEFT: AI Chat (50%) ============ */}
-      <div
-        className="w-full lg:w-[50%] lg:border-r chat-container"
-        style={{ borderColor: "var(--theme-surface-border)", height: "calc(100vh - 4rem)", minHeight: "400px" }}
-      >
+      {/* ============ LEFT: AI Chat ============ */}
+      <div className="w-full lg:w-[38%] lg:border-r chat-container flex-shrink-0" style={{ borderColor: "var(--theme-surface-border)", height: "calc(100vh - 4rem)", minHeight: "400px" }}>
         <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)" }}>
           <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--theme-cta-gradient)" }}>
             <Brain size={16} className="text-white" />
