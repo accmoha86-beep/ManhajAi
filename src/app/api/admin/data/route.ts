@@ -182,6 +182,36 @@ export async function POST(request: NextRequest) {
         return ok(data);
       }
 
+
+      case 'save_manual_summary': {
+        const { data, error } = await sb.rpc('save_generated_summary', {
+          p_lesson_id: params.lesson_id,
+          p_content: params.content
+        });
+        if (error) return err(error.message);
+        return ok(data);
+      }
+
+      case 'save_manual_questions': {
+        // Save manually entered questions for a lesson
+        const questions = params.questions || [];
+        let saved = 0;
+        for (const q of questions) {
+          const { error } = await sb.rpc('save_generated_questions', {
+            p_lesson_id: params.lesson_id,
+            p_questions: [q]
+          });
+          if (!error) saved++;
+        }
+        return ok({ saved });
+      }
+
+      case 'get_lesson_summary': {
+        const { data, error } = await sb.rpc('admin_get_lesson_summary', { p_lesson_id: params.lesson_id });
+        if (error) return err(error.message);
+        return ok({ summary: data });
+      }
+
       // ===== SUBSCRIPTIONS =====
       case 'get_subscriptions':
       case 'subscriptions': {

@@ -642,6 +642,13 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadLessonId, setUploadLessonId] = useState<string | null>(null);
 
+  // Manual summary states
+  const [manualLessonId, setManualLessonId] = useState<string | null>(null);
+  const [manualLessonName, setManualLessonName] = useState("");
+  const [manualText, setManualText] = useState("");
+  const [savingManual, setSavingManual] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(false);
+
   const subjectId = (subject.id as string) || "";
   const subjectName = (subject.name as string) || (subject.name_ar as string) || "المادة";
 
@@ -675,7 +682,56 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     try { await adminAPI("delete_lesson", { lesson_id: lessonId }); loadLessons(); } catch { loadLessons(); }
   };
 
-  const triggerUpload = (lessonId: string) => {
+  // Open manual summary editor
+  const openManualSummary = async (lessonId: string, lessonName: string) => {
+    setManualLessonId(lessonId);
+    setManualLessonName(lessonName);
+    setManualText("");
+    setLoadingExisting(true);
+    // Load existing summary if any
+    try {
+      const r = await adminAPI("get_lesson_summary", { lesson_id: lessonId });
+      if (r?.summary?.content_ar) {
+        setManualText(r.summary.content_ar);
+      }
+    } catch { /* no existing summary */ }
+    setLoadingExisting(false);
+  };
+
+  // Save manual summary
+  const saveManualSummary = async () => {
+    if (!manualLessonId || !manualText.trim()) return;
+    setSavingManual(true);
+    try {
+      await adminAPI("save_manual_summary", {
+        lesson_id: manualLessonId,
+        content: manualText.trim()
+      });
+      alert("✅ تم حفظ الملخص بنجاح!");
+      setManualLessonId(null);
+      setManualText("");
+      loadLessons();
+    } catch (e: unknown) {
+      alert("❌ " + (e instanceof Error ? e.message : "خطأ في الحفظ"));
+    }
+    setSavingManual(false);
+  };
+
+  // Handle text file upload for manual summary
+  const handleManualFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.toLowerCase().split('.').pop() || '';
+    if (!['txt', 'md', 'rtf'].includes(ext)) {
+      alert("الصيغ المدعومة: TXT, MD, RTF");
+      return;
+    }
+    const text = await file.text();
+    setManualText(text);
+    e.target.value = "";
+  };
+
+    const triggerUpload = (lessonId: string) => {
     setUploadLessonId(lessonId);
     fileInputRef.current?.click();
   };
@@ -999,6 +1055,13 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
 
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => openManualSummary(lessonId, (l.title_ar as string) || "الدرس")}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border"
+                      style={{ borderColor: "var(--theme-primary)", color: "var(--theme-primary)" }}
+                    >
+                      <FileText size={14} /> ملخص يدوي
+                    </button>
+                    <button
                       onClick={() => triggerUpload(lessonId)}
                       disabled={isGenerating}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50"
@@ -1016,6 +1079,96 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Manual Summary Modal */}
+      {manualLessonId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !savingManual && setManualLessonId(null)}>
+          <div className="w-full max-w-3xl max-h-[90vh] rounded-2xl overflow-hidden flex flex-col" style={{ background: "var(--theme-card-bg)" }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--theme-surface-border)" }}>
+              <div>
+                <h3 className="font-bold text-lg" style={{ color: "var(--theme-text-primary)" }}>📝 ملخص يدوي</h3>
+                <p className="text-xs mt-1" style={{ color: "var(--theme-text-secondary)" }}>📖 {manualLessonName}</p>
+              </div>
+              <button onClick={() => setManualLessonId(null)} className="p-2 rounded-lg hover:opacity-70" style={{ color: "var(--theme-text-secondary)" }}>✕</button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4" style={{ direction: "rtl" }}>
+              {loadingExisting ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="mr-2 text-sm" style={{ color: "var(--theme-text-secondary)" }}>جاري تحميل الملخص الحالي...</span>
+                </div>
+              ) : (
+                <>
+                  {/* Toolbar */}
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border cursor-pointer hover:opacity-80" style={{ borderColor: "var(--theme-primary)", color: "var(--theme-primary)" }}>
+                      <Upload size={14} /> رفع ملف نصي (TXT / MD)
+                      <input type="file" accept=".txt,.md,.rtf" className="hidden" onChange={handleManualFileUpload} />
+                    </label>
+                    <span className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>
+                      💡 يدعم Markdown — استخدم # للعناوين و • للنقاط و **نص** للتغميق
+                    </span>
+                  </div>
+
+                  {/* Editor */}
+                  <textarea
+                    value={manualText}
+                    onChange={e => setManualText(e.target.value)}
+                    placeholder={"# عنوان الدرس\n\n## النقاط الرئيسية\n• النقطة الأولى\n• النقطة الثانية\n\n## التعريفات\n**المصطلح**: التعريف هنا..."}
+                    className="w-full rounded-xl p-4 outline-none resize-none"
+                    style={{
+                      background: "var(--theme-surface-bg)",
+                      border: "2px solid var(--theme-surface-border)",
+                      color: "var(--theme-text-primary)",
+                      fontFamily: "'Cairo', sans-serif",
+                      fontSize: "15px",
+                      lineHeight: "1.85",
+                      minHeight: "400px",
+                      direction: "rtl",
+                    }}
+                  />
+
+                  {/* Char count */}
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>
+                      {manualText.length > 0 ? `${manualText.length.toLocaleString("ar-EG")} حرف` : ""}
+                    </span>
+                    {manualText.length > 0 && (
+                      <button onClick={() => setManualText("")} className="text-xs text-red-400 hover:text-red-600">مسح الكل</button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-4 border-t" style={{ borderColor: "var(--theme-surface-border)" }}>
+              <button
+                onClick={() => setManualLessonId(null)}
+                className="px-4 py-2 rounded-xl text-sm"
+                style={{ color: "var(--theme-text-secondary)" }}
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={saveManualSummary}
+                disabled={savingManual || !manualText.trim()}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-sm font-medium disabled:opacity-50"
+                style={{ background: "var(--theme-cta-gradient)" }}
+              >
+                {savingManual ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> جاري الحفظ...</>
+                ) : (
+                  <>💾 حفظ الملخص</>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
