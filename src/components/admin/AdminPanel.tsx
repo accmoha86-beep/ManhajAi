@@ -777,8 +777,8 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
           }
         };
         
-        xhr.onerror = () => { serverError = "فشل الاتصال"; reject(new Error("فشل الاتصال بالسيرفر")); };
-        xhr.ontimeout = () => { serverError = "انتهى الوقت"; reject(new Error("⏰ انتهى وقت المعالجة")); };
+        xhr.onerror = () => { console.warn("[Upload] XHR connection lost — polling continues"); resolve(null); };
+        xhr.ontimeout = () => { console.warn("[Upload] XHR timeout — polling continues"); resolve(null); };
         xhr.send(formData);
       });
 
@@ -791,7 +791,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       let pollCount = 0;
       const maxPolls = 200; // 200 × 3s = 10 minutes
 
-      while (!completed && !serverDone && !serverError && pollCount < maxPolls) {
+      while (!completed && !serverDone && pollCount < maxPolls) {
         await new Promise(r => setTimeout(r, 3000));
         pollCount++;
 
@@ -826,13 +826,28 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       if (!completed) {
         try {
           const data = await xhrPromise;
-          if (data.success) {
+          if (data && data.success) {
             setGenResult({
               summary: data.summary,
               questions: data.questions,
             });
             setGenProgress("");
             loadLessons();
+          } else if (!data) {
+            // XHR was lost (proxy timeout) — check job one last time
+            const finalCheck = await fetch(`/api/content/status?jobId=${jobId}`);
+            if (finalCheck.ok) {
+              const status = await finalCheck.json();
+              if (status.status === 'completed') {
+                setGenResult({ summary: true, questions: { total: status.questionsCount || 0 } });
+                setGenProgress("");
+                loadLessons();
+              } else if (status.status === 'processing') {
+                setGenProgress("⏳ جاري المعالجة في الخلفية... أعد تحميل الصفحة بعد دقيقة");
+              } else {
+                throw new Error(status.error || 'فشل في المعالجة');
+              }
+            }
           }
         } catch (xhrErr: any) {
           throw xhrErr;
