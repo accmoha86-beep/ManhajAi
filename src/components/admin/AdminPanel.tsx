@@ -11,7 +11,7 @@ import {
   Settings, Package, Key, ToggleLeft, ToggleRight, X,
   CheckCircle, XCircle, RefreshCw, Bell, Tag, ChevronDown,
   Send, Filter, Calendar, Hash, Percent, AlertCircle,
-  Upload, FileText,
+  Upload, FileText, UserPlus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -299,6 +299,11 @@ function StudentsTab() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const perPage = 20;
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({ fullName: "", phone: "", password: "", governorate: "القاهرة" });
+  const [addSaving, setAddSaving] = useState(false);
+
+  const governorates = ["القاهرة","الجيزة","الإسكندرية","الدقهلية","البحيرة","المنيا","الشرقية","الغربية","المنوفية","القليوبية","كفر الشيخ","الفيوم","بني سويف","أسيوط","سوهاج","قنا","الأقصر","أسوان","البحر الأحمر","الوادي الجديد","مطروح","شمال سيناء","جنوب سيناء","بورسعيد","السويس","الإسماعيلية","دمياط"];
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -332,6 +337,24 @@ function StudentsTab() {
     }
   };
 
+  const handleAddStudent = async () => {
+    if (!addForm.fullName || addForm.fullName.length < 2) { alert("⚠️ الاسم مطلوب (حرفين على الأقل)"); return; }
+    const cleanPhone = addForm.phone.replace(/[^0-9]/g, "");
+    if (!/^01[0-9]{9}$/.test(cleanPhone)) { alert("⚠️ رقم الهاتف لازم يكون مصري صحيح (01xxxxxxxxx)"); return; }
+    if (!addForm.password || addForm.password.length < 4) { alert("⚠️ كلمة المرور مطلوبة (4 أحرف على الأقل)"); return; }
+    setAddSaving(true);
+    try {
+      await adminAPI("add_student", { fullName: addForm.fullName, phone: cleanPhone, password: addForm.password, governorate: addForm.governorate });
+      alert("✅ تم إضافة الطالب بنجاح!");
+      setShowAddModal(false);
+      setAddForm({ fullName: "", phone: "", password: "", governorate: "القاهرة" });
+      load();
+    } catch (e) {
+      alert(`❌ ${e instanceof Error ? e.message : "خطأ في إضافة الطالب"}`);
+    }
+    setAddSaving(false);
+  };
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -340,10 +363,24 @@ function StudentsTab() {
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="بحث بالاسم أو الموبايل..."
             className="w-full pr-10 pl-4 py-2 rounded-xl outline-none text-sm" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-primary)" }} />
         </div>
+        <button onClick={() => setShowAddModal(true)} className="px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-medium text-white" style={{ background: "var(--theme-cta-gradient, linear-gradient(135deg, #6366f1, #a78bfa))" }}>
+          <UserPlus size={16} /> إضافة طالب
+        </button>
         <button onClick={load} className="px-4 py-2 rounded-xl flex items-center gap-2 text-sm" style={{ background: "var(--theme-bg)", border: "1px solid var(--theme-surface-border)", color: "var(--theme-text-secondary)" }}>
           <RefreshCw size={14} /> تحديث
         </button>
       </div>
+
+      {/* Add Student Modal */}
+      <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="➕ إضافة طالب جديد" onSave={handleAddStudent} saving={addSaving}>
+        <InputField label="اسم الطالب *" value={addForm.fullName} onChange={v => setAddForm({ ...addForm, fullName: v })} placeholder="الاسم الكامل" />
+        <InputField label="رقم الموبايل *" value={addForm.phone} onChange={v => setAddForm({ ...addForm, phone: v })} placeholder="01xxxxxxxxx" />
+        <InputField label="كلمة المرور *" value={addForm.password} onChange={v => setAddForm({ ...addForm, password: v })} placeholder="كلمة مرور للطالب" />
+        <SelectField label="المحافظة" value={addForm.governorate} onChange={v => setAddForm({ ...addForm, governorate: v })} options={governorates.map(g => ({ value: g, label: g }))} />
+        <div className="p-3 rounded-xl text-xs mt-2" style={{ background: "rgba(99,102,241,0.08)", color: "var(--theme-text-secondary)" }}>
+          💡 الطالب هيقدر يسجل دخول بالموبايل وكلمة المرور فوراً — وهياخد 2 يوم تجربة مجانية
+        </div>
+      </Modal>
 
       {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={load} /> : students.length === 0 ? <EmptyState message="لا يوجد طلاب" icon={<Users size={40} />} /> : (
         <>
