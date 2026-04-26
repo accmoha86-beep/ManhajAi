@@ -653,103 +653,25 @@ export default function SubjectsPage() {
                   );
                 }
 
-                const safeIdx = Math.min(activeSection, sections.length - 1);
-                const currentSection = sections[safeIdx];
-
                 return (
-                  <div style={{ fontFamily: "'Cairo', sans-serif" }}>
-                    {/* Section Tabs */}
-                    <div className="flex gap-2 overflow-x-auto pb-3 mb-5" style={{
-                      borderBottom: "2px solid var(--theme-surface-border)",
-                      scrollbarWidth: "none",
-                      msOverflowStyle: "none" as any,
-                    }}>
-                      {sections.map((section: { title: string; icon: string; lines: string[] }, idx: number) => (
-                        <button
-                          key={idx}
-                          onClick={() => setActiveSection(idx)}
-                          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all duration-200"
-                          style={{
-                            background: safeIdx === idx ? "var(--theme-cta-gradient)" : "var(--theme-hover-overlay)",
-                            color: safeIdx === idx ? "#fff" : "var(--theme-text-secondary)",
-                            boxShadow: safeIdx === idx ? "0 4px 12px rgba(0,0,0,0.15)" : "none",
-                            transform: safeIdx === idx ? "scale(1.05)" : "scale(1)",
-                            border: safeIdx === idx ? "none" : "1px solid var(--theme-surface-border)",
-                          }}
-                        >
-                          <span>{section.icon}</span>
-                          <span>{section.title}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Section Header */}
-                    <div className="flex items-center gap-3 mb-4 pb-2" style={{ borderBottom: "2px solid var(--theme-primary)" }}>
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: "var(--theme-cta-gradient)" }}>
-                        <span className="text-white">{currentSection.icon}</span>
+                  <div style={{ fontFamily: "'Cairo', sans-serif" }} className="space-y-6">
+                    {sections.map((section: { title: string; icon: string; lines: string[] }, idx: number) => (
+                      <div key={idx} id={`section-${idx}`} className="scroll-mt-4">
+                        {/* Section Header */}
+                        <div className="flex items-center gap-3 mb-4 pb-2" style={{ borderBottom: "2px solid var(--theme-primary)" }}>
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: "var(--theme-cta-gradient)" }}>
+                            <span className="text-white">{section.icon}</span>
+                          </div>
+                          <h3 className="text-base font-extrabold" style={{ color: "var(--theme-primary)" }}>
+                            {section.title}
+                          </h3>
+                        </div>
+                        {/* Section Content */}
+                        <div className="space-y-2">
+                          {renderMarkdownLines(section.lines)}
+                        </div>
                       </div>
-                      <h3 className="text-lg font-extrabold" style={{ color: "var(--theme-primary)" }}>
-                        {currentSection.title}
-                      </h3>
-                      <span className="mr-auto text-xs px-2.5 py-1 rounded-full font-bold" style={{
-                        background: "var(--theme-hover-overlay)",
-                        color: "var(--theme-text-secondary)",
-                      }}>
-                        {safeIdx + 1} / {sections.length}
-                      </span>
-                    </div>
-
-                    {/* Section Content */}
-                    <div className="space-y-2 min-h-[200px]">
-                      {renderMarkdownLines(currentSection.lines)}
-                    </div>
-
-                    {/* Section Navigation */}
-                    <div className="flex items-center justify-between mt-6 pt-4 gap-3" style={{ borderTop: "2px solid var(--theme-surface-border)" }}>
-                      <button
-                        disabled={safeIdx <= 0}
-                        onClick={() => setActiveSection((p: number) => Math.max(0, p - 1))}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all"
-                        style={{
-                          background: safeIdx <= 0 ? "var(--theme-hover-overlay)" : "var(--theme-cta-gradient)",
-                          color: safeIdx <= 0 ? "var(--theme-text-secondary)" : "#fff",
-                          opacity: safeIdx <= 0 ? 0.5 : 1,
-                          cursor: safeIdx <= 0 ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        <span style={{ transform: "scaleX(-1)" }}>←</span>
-                        <span>القسم السابق</span>
-                      </button>
-
-                      <div className="flex gap-1.5">
-                        {sections.map((_: any, idx: number) => (
-                          <button
-                            key={idx}
-                            onClick={() => setActiveSection(idx)}
-                            className="w-2.5 h-2.5 rounded-full transition-all duration-200"
-                            style={{
-                              background: safeIdx === idx ? "var(--theme-primary)" : "var(--theme-surface-border)",
-                              transform: safeIdx === idx ? "scale(1.3)" : "scale(1)",
-                            }}
-                          />
-                        ))}
-                      </div>
-
-                      <button
-                        disabled={safeIdx >= sections.length - 1}
-                        onClick={() => setActiveSection((p: number) => Math.min(sections.length - 1, p + 1))}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all"
-                        style={{
-                          background: safeIdx >= sections.length - 1 ? "var(--theme-hover-overlay)" : "var(--theme-cta-gradient)",
-                          color: safeIdx >= sections.length - 1 ? "var(--theme-text-secondary)" : "#fff",
-                          opacity: safeIdx >= sections.length - 1 ? 0.5 : 1,
-                          cursor: safeIdx >= sections.length - 1 ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        <span>القسم التالي</span>
-                        <span>←</span>
-                      </button>
-                    </div>
+                    ))}
                   </div>
                 );
               })()}
@@ -1036,7 +958,7 @@ export default function SubjectsPage() {
                                   {currentLessonSections.map((sec, si) => (
                                     <button
                                       key={si}
-                                      onClick={() => setActiveSection(si)}
+                                      onClick={() => { setActiveSection(si); document.getElementById(`section-${si}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
                                       className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all"
                                       style={{
                                         background: activeSection === si ? color.accent + "18" : "transparent",
@@ -1074,7 +996,7 @@ export default function SubjectsPage() {
                           {isActive && currentLessonSections.length > 0 && (
                             <div className="mr-5 mt-0.5 mb-1 space-y-0.5 border-r pr-2" style={{ borderColor: "var(--theme-primary)" + "25" }}>
                               {currentLessonSections.map((sec, si) => (
-                                <button key={si} onClick={() => setActiveSection(si)} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all" style={{ background: activeSection === si ? "var(--theme-primary)" + "18" : "transparent", borderRight: activeSection === si ? "2px solid var(--theme-primary)" : "2px solid transparent" }}>
+                                <button key={si} onClick={() => { setActiveSection(si); document.getElementById(`section-${si}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all" style={{ background: activeSection === si ? "var(--theme-primary)" + "18" : "transparent", borderRight: activeSection === si ? "2px solid var(--theme-primary)" : "2px solid transparent" }}>
                                   <span className="text-[11px] flex-shrink-0">{sec.icon}</span>
                                   <span className="flex-1 text-[10px] leading-tight" style={{ color: activeSection === si ? "var(--theme-primary)" : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400, wordBreak: "break-word" }}>{sec.title}</span>
                                 </button>
@@ -1101,7 +1023,7 @@ export default function SubjectsPage() {
                     {isActive && currentLessonSections.length > 0 && (
                       <div className="mr-5 mt-0.5 mb-1 space-y-0.5 border-r pr-2" style={{ borderColor: "var(--theme-primary)" + "25" }}>
                         {currentLessonSections.map((sec, si) => (
-                          <button key={si} onClick={() => setActiveSection(si)} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all" style={{ background: activeSection === si ? "var(--theme-primary)" + "18" : "transparent", borderRight: activeSection === si ? "2px solid var(--theme-primary)" : "2px solid transparent" }}>
+                          <button key={si} onClick={() => { setActiveSection(si); document.getElementById(`section-${si}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all" style={{ background: activeSection === si ? "var(--theme-primary)" + "18" : "transparent", borderRight: activeSection === si ? "2px solid var(--theme-primary)" : "2px solid transparent" }}>
                             <span className="text-[11px] flex-shrink-0">{sec.icon}</span>
                             <span className="flex-1 text-[10px] leading-tight" style={{ color: activeSection === si ? "var(--theme-primary)" : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400, wordBreak: "break-word" }}>{sec.title}</span>
                           </button>
@@ -1188,7 +1110,7 @@ export default function SubjectsPage() {
                                 {isActive && currentLessonSections.length > 0 && (
                                   <div className="mr-6 mt-0.5 mb-1 space-y-0.5 border-r pr-2" style={{ borderColor: color.accent + "25" }}>
                                     {currentLessonSections.map((sec, si) => (
-                                      <button key={si} onClick={() => setActiveSection(si)} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right" style={{ background: activeSection === si ? color.accent + "18" : "transparent" }}>
+                                      <button key={si} onClick={() => { setActiveSection(si); document.getElementById(`section-${si}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right" style={{ background: activeSection === si ? color.accent + "18" : "transparent" }}>
                                         <span className="text-[11px]">{sec.icon}</span>
                                         <span className="text-[10px] leading-tight" style={{ color: activeSection === si ? color.accent : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400, wordBreak: "break-word" }}>{sec.title}</span>
                                       </button>
