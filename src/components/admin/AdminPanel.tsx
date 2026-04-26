@@ -737,33 +737,54 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     e.target.value = "";
   };
 
-  // Handle full curriculum upload
+  // Handle full curriculum upload (supports multiple files)
   const handleCurriculumUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
     e.target.value = "";
 
     const allowedExts = ['pdf','png','jpg','jpeg','webp','gif','bmp','docx','doc','xlsx','xls','csv','pptx','ppt','txt','md','rtf'];
-    const ext = file.name?.toLowerCase().split('.').pop() || '';
-    if (!allowedExts.includes(ext)) {
-      alert("صيغة غير مدعومة. الصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص");
+    const files: File[] = [];
+    const invalidFiles: string[] = [];
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      const ext = file.name?.toLowerCase().split('.').pop() || '';
+      if (allowedExts.includes(ext)) {
+        files.push(file);
+      } else {
+        invalidFiles.push(file.name);
+      }
+    }
+
+    if (invalidFiles.length > 0) {
+      alert("⚠️ الملفات التالية صيغتها غير مدعومة وسيتم تجاهلها:\n" + invalidFiles.join("\n") + "\n\nالصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص");
+    }
+
+    if (files.length === 0) {
+      alert("لم يتم اختيار ملفات صالحة");
       return;
     }
 
-    if (!confirm(`📚 سيتم تحليل هيكل الملف "${file.name}" وتقسيمه تلقائياً إلى أبواب ودروس.\n\nالذكاء الاصطناعي سيولّد ملخصات وأسئلة لكل درس.\n\nالعملية قد تأخذ عدة دقائق حسب حجم الملف.\n\nمتابعة؟`)) return;
+    const fileNames = files.map(f => f.name).join("\n• ");
+    const totalSizeMB = files.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024);
+
+    if (!confirm(`📚 سيتم تحليل ${files.length} ملف وتقسيمهم تلقائياً إلى أبواب ودروس.\n\n• ${fileNames}\n\n📦 الحجم الإجمالي: ${totalSizeMB.toFixed(1)} MB\n\nالذكاء الاصطناعي سيولّد ملخصات وأسئلة لكل درس.\n\nالعملية قد تأخذ عدة دقائق حسب حجم الملفات.\n\nمتابعة؟`)) return;
 
     setCurriculumUploading(true);
-    setCurriculumProgress("📤 جاري رفع الملف...");
+    setCurriculumProgress(`📤 جاري رفع ${files.length} ملف...`);
     setCurriculumResult(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      for (const file of files) {
+        formData.append("files", file);
+      }
       formData.append("subjectId", subjectId);
 
       const token = document.cookie.split(";").find(c => c.trim().startsWith("auth-token="))?.split("=").slice(1).join("=");
 
-      setCurriculumProgress("🔤 جاري استخراج النص من الملف...");
+      setCurriculumProgress(`🔤 جاري استخراج النص من ${files.length} ملف...`);
 
       const res = await fetch("/api/content/curriculum-upload", {
         method: "POST",
@@ -1023,7 +1044,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
               📚 رفع المنهج الكامل
             </h4>
             <p className="text-xs mt-1" style={{ color: "var(--theme-text-secondary)" }}>
-              ارفع كتاب المنهج (PDF / Word / PowerPoint) — النظام يقسمه تلقائياً لأبواب ودروس ويولّد ملخصات + أسئلة
+              ارفع ملف أو أكتر (PDF / Word / PowerPoint / صور) — النظام يقسمهم تلقائياً لأبواب ودروس ويولّد ملخصات + أسئلة
             </p>
           </div>
           <button
@@ -1039,7 +1060,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
             )}
           </button>
         </div>
-        <input ref={curriculumFileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.rtf" className="hidden" onChange={handleCurriculumUpload} />
+        <input ref={curriculumFileRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.rtf" className="hidden" onChange={handleCurriculumUpload} />
       </div>
 
       {/* Curriculum Upload Progress */}
@@ -1057,6 +1078,8 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
         <div className="mb-4 p-4 rounded-xl bg-green-50 border border-green-200">
           <p className="font-bold text-green-700 mb-2">🎉 {(curriculumResult.message as string) || "تم بنجاح!"}</p>
           <div className="flex gap-4 text-sm text-green-600 flex-wrap mb-2">
+            {(curriculumResult.filesProcessed as number) > 0 && <span>📎 {(curriculumResult.filesProcessed as number)} ملف تم معالجته</span>}
+            {(curriculumResult.filesFailed as number) > 0 && <span className="text-red-500">⚠️ {(curriculumResult.filesFailed as number)} ملف فشل</span>}
             <span>📂 {(curriculumResult.units as number) || 0} باب</span>
             <span>📖 {(curriculumResult.lessons as number) || 0} درس</span>
             <span>📝 {(curriculumResult.summaries as number) || 0} ملخص</span>

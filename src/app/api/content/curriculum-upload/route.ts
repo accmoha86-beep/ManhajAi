@@ -45,26 +45,31 @@ export async function POST(request: NextRequest) {
     } catch { return NextResponse.json({ error: 'توكن غير صالح' }, { status: 401 }); }
 
     const formData = await request.formData();
-    const file = formData.get('file') as File | null;
     const subjectId = formData.get('subjectId') as string;
+    
+    // Support both single file ('file') and multiple files ('files')
+    const multiFiles = formData.getAll('files') as File[];
+    const singleFile = formData.get('file') as File | null;
+    const allFiles: File[] = multiFiles.length > 0 ? multiFiles : (singleFile ? [singleFile] : []);
 
-    if (!file || !subjectId) {
+    if (allFiles.length === 0 || !subjectId) {
       return NextResponse.json({ error: 'الملف ومعرّف المادة مطلوبين' }, { status: 400 });
     }
 
     const { data: maxSizeSetting } = await supabase.rpc('get_system_secret', { p_key: 'MAX_FILE_SIZE_MB' });
     const maxSizeMB = parseInt(maxSizeSetting || '200');
-    const fileSizeMB = file.size / (1024 * 1024);
-    if (fileSizeMB > maxSizeMB) {
-      return NextResponse.json({ error: `حجم الملف (${fileSizeMB.toFixed(1)} MB) أكبر من الحد (${maxSizeMB} MB)` }, { status: 400 });
+    
+    // Validate all files
+    let totalSizeMB = 0;
+    for (const f of allFiles) {
+      const fSizeMB = f.size / (1024 * 1024);
+      totalSizeMB += fSizeMB;
+      if (fSizeMB > maxSizeMB) {
+        return NextResponse.json({ error: `حجم الملف "${f.name}" (${fSizeMB.toFixed(1)} MB) أكبر من الحد (${maxSizeMB} MB)` }, { status: 400 });
+      }
     }
 
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const mimeType = file.type || 'application/octet-stream';
-    const fileName = file.name || 'unknown';
-    const category = getFileCategory(mimeType, fileName);
-
-    console.log(`[CurriculumUpload] Started — ${fileSizeMB.toFixed(1)}MB ${category} for subject ${subjectId}`);
+    console.log(`[CurriculumUpload] Started — ${allFiles.length} files, ${totalSizeMB.toFixed(1)}MB total for subject ${subjectId}`);
 
     // ═══════════════════════════════════════
     // PHASE 1: GET API KEY + MODEL
@@ -77,27 +82,52 @@ export async function POST(request: NextRequest) {
     const aiModel = (model || '').replace(/^["']+|["']+$/g, '').trim() || 'claude-sonnet-4-5-20250929';
 
     // ═══════════════════════════════════════
-    // PHASE 2: EXTRACT TEXT
+    // PHASE 2: EXTRACT TEXT FROM ALL FILES
     // ═══════════════════════════════════════
     let extractedText = '';
-    try {
-      switch (category) {
-        case 'word': extractedText = await extractFromWord(fileBuffer); break;
-        case 'excel': extractedText = await extractFromExcel(fileBuffer); break;
-        case 'powerpoint': extractedText = await extractFromPowerPoint(fileBuffer); break;
-        case 'text': extractedText = await extractFromText(fileBuffer, fileName); break;
-        case 'pdf': extractedText = await extractFromPdf(fileBuffer, apiKey, aiModel); break;
-        case 'image': extractedText = await extractFromImage(fileBuffer, mimeType, apiKey, aiModel); break;
+    const processedFiles: string[] = [];
+    const failedFiles: string[] = [];
+
+    for (let fi = 0; fi < allFiles.length; fi++) {
+      const file = allFiles[fi];
+      const fileBuffer = Buffer.from(await file.arrayBuffer());
+      const mimeType = file.type || 'application/octet-stream';
+      const fileName = file.name || `file_${fi + 1}`;
+      const category = getFileCategory(mimeType, fileName);
+      const fileSizeMB = file.size / (1024 * 1024);
+
+      console.log(`[CurriculumUpload] Processing file ${fi + 1}/${allFiles.length}: ${fileName} (${fileSizeMB.toFixed(1)}MB, ${category})`);
+
+      try {
+        let fileText = '';
+        switch (category) {
+          case 'word': fileText = await extractFromWord(fileBuffer); break;
+          case 'excel': fileText = await extractFromExcel(fileBuffer); break;
+          case 'powerpoint': fileText = await extractFromPowerPoint(fileBuffer); break;
+          case 'text': fileText = await extractFromText(fileBuffer, fileName); break;
+          case 'pdf': fileText = await extractFromPdf(fileBuffer, apiKey, aiModel); break;
+          case 'image': fileText = await extractFromImage(fileBuffer, mimeType, apiKey, aiModel); break;
+        }
+
+        if (fileText && fileText.length > 10) {
+          extractedText += `\n\n=== ملف: ${fileName} ===\n\n${fileText}`;
+          processedFiles.push(fileName);
+        } else {
+          failedFiles.push(`${fileName} (نص قصير جداً)`);
+        }
+      } catch (extractErr: any) {
+        console.error(`[CurriculumUpload] Failed to extract ${fileName}:`, extractErr.message);
+        failedFiles.push(`${fileName} (${extractErr.message?.slice(0, 100)})`);
       }
-    } catch (extractErr: any) {
-      return NextResponse.json({ error: `فشل في قراءة الملف: ${extractErr.message?.slice(0, 200)}` }, { status: 500 });
     }
 
     if (!extractedText || extractedText.length < 50) {
-      return NextResponse.json({ error: 'لم يتم استخراج نص كافٍ من الملف' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'لم يتم استخراج نص كافٍ من الملفات' + (failedFiles.length > 0 ? `. ملفات فاشلة: ${failedFiles.join(', ')}` : ''),
+      }, { status: 500 });
     }
 
-    console.log(`[CurriculumUpload] Extracted ${Math.round(extractedText.length / 1000)}k chars`);
+    console.log(`[CurriculumUpload] Extracted ${Math.round(extractedText.length / 1000)}k chars from ${processedFiles.length}/${allFiles.length} files`);
 
     // ═══════════════════════════════════════
     // PHASE 3: DETECT CURRICULUM STRUCTURE
@@ -286,7 +316,11 @@ ${structureText}`;
 
     return NextResponse.json({
       success: true,
-      message: `تم تقسيم المنهج بنجاح!`,
+      message: `تم تقسيم المنهج بنجاح من ${processedFiles.length} ملف!`,
+      filesProcessed: processedFiles.length,
+      filesFailed: failedFiles.length,
+      processedFileNames: processedFiles,
+      failedFileNames: failedFiles,
       units: createdData.length,
       lessons: totalCreatedLessons,
       summaries: summariesGenerated,
