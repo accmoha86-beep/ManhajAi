@@ -30,6 +30,7 @@ const STUDY_FONT_LINK = "https://fonts.googleapis.com/css2?family=Cairo:wght@400
 interface Subject {
   id: string;
   name: string;
+  name_en?: string;
   icon: string;
   description: string;
   lesson_count: number;
@@ -58,6 +59,7 @@ interface SubjectDetail {
   id: string;
   name: string;
   name_ar?: string;
+  name_en?: string;
   icon: string;
   description: string;
   description_ar?: string;
@@ -190,6 +192,7 @@ export default function SubjectsPage() {
       const detail: SubjectDetail = {
         id: subj.id,
         name: subj.name_ar || subj.name || "",
+        name_en: subj.name_en || "",
         icon: subj.icon || "BookOpen",
         description: subj.description_ar || subj.description || "",
         units: (raw.units || []).map((u: any) => ({
@@ -902,18 +905,25 @@ export default function SubjectsPage() {
 
   if (!selectedSubject) return null;
 
+  // LTR detection for foreign language subjects
+  const isLTR = ['English', 'French', 'German', 'Italian', 'Spanish'].some(
+    lang => selectedSubject.name_en?.toLowerCase().includes(lang.toLowerCase())
+  );
+  const displayName = isLTR && selectedSubject.name_en ? selectedSubject.name_en : selectedSubject.name;
+
   /* ================================================================ */
   /*  RENDER — Subject Detail (Sidebar + Content + Chat)               */
   /* ================================================================ */
 
   return (
-    <div className="subject-split flex flex-col lg:flex-row gap-0" dir="rtl" style={{ height: "calc(100vh - 4rem)", overflow: "hidden" }}>
+    <div className={`subject-split flex flex-col lg:flex-row gap-0`} dir={isLTR ? "ltr" : "rtl"} style={{ height: "calc(100vh - 4rem)", overflow: "hidden" }}>
       <link rel="stylesheet" href={STUDY_FONT_LINK} />
 
       {/* ============ RIGHT: Curriculum Sidebar (280px) ============ */}
       <aside
-        className="hidden lg:flex flex-col w-[280px] flex-shrink-0 border-l overflow-hidden"
-        style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)", height: "100%" }}
+        className="hidden lg:flex flex-col w-[280px] flex-shrink-0 overflow-hidden"
+        dir="rtl"
+        style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)", height: "100%", borderLeft: isLTR ? "none" : "1px solid var(--theme-surface-border)", borderRight: isLTR ? "1px solid var(--theme-surface-border)" : "none" }}
       >
         {/* Subject Header */}
         <div className="p-4 border-b flex-shrink-0" style={{ borderColor: "var(--theme-surface-border)" }}>
@@ -923,7 +933,7 @@ export default function SubjectsPage() {
             </div>
             <div className="min-w-0">
               <h2 className="font-extrabold text-sm truncate" style={{ color: "var(--theme-text-primary)" }}>
-                {selectedSubject.name}
+                {displayName}
               </h2>
               <p className="text-xs truncate" style={{ color: "var(--theme-text-secondary)" }}>
                 {totalLessons} درس
@@ -1117,14 +1127,14 @@ export default function SubjectsPage() {
       </div>
 
       {/* ============ LEFT: AI Chat ============ */}
-      <div className="w-full lg:w-[38%] lg:border-r chat-container flex-shrink-0" style={{ borderColor: "var(--theme-surface-border)", height: "calc(100vh - 4rem)", minHeight: "400px" }}>
+      <div className="w-full lg:w-[38%] chat-container flex-shrink-0" dir="rtl" style={{ borderColor: "var(--theme-surface-border)", height: "calc(100vh - 4rem)", minHeight: "400px", borderRight: isLTR ? "none" : "1px solid var(--theme-surface-border)", borderLeft: isLTR ? "1px solid var(--theme-surface-border)" : "none" }}>
         <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)" }}>
           <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--theme-cta-gradient)" }}>
             <Brain size={16} className="text-white" />
           </div>
           <div>
             <h3 className="text-sm font-bold" style={{ color: "var(--theme-text-primary)" }}>أستاذك الذكي</h3>
-            <p className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>اسأل عن {selectedSubject.name}</p>
+            <p className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>اسأل عن {displayName}</p>
           </div>
         </div>
         <div style={{ height: "calc(100vh - 4rem - 3.5rem)", overflow: "hidden" }}>

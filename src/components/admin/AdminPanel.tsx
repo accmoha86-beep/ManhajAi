@@ -649,6 +649,12 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
   const [savingManual, setSavingManual] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(false);
 
+  // Curriculum upload states
+  const [curriculumUploading, setCurriculumUploading] = useState(false);
+  const [curriculumProgress, setCurriculumProgress] = useState("");
+  const [curriculumResult, setCurriculumResult] = useState<Record<string, unknown> | null>(null);
+  const curriculumFileRef = useRef<HTMLInputElement>(null);
+
   const subjectId = (subject.id as string) || "";
   const subjectName = (subject.name as string) || (subject.name_ar as string) || "المادة";
 
@@ -729,6 +735,57 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     const text = await file.text();
     setManualText(text);
     e.target.value = "";
+  };
+
+  // Handle full curriculum upload
+  const handleCurriculumUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const allowedExts = ['pdf','png','jpg','jpeg','webp','gif','bmp','docx','doc','xlsx','xls','csv','pptx','ppt','txt','md','rtf'];
+    const ext = file.name?.toLowerCase().split('.').pop() || '';
+    if (!allowedExts.includes(ext)) {
+      alert("صيغة غير مدعومة. الصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص");
+      return;
+    }
+
+    if (!confirm(`📚 سيتم تحليل هيكل الملف "${file.name}" وتقسيمه تلقائياً إلى أبواب ودروس.\n\nالذكاء الاصطناعي سيولّد ملخصات وأسئلة لكل درس.\n\nالعملية قد تأخذ عدة دقائق حسب حجم الملف.\n\nمتابعة؟`)) return;
+
+    setCurriculumUploading(true);
+    setCurriculumProgress("📤 جاري رفع الملف...");
+    setCurriculumResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("subjectId", subjectId);
+
+      const token = document.cookie.split(";").find(c => c.trim().startsWith("auth-token="))?.split("=").slice(1).join("=");
+
+      setCurriculumProgress("🔤 جاري استخراج النص من الملف...");
+
+      const res = await fetch("/api/content/curriculum-upload", {
+        method: "POST",
+        headers: token ? { Authorization: "Bearer " + token } : {},
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "فشل في تحليل المنهج");
+      }
+
+      setCurriculumResult(data);
+      setCurriculumProgress("");
+      loadLessons();
+    } catch (err: unknown) {
+      setCurriculumProgress("");
+      alert("❌ " + (err instanceof Error ? err.message : "خطأ غير متوقع"));
+    }
+
+    setCurriculumUploading(false);
   };
 
     const triggerUpload = (lessonId: string) => {
@@ -957,6 +1014,69 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
           <p className="text-xs" style={{ color: "var(--theme-text-secondary)" }}>{lessons.length} درس</p>
         </div>
       </div>
+
+      {/* 📚 Curriculum Upload Section */}
+      <div className="mb-4 p-4 rounded-xl border-2 border-dashed" style={{ borderColor: "var(--theme-primary)", background: "var(--theme-primary-light, rgba(99,102,241,0.05))" }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="font-bold text-sm flex items-center gap-2" style={{ color: "var(--theme-primary)" }}>
+              📚 رفع المنهج الكامل
+            </h4>
+            <p className="text-xs mt-1" style={{ color: "var(--theme-text-secondary)" }}>
+              ارفع كتاب المنهج (PDF / Word / PowerPoint) — النظام يقسمه تلقائياً لأبواب ودروس ويولّد ملخصات + أسئلة
+            </p>
+          </div>
+          <button
+            onClick={() => curriculumFileRef.current?.click()}
+            disabled={curriculumUploading}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-medium disabled:opacity-50"
+            style={{ background: curriculumUploading ? "#9ca3af" : "var(--theme-cta-gradient)" }}
+          >
+            {curriculumUploading ? (
+              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> جاري التحليل...</>
+            ) : (
+              <>📤 رفع الكتاب كامل</>
+            )}
+          </button>
+        </div>
+        <input ref={curriculumFileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.rtf" className="hidden" onChange={handleCurriculumUpload} />
+      </div>
+
+      {/* Curriculum Upload Progress */}
+      {curriculumProgress && (
+        <div className="mb-4 p-4 rounded-xl bg-blue-50 border border-blue-200">
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-blue-700 font-medium text-sm">{curriculumProgress}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Curriculum Upload Result */}
+      {curriculumResult && (
+        <div className="mb-4 p-4 rounded-xl bg-green-50 border border-green-200">
+          <p className="font-bold text-green-700 mb-2">🎉 {(curriculumResult.message as string) || "تم بنجاح!"}</p>
+          <div className="flex gap-4 text-sm text-green-600 flex-wrap mb-2">
+            <span>📂 {(curriculumResult.units as number) || 0} باب</span>
+            <span>📖 {(curriculumResult.lessons as number) || 0} درس</span>
+            <span>📝 {(curriculumResult.summaries as number) || 0} ملخص</span>
+            <span>📋 {(curriculumResult.questions as number) || 0} سؤال</span>
+          </div>
+          {(curriculumResult.structure as any[])?.length > 0 && (
+            <div className="text-xs mt-2 space-y-1">
+              {(curriculumResult.structure as any[]).map((u: any, i: number) => (
+                <div key={i}>
+                  <span className="font-bold text-green-700">📂 {u.unit}:</span>
+                  <span className="text-green-600"> {u.lessons?.join(" — ")}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={() => setCurriculumResult(null)} className="mt-2 text-xs text-green-500 hover:underline">إغلاق ✕</button>
+        </div>
+      )}
+
+      <hr className="my-3 border-dashed" style={{ borderColor: "var(--theme-surface-border)" }} />
 
       {/* Add Lesson Form */}
       <div className="flex gap-2 mb-4">
