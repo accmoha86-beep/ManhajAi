@@ -104,8 +104,18 @@ function SelectField({ label, value, onChange, options }: { label: string; value
 
 function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button onClick={() => onChange(!checked)} className="flex items-center">
-      {checked ? <ToggleRight size={28} style={{ color: "var(--theme-primary)" }} /> : <ToggleLeft size={28} style={{ color: "var(--theme-text-secondary)" }} />}
+    <button 
+      onClick={() => onChange(!checked)} 
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-200 font-medium text-xs"
+      style={{ 
+        background: checked ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+        color: checked ? '#16a34a' : '#dc2626',
+        border: `1.5px solid ${checked ? '#22c55e' : '#ef4444'}`,
+      }}
+      title={checked ? 'مفعّلة — اضغط للإخفاء' : 'مخفية — اضغط للتفعيل'}
+    >
+      {checked ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+      <span>{checked ? 'مفعّلة' : 'مخفية'}</span>
     </button>
   );
 }
