@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       supabase.rpc('get_chat_history', {
         p_user_id: user.id,
         p_subject_id: subjectId || null,
-        p_limit: 10,
+        p_limit: 6,
       }),
       subjectId
         ? supabase.rpc('get_subject_context', { p_subject_id: subjectId })
@@ -109,8 +109,8 @@ export async function POST(request: NextRequest) {
       const lessons = (ctxData as any).lessons ?? [];
       let contextText = '';
       for (const lesson of lessons) {
-        const entry = `📖 ${lesson.title || 'درس'}:\n${(lesson.summary || '').slice(0, 800)}\n\n`;
-        if (contextText.length + entry.length > 6000) break;
+        const entry = `📖 ${lesson.title || 'درس'}:\n${(lesson.summary || '').slice(0, 500)}\n\n`;
+        if (contextText.length + entry.length > 4000) break;
         contextText += entry;
       }
       if (contextText) ragContext = contextText;
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
             },
             body: JSON.stringify({
               model,
-              max_tokens: 1536,
+              max_tokens: 1024,
               system: systemPrompt,
               messages: conversationMessages,
               temperature: 0.7,

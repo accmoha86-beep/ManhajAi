@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useChatStore } from "@/store/chat-store";
 import type { ChatMessage } from "@/store/chat-store";
-import { Send, Bot, User, Loader2, Trash2 } from "lucide-react";
+import { Send, Bot, User, Trash2 } from "lucide-react";
 
 interface SubjectChatProps {
   subjectId: string | null;
@@ -11,6 +11,82 @@ interface SubjectChatProps {
 }
 
 const GENERAL_KEY = "__general__";
+
+/* ── Typing dots animation (CSS-in-JS) ── */
+const typingDotsStyle = `
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+.typing-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--theme-primary, #6366f1); margin: 0 2px; }
+.typing-dot:nth-child(1) { animation: typingBounce 1.2s infinite 0s; }
+.typing-dot:nth-child(2) { animation: typingBounce 1.2s infinite 0.2s; }
+.typing-dot:nth-child(3) { animation: typingBounce 1.2s infinite 0.4s; }
+`;
+
+/* ── Simple markdown-like renderer for chat messages ── */
+function renderChatContent(text: string) {
+  if (!text) return null;
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      elements.push(<br key={`br-${i}`} />);
+      return;
+    }
+
+    // Bold: **text**
+    let processed: React.ReactNode = trimmed;
+    if (trimmed.includes("**")) {
+      const parts = trimmed.split(/\*\*(.*?)\*\*/g);
+      processed = parts.map((part, j) =>
+        j % 2 === 1 ? <strong key={j} style={{ fontWeight: 700 }}>{part}</strong> : part
+      );
+    }
+
+    // Headings
+    if (trimmed.startsWith("### ")) {
+      elements.push(
+        <div key={i} style={{ fontWeight: 800, fontSize: "1rem", marginTop: "8px", marginBottom: "4px" }}>
+          {trimmed.slice(4)}
+        </div>
+      );
+    } else if (trimmed.startsWith("## ")) {
+      elements.push(
+        <div key={i} style={{ fontWeight: 800, fontSize: "1.05rem", marginTop: "10px", marginBottom: "4px" }}>
+          {trimmed.slice(3)}
+        </div>
+      );
+    } else if (trimmed.startsWith("# ")) {
+      elements.push(
+        <div key={i} style={{ fontWeight: 800, fontSize: "1.1rem", marginTop: "12px", marginBottom: "4px" }}>
+          {trimmed.slice(2)}
+        </div>
+      );
+    }
+    // Bullet points
+    else if (/^[-•●]\s/.test(trimmed) || /^\d+[.)]\s/.test(trimmed)) {
+      elements.push(
+        <div key={i} style={{ paddingRight: "12px", marginBottom: "2px" }}>
+          {typeof processed === "string" ? processed : processed}
+        </div>
+      );
+    }
+    // Normal paragraph
+    else {
+      elements.push(
+        <span key={i}>
+          {processed}
+          {i < lines.length - 1 && <br />}
+        </span>
+      );
+    }
+  });
+
+  return <>{elements}</>;
+}
 
 export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps) {
   const chatKey = subjectId || GENERAL_KEY;
@@ -20,20 +96,23 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
   const [streaming, setStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll on new messages
+  // Auto-scroll
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    }
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // Auto-focus input
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [chatKey]);
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || streaming) return;
 
-    // Add user message
     const userMsg: ChatMessage = {
       id: `u_${Date.now()}`,
       role: "user",
@@ -44,7 +123,6 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
     setInput("");
     setStreaming(true);
 
-    // Add placeholder assistant message
     const assistantId = `a_${Date.now()}`;
     const placeholder: ChatMessage = {
       id: assistantId,
@@ -68,7 +146,6 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
         signal: abortRef.current.signal,
       });
 
-      // Non-streaming error response
       if (!res.ok || !res.body) {
         let errorText = "حدث خطأ. يرجى المحاولة مرة أخرى";
         try {
@@ -101,7 +178,6 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
 
           try {
             const event = JSON.parse(jsonStr);
-
             if (event.type === "delta" && event.text) {
               fullContent += event.text;
               updateMessage(chatKey, assistantId, {
@@ -109,28 +185,22 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
                 isLoading: false,
               });
             }
-
             if (event.type === "error") {
               updateMessage(chatKey, assistantId, {
                 content: event.error || "حدث خطأ",
                 isLoading: false,
               });
             }
-
             if (event.type === "done") {
-              // Stream complete
               updateMessage(chatKey, assistantId, {
                 content: fullContent,
                 isLoading: false,
               });
             }
-          } catch {
-            // Skip malformed JSON
-          }
+          } catch {}
         }
       }
 
-      // Ensure final state is correct
       if (fullContent) {
         updateMessage(chatKey, assistantId, { content: fullContent, isLoading: false });
       } else {
@@ -148,6 +218,7 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
     } finally {
       setStreaming(false);
       abortRef.current = null;
+      inputRef.current?.focus();
     }
   }, [input, streaming, chatKey, subjectId, addMessage, updateMessage]);
 
@@ -159,15 +230,19 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
   };
 
   const handleClear = () => {
-    if (streaming && abortRef.current) {
-      abortRef.current.abort();
-    }
+    if (streaming && abortRef.current) abortRef.current.abort();
     clearChat(chatKey);
   };
 
+  const chatFont: React.CSSProperties = {
+    fontFamily: "'Cairo', 'Noto Sans Arabic', sans-serif",
+  };
+
   return (
-    <div className="flex flex-col h-full" style={{ background: "var(--theme-card-bg)" }}>
-      {/* Chat Header */}
+    <div className="flex flex-col h-full" style={{ ...chatFont, background: "var(--theme-card-bg)" }}>
+      <style>{typingDotsStyle}</style>
+
+      {/* ── Header ── */}
       <div
         className="flex items-center justify-between px-4 py-3 flex-shrink-0"
         style={{
@@ -177,16 +252,16 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
       >
         <div className="flex items-center gap-2">
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center"
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
             style={{ background: "var(--theme-cta-gradient)" }}
           >
-            <Bot size={18} color="#fff" />
+            <Bot size={20} color="#fff" />
           </div>
           <div>
-            <div className="text-sm font-extrabold" style={{ color: "var(--theme-text-primary)" }}>
+            <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "var(--theme-text-primary)" }}>
               أستاذك الذكي 🤖
             </div>
-            <div className="text-[0.65rem]" style={{ color: "var(--theme-text-muted)" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--theme-text-muted)" }}>
               {subjectName ? `متخصص في ${subjectName}` : "اختر مادة للبدء"}
             </div>
           </div>
@@ -203,29 +278,26 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
         )}
       </div>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* ── Messages ── */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
-          <div className="text-center py-12">
-            <div className="text-5xl mb-4">🤖</div>
-            <h3 className="text-base font-extrabold mb-2" style={{ color: "var(--theme-text-primary)" }}>
+          <div className="text-center py-10">
+            <div className="text-5xl mb-3">🤖</div>
+            <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--theme-text-primary)", marginBottom: "6px" }}>
               أهلاً! أنا أستاذك الذكي
             </h3>
-            <p className="text-sm mb-6" style={{ color: "var(--theme-text-secondary)" }}>
+            <p style={{ fontSize: "0.9rem", color: "var(--theme-text-secondary)", marginBottom: "16px" }}>
               {subjectName
                 ? `اسألني أي سؤال عن ${subjectName} — هجاوبك فوراً! ⚡`
                 : "اختر مادة ثم اسألني عن أي شيء"}
             </p>
             <div className="flex flex-wrap gap-2 justify-center">
-              {[
-                "اشرحلي الدرس ده",
-                "عايز أسئلة تدريبية",
-                "لخصلي أهم النقاط",
-              ].map((q, i) => (
+              {["اشرحلي الدرس ده", "عايز أسئلة تدريبية", "لخصلي أهم النقاط"].map((q, i) => (
                 <button
                   key={i}
                   onClick={() => setInput(q)}
-                  className="themed-btn-outline text-xs px-3 py-1"
+                  className="themed-btn-outline px-3 py-1.5 rounded-lg"
+                  style={{ fontSize: "0.85rem" }}
                 >
                   {q}
                 </button>
@@ -240,7 +312,7 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
             className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
           >
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs"
+              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
               style={{
                 background:
                   msg.role === "user"
@@ -252,8 +324,10 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
               {msg.role === "user" ? <User size={14} /> : <Bot size={14} />}
             </div>
             <div
-              className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
+              className="max-w-[82%] rounded-2xl px-4 py-3"
               style={{
+                fontSize: "0.95rem",
+                lineHeight: "1.75",
                 background:
                   msg.role === "user"
                     ? "var(--theme-cta-gradient)"
@@ -264,19 +338,20 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
               }}
             >
               {msg.isLoading ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin" />
-                  جارٍ التفكير...
+                <span className="flex items-center gap-1 py-1">
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
                 </span>
               ) : (
-                msg.content
+                renderChatContent(msg.content)
               )}
             </div>
           </div>
         ))}
       </div>
 
-      {/* Input */}
+      {/* ── Input ── */}
       <div
         className="p-3 flex-shrink-0"
         style={{
@@ -286,6 +361,7 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
       >
         <div className="flex items-end gap-2">
           <textarea
+            ref={inputRef}
             className="themed-input flex-1 resize-none"
             rows={1}
             placeholder={subjectName ? `اسأل عن ${subjectName}...` : "اكتب سؤالك هنا..."}
@@ -293,7 +369,7 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={streaming}
-            style={{ minHeight: "40px", maxHeight: "120px" }}
+            style={{ minHeight: "42px", maxHeight: "120px", fontSize: "0.95rem", fontFamily: "'Cairo', sans-serif" }}
           />
           <button
             onClick={handleSend}
@@ -301,11 +377,7 @@ export default function SubjectChat({ subjectId, subjectName }: SubjectChatProps
             className="themed-btn-primary p-2.5 rounded-xl flex-shrink-0"
             style={{ opacity: !input.trim() || streaming ? 0.5 : 1 }}
           >
-            {streaming ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <Send size={18} />
-            )}
+            <Send size={18} />
           </button>
         </div>
       </div>
