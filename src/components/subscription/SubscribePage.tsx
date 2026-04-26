@@ -6,6 +6,7 @@ import {
   CreditCard, Check, Star, Loader2, Zap,
   Shield, Clock, Tag, X, CheckCircle2,
 } from "lucide-react";
+import { showToast } from '@/components/shared/Toast';
 
 interface Plan {
   id: string;
@@ -173,10 +174,10 @@ export default function SubscribePage() {
       if (data.url) {
         window.location.href = data.url;
       } else if (data.error) {
-        alert(data.error);
+        showToast(data.error, "error");
       }
     } catch {
-      alert('فشل في إنشاء جلسة الدفع — تأكد من تسجيل الدخول');
+      showToast("فشل في إنشاء جلسة الدفع — تأكد من تسجيل الدخول", "error");
     } finally {
       setProcessing(false);
     }
@@ -220,12 +221,12 @@ export default function SubscribePage() {
               const res = await fetch('/api/subscription/trial', { method: 'POST', credentials: 'include' });
               const data = await res.json();
               if (data.success) {
-                alert(data.message);
+                showToast(data.message, "success");
                 window.location.href = '/dashboard';
               } else {
-                alert(data.error || 'فشل في تفعيل التجربة');
+                showToast(data.error || "فشل في تفعيل التجربة", "error");
               }
-            } catch { alert('فشل في الاتصال'); }
+            } catch { showToast("فشل في الاتصال", "error"); }
             setProcessing(false);
           }}
           disabled={processing}

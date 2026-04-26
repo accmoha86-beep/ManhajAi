@@ -14,6 +14,8 @@ import {
   Upload, FileText, UserPlus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { showToast } from '@/components/shared/Toast';
+import { showConfirm } from '@/components/shared/ConfirmDialog';
 
 /* ───────── Types ───────── */
 interface StatCard { title: string; value: string | number; icon: React.ReactNode; color: string }
@@ -325,32 +327,32 @@ function StudentsTab() {
   };
 
   const deleteStudent = async (id: string, name: string) => {
-    if (!confirm(`⚠️ هل أنت متأكد من حذف الطالب "${name}"؟\n\nسيتم حذف جميع بياناته (اشتراكات، امتحانات، شهادات، محادثات) نهائياً!`)) return;
-    if (!confirm(`🔴 تأكيد نهائي: حذف "${name}" وكل بياناته؟ لا يمكن التراجع!`)) return;
+    if (!await showConfirm({ message: `⚠️ هل أنت متأكد من حذف الطالب "${name}"؟\n\nسيتم حذف جميع بياناته (اشتراكات، امتحانات، شهادات، محادثات) نهائياً!`, danger: true, confirmText: "حذف" })) return;
+    if (!await showConfirm({ message: `🔴 تأكيد نهائي: حذف "${name}" وكل بياناته؟ لا يمكن التراجع!`, danger: true, confirmText: "حذف" })) return;
     try {
       await adminAPI("delete_student", { student_id: id });
-      alert(`✅ تم حذف "${name}" بنجاح`);
+      showToast(`✅ تم حذف "${name}" بنجاح`, "success");
       load();
     } catch (e) {
-      alert(`❌ خطأ في الحذف: ${e instanceof Error ? e.message : 'خطأ غير معروف'}`);
+      showToast(`❌ خطأ في الحذف: ${e instanceof Error ? e.message : 'خطأ غير معروف'}`, "error");
       load();
     }
   };
 
   const handleAddStudent = async () => {
-    if (!addForm.fullName || addForm.fullName.length < 2) { alert("⚠️ الاسم مطلوب (حرفين على الأقل)"); return; }
+    if (!addForm.fullName || addForm.fullName.length < 2) { showToast("⚠️ الاسم مطلوب (حرفين على الأقل)", "warning"); return; }
     const cleanPhone = addForm.phone.replace(/[^0-9]/g, "");
-    if (!/^01[0-9]{9}$/.test(cleanPhone)) { alert("⚠️ رقم الهاتف لازم يكون مصري صحيح (01xxxxxxxxx)"); return; }
-    if (!addForm.password || addForm.password.length < 4) { alert("⚠️ كلمة المرور مطلوبة (4 أحرف على الأقل)"); return; }
+    if (!/^01[0-9]{9}$/.test(cleanPhone)) { showToast("⚠️ رقم الهاتف لازم يكون مصري صحيح (01xxxxxxxxx)", "warning"); return; }
+    if (!addForm.password || addForm.password.length < 4) { showToast("⚠️ كلمة المرور مطلوبة (4 أحرف على الأقل)", "warning"); return; }
     setAddSaving(true);
     try {
       await adminAPI("add_student", { fullName: addForm.fullName, phone: cleanPhone, password: addForm.password, governorate: addForm.governorate });
-      alert("✅ تم إضافة الطالب بنجاح!");
+      showToast("✅ تم إضافة الطالب بنجاح!", "success");
       setShowAddModal(false);
       setAddForm({ fullName: "", phone: "", password: "", governorate: "القاهرة" });
       load();
     } catch (e) {
-      alert(`❌ ${e instanceof Error ? e.message : "خطأ في إضافة الطالب"}`);
+      showToast(`❌ ${e instanceof Error ? e.message : "خطأ في إضافة الطالب"}`, "error");
     }
     setAddSaving(false);
   };
@@ -557,7 +559,7 @@ function SubjectsTab() {
   };
 
   const handleSave = async () => {
-    if (!form.name_ar.trim()) { alert("اسم المادة مطلوب"); return; }
+    if (!form.name_ar.trim()) { showToast("اسم المادة مطلوب", "warning"); return; }
     setSaving(true);
     try {
       if (modal === "create") {
@@ -579,12 +581,12 @@ function SubjectsTab() {
         });
       }
       setModal(null); load();
-    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
     setSaving(false);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("هل أنت متأكد من حذف هذه المادة؟")) return;
+    if (!await showConfirm({ message: "هل أنت متأكد من حذف هذه المادة؟", danger: true, confirmText: "حذف" })) return;
     try { await adminAPI("delete_subject", { subject_id: id }); load(); } catch { load(); }
   };
 
@@ -728,12 +730,12 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       await adminAPI("create_lesson", { subject_id: subjectId, title_ar: newLessonTitle.trim(), sort_order: lessons.length + 1 });
       setNewLessonTitle("");
       loadLessons();
-    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
     setAddingLesson(false);
   };
 
   const handleDeleteLesson = async (lessonId: string) => {
-    if (!confirm("حذف الدرس وكل محتواه (ملخصات + أسئلة)؟")) return;
+    if (!await showConfirm({ message: "حذف الدرس وكل محتواه (ملخصات + أسئلة)؟", danger: true, confirmText: "حذف" })) return;
     try { await adminAPI("delete_lesson", { lesson_id: lessonId }); loadLessons(); } catch { loadLessons(); }
   };
 
@@ -762,12 +764,12 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
         lesson_id: manualLessonId,
         content: manualText.trim()
       });
-      alert("✅ تم حفظ الملخص بنجاح!");
+      showToast("✅ تم حفظ الملخص بنجاح!", "success");
       setManualLessonId(null);
       setManualText("");
       loadLessons();
     } catch (e: unknown) {
-      alert("❌ " + (e instanceof Error ? e.message : "خطأ في الحفظ"));
+      showToast("❌ " + (e instanceof Error ? e.message : "خطأ في الحفظ"), "error");
     }
     setSavingManual(false);
   };
@@ -778,7 +780,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     if (!file) return;
     const ext = file.name.toLowerCase().split('.').pop() || '';
     if (!['txt', 'md', 'rtf'].includes(ext)) {
-      alert("الصيغ المدعومة: TXT, MD, RTF");
+      showToast("الصيغ المدعومة: TXT, MD, RTF", "warning");
       return;
     }
     const text = await file.text();
@@ -809,11 +811,11 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     }
 
     if (invalidFiles.length > 0) {
-      alert("⚠️ الملفات التالية صيغتها غير مدعومة وسيتم تجاهلها:\n" + invalidFiles.join("\n") + "\n\nالصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص");
+      showToast("⚠️ الملفات التالية صيغتها غير مدعومة وسيتم تجاهلها:\n" + invalidFiles.join("\n") + "\n\nالصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص", "warning");
     }
 
     if (files.length === 0) {
-      alert("لم يتم اختيار ملفات صالحة");
+      showToast("لم يتم اختيار ملفات صالحة", "success");
       return;
     }
 
@@ -825,7 +827,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       : `🤖 وضع AI — الذكاء الاصطناعي سيحلل ويقسم المنهج تلقائياً.`;
     const questionsText = generateQuestions ? "\n📋 سيتم توليد أسئلة لكل درس." : "\n⏭️ بدون توليد أسئلة.";
 
-    if (!confirm(`📚 سيتم معالجة ${files.length} ملف\n\n• ${fileNames}\n\n📦 الحجم: ${totalSizeMB.toFixed(1)} MB\n\n${modeText}${questionsText}\n\nمتابعة؟`)) return;
+    if (!await showConfirm({ message: `📚 سيتم معالجة ${files.length} ملف\n\n• ${fileNames}\n\n📦 الحجم: ${totalSizeMB.toFixed(1)} MB\n\n${modeText}${questionsText}\n\nمتابعة؟`, danger: false, confirmText: "متابعة" })) return;
 
     setCurriculumUploading(true);
     setCurriculumProgress(preAnalyzed ? `📤 جاري رفع وحفظ ${files.length} ملف...` : `📤 جاري رفع ${files.length} ملف...`);
@@ -861,7 +863,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       loadLessons();
     } catch (err: unknown) {
       setCurriculumProgress("");
-      alert("❌ " + (err instanceof Error ? err.message : "خطأ غير متوقع"));
+      showToast("❌ " + (err instanceof Error ? err.message : "خطأ غير متوقع"), "error");
     }
 
     setCurriculumUploading(false);
@@ -896,11 +898,11 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       const f = files[i];
       const ext = f.name?.toLowerCase().split('.').pop() || '';
       if (!allowedTypes.includes(f.type) && !allowedExts.includes(ext)) {
-        alert(`❌ الملف "${f.name}" — صيغة غير مدعومة.\nالصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص`);
+        showToast(`❌ الملف "${f.name}" — صيغة غير مدعومة.\nالصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص`, "error");
         return;
       }
       if (f.size > maxSizeMB * 1024 * 1024) {
-        alert(`❌ الملف "${f.name}" — حجمه (${(f.size / 1024 / 1024).toFixed(1)} MB) يتجاوز الحد (${maxSizeMB} MB)`);
+        showToast(`❌ الملف "${f.name}" — حجمه (${(f.size / 1024 / 1024).toFixed(1)} MB) يتجاوز الحد (${maxSizeMB} MB)`, "error");
         return;
       }
     }
@@ -1050,7 +1052,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       lastError = err instanceof Error ? err.message : "خطأ غير متوقع";
       if (totalFiles === 1) {
         setGenProgress("");
-        alert(lastError);
+        showToast(lastError, "error");
       }
     }
 
@@ -1065,7 +1067,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     if (totalFiles > 1) {
       if (lastError && totalQuestionsAll === 0) {
         setGenProgress("");
-        alert(`فشل في معالجة الملفات: ${lastError}`);
+        showToast(`فشل في معالجة الملفات: ${lastError}`, "error");
       } else {
         setGenResult({
           summary: true,
@@ -1620,8 +1622,8 @@ function CouponsTab() {
   };
 
   const handleSave = async () => {
-    if (!form.code.trim()) { alert("كود الخصم مطلوب"); return; }
-    if (!form.discount_percent || Number(form.discount_percent) <= 0) { alert("نسبة الخصم مطلوبة"); return; }
+    if (!form.code.trim()) { showToast("كود الخصم مطلوب", "warning"); return; }
+    if (!form.discount_percent || Number(form.discount_percent) <= 0) { showToast("نسبة الخصم مطلوبة", "warning"); return; }
     setSaving(true);
     try {
       const params = {
@@ -1634,12 +1636,12 @@ function CouponsTab() {
       if (modal === "create") await adminAPI("create_coupon", params);
       else await adminAPI("update_coupon", { coupon_id: editItem?.id, ...params });
       setModal(null); load();
-    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
     setSaving(false);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("هل أنت متأكد من حذف هذا الكوبون؟")) return;
+    if (!await showConfirm({ message: "هل أنت متأكد من حذف هذا الكوبون؟", danger: true, confirmText: "حذف" })) return;
     try { await adminAPI("delete_coupon", { coupon_id: id }); load(); } catch { load(); }
   };
 
@@ -1757,7 +1759,7 @@ function NotificationsTab() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "فشل في الإرسال");
       setShowCreate(false); setForm({ title: "", body: "", target: "all" }); load();
-    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
     setSending(false);
   };
 
@@ -1821,7 +1823,7 @@ function PaymentConfigTab() {
 
   const handleSave = async () => {
     setSaving(true);
-    try { await adminAPI("update_payment_config", { config }); alert("تم حفظ الإعدادات"); } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    try { await adminAPI("update_payment_config", { config }); showToast("تم حفظ الإعدادات", "success"); } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
     setSaving(false);
   };
 
@@ -1888,12 +1890,12 @@ function PlansTab() {
       if (modal === "create") await adminAPI("create_plan", params);
       else await adminAPI("update_plan", { plan_id: editItem?.id, ...params });
       setModal(null); load();
-    } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
     setSaving(false);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("هل أنت متأكد من حذف هذه الخطة؟")) return;
+    if (!await showConfirm({ message: "هل أنت متأكد من حذف هذه الخطة؟", danger: true, confirmText: "حذف" })) return;
     try { await adminAPI("delete_plan", { plan_id: id }); load(); } catch { load(); }
   };
 
@@ -2277,14 +2279,14 @@ function SecretsTab() {
 
   const handleSave = async (key: string) => {
     setSaving(true);
-    try { await adminAPI("update_secret", { key, value: editValue }); setEditKey(null); load(); } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    try { await adminAPI("update_secret", { key, value: editValue }); setEditKey(null); load(); } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
     setSaving(false);
   };
 
   const handleAdd = async () => {
     if (!newKey.trim()) return;
     setSaving(true);
-    try { await adminAPI("update_secret", { key: newKey.trim(), value: newValue, description: newDesc }); setAddMode(false); setNewKey(""); setNewValue(""); setNewDesc(""); load(); } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    try { await adminAPI("update_secret", { key: newKey.trim(), value: newValue, description: newDesc }); setAddMode(false); setNewKey(""); setNewValue(""); setNewDesc(""); load(); } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
     setSaving(false);
   };
 
@@ -2479,7 +2481,7 @@ function SettingsTab() {
 
   const handleSave = async (key: string) => {
     setSaving(true);
-    try { await adminAPI("update_setting", { key, value: editValue }); setEditKey(null); load(); } catch (e: unknown) { alert(e instanceof Error ? e.message : "خطأ"); }
+    try { await adminAPI("update_setting", { key, value: editValue }); setEditKey(null); load(); } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
     setSaving(false);
   };
 

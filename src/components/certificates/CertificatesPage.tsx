@@ -6,6 +6,7 @@ import {
   Copy, ExternalLink, AlertCircle, X,
   MessageCircle,
 } from "lucide-react";
+import { showToast } from '@/components/shared/Toast';
 import { useAuthStore } from "@/store/auth-store";
 
 /* ------------------------------------------------------------------ */
@@ -228,7 +229,7 @@ export default function CertificatesPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
-      alert("حصل خطأ أثناء تحميل الشهادة");
+      showToast("حصل خطأ أثناء تحميل الشهادة", "error");
     } finally {
       setDownloading(null);
     }

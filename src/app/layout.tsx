@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import '@/styles/globals.css';
+import { ToastContainer } from '@/components/shared/Toast';
+import { ConfirmDialogContainer } from '@/components/shared/ConfirmDialog';
 
 export const metadata: Metadata = {
   title: 'منهج AI — منصة تعليمية ذكية',
@@ -40,6 +42,8 @@ export default function RootLayout({
       </head>
       <body className="font-cairo antialiased">
         {children}
+        <ToastContainer />
+        <ConfirmDialogContainer />
       </body>
     </html>
   );
