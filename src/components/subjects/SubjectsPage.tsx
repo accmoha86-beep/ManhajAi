@@ -377,6 +377,8 @@ export default function SubjectsPage() {
                             let codeLines: string[] = [];
                             let inBlockquote = false;
                             let quoteLines: string[] = [];
+                            let tableRows: string[][] = [];
+                            let tableHeader: string[] = [];
 
                             const renderInline = (text: string) => {
                               return text
@@ -401,6 +403,59 @@ export default function SubjectsPage() {
                                 );
                                 quoteLines = [];
                                 inBlockquote = false;
+                              }
+                            };
+
+                            const flushTable = (idx: number) => {
+                              if (tableRows.length > 0 || tableHeader.length > 0) {
+                                elements.push(
+                                  <div key={`table-${idx}`} className="overflow-x-auto my-4 rounded-2xl" style={{
+                                    border: "1px solid var(--theme-primary)",
+                                    boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+                                  }}>
+                                    <table className="w-full text-[15px]" dir="rtl" style={{ borderCollapse: "collapse", fontFamily: "'Cairo', sans-serif" }}>
+                                      {tableHeader.length > 0 && (
+                                        <thead>
+                                          <tr style={{ background: "var(--theme-cta-gradient)" }}>
+                                            {tableHeader.map((cell, ci) => (
+                                              <th key={ci} className="px-4 py-3 text-white font-bold text-center" style={{
+                                                borderBottom: "2px solid var(--theme-primary)",
+                                                borderLeft: ci < tableHeader.length - 1 ? "1px solid rgba(255,255,255,0.2)" : "none",
+                                                fontSize: "0.95rem",
+                                              }}
+                                                dangerouslySetInnerHTML={{ __html: renderInline(cell) }}
+                                              />
+                                            ))}
+                                          </tr>
+                                        </thead>
+                                      )}
+                                      <tbody>
+                                        {tableRows.map((row, ri) => (
+                                          <tr key={ri} style={{
+                                            background: ri % 2 === 0 ? "var(--theme-hover-overlay)" : "var(--theme-bg, #fff)",
+                                            transition: "background 0.2s",
+                                          }}
+                                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--theme-primary-light, rgba(99,102,241,0.08))"; }}
+                                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ri % 2 === 0 ? "var(--theme-hover-overlay)" : "var(--theme-bg, #fff)"; }}
+                                          >
+                                            {row.map((cell, ci) => (
+                                              <td key={ci} className="px-4 py-2.5 text-center" style={{
+                                                borderBottom: "1px solid rgba(0,0,0,0.06)",
+                                                borderLeft: ci < row.length - 1 ? "1px solid rgba(0,0,0,0.06)" : "none",
+                                                color: "var(--theme-text-primary)",
+                                                fontWeight: ci === 0 ? 700 : 400,
+                                              }}
+                                                dangerouslySetInnerHTML={{ __html: renderInline(cell) }}
+                                              />
+                                            ))}
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                );
+                                tableHeader = [];
+                                tableRows = [];
                               }
                             };
 
@@ -503,6 +558,23 @@ export default function SubjectsPage() {
                                 return;
                               }
 
+                              // Table row
+                              if (t.startsWith("|") && t.endsWith("|")) {
+                                const cells = t.split("|").filter(c => c.trim() !== "").map(c => c.trim());
+                                // Skip separator rows like |---|---|
+                                if (cells.every(c => /^[-:]+$/.test(c))) return;
+                                if (tableHeader.length === 0) {
+                                  tableHeader = cells;
+                                } else {
+                                  tableRows.push(cells);
+                                }
+                                return;
+                              }
+                              // If we were in a table and this line is not a table row, flush
+                              if (tableHeader.length > 0 || tableRows.length > 0) {
+                                flushTable(i);
+                              }
+
                               // Normal paragraph
                               elements.push(
                                 <p key={i} className="text-[16px] leading-[1.9]" style={{ color: "var(--theme-text-primary)" }}
@@ -513,6 +585,7 @@ export default function SubjectsPage() {
 
                             // Flush remaining
                             flushQuote(lines.length);
+                            flushTable(lines.length);
 
                             return elements;
                           })()}

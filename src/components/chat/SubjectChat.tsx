@@ -31,6 +31,8 @@ function renderChatContent(text: string) {
   const elements: React.ReactNode[] = [];
   let inCode = false;
   let codeLines: string[] = [];
+  let tableHeaderCells: string[] = [];
+  let tableBodyRows: string[][] = [];
 
   const renderInline = (t: string): React.ReactNode[] => {
     const parts = t.split(/(\*\*.*?\*\*|`[^`]+`)/g);
@@ -45,11 +47,56 @@ function renderChatContent(text: string) {
     });
   };
 
+  const flushTable = (idx: number) => {
+    if (tableHeaderCells.length > 0 || tableBodyRows.length > 0) {
+      const allRows = tableHeaderCells.length > 0 ? [tableHeaderCells, ...tableBodyRows] : tableBodyRows;
+      const header = allRows[0] || [];
+      const body = allRows.slice(1);
+      elements.push(
+        <div key={`tbl-${idx}`} style={{
+          overflowX: "auto", margin: "8px 0", borderRadius: "12px",
+          border: "1px solid rgba(255,255,255,0.15)", background: "rgba(0,0,0,0.06)",
+        }}>
+          <table dir="rtl" style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88em", fontFamily: "'Cairo', sans-serif" }}>
+            <thead>
+              <tr style={{ background: "rgba(255,255,255,0.12)" }}>
+                {header.map((cell, ci) => (
+                  <th key={ci} style={{
+                    padding: "8px 12px", fontWeight: 700, textAlign: "center",
+                    borderBottom: "2px solid rgba(255,255,255,0.15)",
+                    borderLeft: ci < header.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none",
+                  }}>{renderInline(cell)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((row, ri) => (
+                <tr key={ri} style={{ background: ri % 2 === 0 ? "rgba(255,255,255,0.04)" : "transparent" }}>
+                  {row.map((cell, ci) => (
+                    <td key={ci} style={{
+                      padding: "6px 12px", textAlign: "center",
+                      borderBottom: "1px solid rgba(255,255,255,0.06)",
+                      borderLeft: ci < row.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none",
+                      fontWeight: ci === 0 ? 600 : 400,
+                    }}>{renderInline(cell)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      tableHeaderCells = [];
+      tableBodyRows = [];
+    }
+  };
+
   lines.forEach((line, i) => {
     const trimmed = line.trim();
 
     // Code block
     if (trimmed.startsWith("```")) {
+      flushTable(i);
       if (inCode) {
         elements.push(
           <pre key={`code-${i}`} dir="ltr" style={{
@@ -68,6 +115,22 @@ function renderChatContent(text: string) {
       return;
     }
     if (inCode) { codeLines.push(line); return; }
+
+    // Table row detection
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      const cells = trimmed.split("|").filter(c => c.trim() !== "").map(c => c.trim());
+      if (cells.every(c => /^[-:]+$/.test(c))) return; // skip separator
+      if (tableHeaderCells.length === 0) {
+        tableHeaderCells = cells;
+      } else {
+        tableBodyRows.push(cells);
+      }
+      return;
+    }
+    // If we were collecting table rows and hit a non-table line, flush
+    if (tableHeaderCells.length > 0 || tableBodyRows.length > 0) {
+      flushTable(i);
+    }
 
     // Empty line
     if (!trimmed) { elements.push(<div key={i} style={{ height: "6px" }} />); return; }
@@ -107,12 +170,12 @@ function renderChatContent(text: string) {
     }
 
     // Bullet points
-    if (/^[-•●\*]\s/.test(trimmed)) {
-      const content = trimmed.replace(/^[-•●\*]\s*/, "");
+    if (/^[-\u2022\u25CF\u25C6\*]\s/.test(trimmed)) {
+      const bContent = trimmed.replace(/^[-\u2022\u25CF\u25C6\*]\s*/, "");
       elements.push(
         <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "2px", paddingRight: "4px" }}>
           <span style={{ color: "inherit", opacity: 0.7, marginTop: "2px", flexShrink: 0 }}>✦</span>
-          <span>{renderInline(content)}</span>
+          <span>{renderInline(bContent)}</span>
         </div>
       );
       return;
@@ -121,7 +184,7 @@ function renderChatContent(text: string) {
     // Numbered list
     if (/^\d+[.)]\s/.test(trimmed)) {
       const num = trimmed.match(/^(\d+)/)?.[1] || "1";
-      const content = trimmed.replace(/^\d+[.)]\s*/, "");
+      const nContent = trimmed.replace(/^\d+[.)]\s*/, "");
       elements.push(
         <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "2px", paddingRight: "4px" }}>
           <span style={{
@@ -130,7 +193,7 @@ function renderChatContent(text: string) {
             fontSize: "0.75em", fontWeight: 700, flexShrink: 0, marginTop: "2px",
             background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.15)",
           }}>{num}</span>
-          <span>{renderInline(content)}</span>
+          <span>{renderInline(nContent)}</span>
         </div>
       );
       return;
@@ -143,6 +206,9 @@ function renderChatContent(text: string) {
       </div>
     );
   });
+
+  // Flush any remaining table
+  flushTable(lines.length);
 
   return <>{elements}</>;
 }
