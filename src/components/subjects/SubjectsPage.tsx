@@ -249,10 +249,14 @@ export default function SubjectsPage() {
   const hasUnits = selectedSubject?.units && selectedSubject.units.length > 0;
 
   /* ---------- total lessons count ---------- */
+  const allFlatLessons = [
+    ...(selectedSubject?.lessons || []),
+    ...(selectedSubject?.unassigned_lessons || []),
+  ];
   const totalLessons = hasUnits
     ? (selectedSubject!.units!.reduce((sum, u) => sum + u.lessons.length, 0) +
        (selectedSubject!.unassigned_lessons?.length || 0))
-    : (selectedSubject?.lessons?.length || 0);
+    : allFlatLessons.length;
 
   /* ================================================================ */
   /*  Render: Lesson Card (reusable)                                   */
@@ -728,7 +732,7 @@ export default function SubjectsPage() {
         ) : (
           /* ═══════ FLAT LESSONS (fallback / no units) ═══════ */
           <div className="space-y-3">
-            {[...(selectedSubject.lessons || [])].sort((a, b) => a.sort_order - b.sort_order).map((lesson, idx) => renderLessonCard(lesson, idx))}
+            {allFlatLessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson, idx) => renderLessonCard(lesson, idx))}
           </div>
         )}
       </div>
