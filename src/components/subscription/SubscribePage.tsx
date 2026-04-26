@@ -237,16 +237,17 @@ export default function SubscribePage() {
       </div>
 
       {/* Period Selector */}
-      <div className="flex justify-center gap-2 mb-8">
+      <div className="flex justify-center gap-3 mb-8 flex-wrap">
         {(['monthly', 'term', 'annual'] as Period[]).map(period => (
           <button
             key={period}
             onClick={() => setSelectedPeriod(period)}
-            className="px-5 py-2 rounded-xl text-sm font-bold transition-all"
+            className="px-6 py-2.5 rounded-xl text-base font-extrabold transition-all whitespace-nowrap"
             style={{
               background: selectedPeriod === period ? 'var(--theme-cta-gradient)' : 'var(--theme-hover-overlay)',
-              color: selectedPeriod === period ? '#fff' : 'var(--theme-text-secondary)',
-              border: selectedPeriod === period ? 'none' : '1px solid var(--theme-surface-border)',
+              color: selectedPeriod === period ? '#fff' : 'var(--theme-text-primary)',
+              border: selectedPeriod === period ? '2px solid transparent' : '2px solid var(--theme-surface-border)',
+              boxShadow: selectedPeriod === period ? '0 4px 12px rgba(99,102,241,0.3)' : 'none',
             }}
           >
             {periodLabels[period]}
@@ -276,9 +277,9 @@ export default function SubscribePage() {
               }}
             >
               {isPopular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold"
-                  style={{ background: 'var(--theme-cta-gradient)', color: '#fff' }}>
-                  <Star size={10} className="inline ml-1" /> الأكثر شيوعاً
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-5 py-1.5 rounded-full text-sm font-extrabold whitespace-nowrap shadow-md"
+                  style={{ background: 'var(--theme-cta-gradient)', color: '#fff', zIndex: 10, letterSpacing: '0.02em' }}>
+                  <Star size={14} className="inline ml-1" fill="currentColor" /> الأكثر شيوعاً
                 </div>
               )}
               {discount > 0 && (
