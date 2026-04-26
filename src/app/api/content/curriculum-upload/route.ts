@@ -26,6 +26,115 @@ function getFileCategory(mimeType: string, fileName: string): FileCategory {
 }
 
 // ═══════════════════════════════════════
+// PARSE PRE-ANALYZED MARKDOWN STRUCTURE
+// ═══════════════════════════════════════
+// Format:
+// # الباب الأول: الوراثة       → unit
+// ## الدرس الأول: قوانين مندل  → lesson
+// محتوى الدرس...               → content (saved as summary)
+// ═══════════════════════════════════════
+function parsePreAnalyzedMarkdown(text: string): { units: Array<{ name: string; lessons: Array<{ title: string; content: string }> }> } {
+  const lines = text.split('\n');
+  const units: Array<{ name: string; lessons: Array<{ title: string; content: string }> }> = [];
+  let currentUnit: { name: string; lessons: Array<{ title: string; content: string }> } | null = null;
+  let currentLesson: { title: string; content: string } | null = null;
+  let contentLines: string[] = [];
+
+  const flushLesson = () => {
+    if (currentLesson && currentUnit) {
+      currentLesson.content = contentLines.join('\n').trim();
+      if (currentLesson.content.length > 0) {
+        currentUnit.lessons.push(currentLesson);
+      }
+    }
+    contentLines = [];
+    currentLesson = null;
+  };
+
+  const flushUnit = () => {
+    flushLesson();
+    if (currentUnit && currentUnit.lessons.length > 0) {
+      units.push(currentUnit);
+    }
+    currentUnit = null;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    // # = Unit header
+    if (/^# (?!#)/.test(trimmed)) {
+      flushUnit();
+      const name = trimmed.replace(/^# +/, '').trim();
+      if (name) currentUnit = { name, lessons: [] };
+      continue;
+    }
+    
+    // ## = Lesson header
+    if (/^## (?!#)/.test(trimmed)) {
+      flushLesson();
+      const title = trimmed.replace(/^## +/, '').trim();
+      if (title) {
+        // If no unit yet, create a default one
+        if (!currentUnit) {
+          currentUnit = { name: 'الباب الأول', lessons: [] };
+        }
+        currentLesson = { title, content: '' };
+      }
+      continue;
+    }
+    
+    // Content lines
+    if (currentLesson) {
+      contentLines.push(line);
+    }
+  }
+  
+  // Flush remaining
+  flushUnit();
+
+  // If no structure found with # and ##, try ## only (all lessons in one unit)
+  if (units.length === 0) {
+    const singleUnit: { name: string; lessons: Array<{ title: string; content: string }> } = { 
+      name: 'المحتوى', 
+      lessons: [] 
+    };
+    currentLesson = null;
+    contentLines = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (/^## (?!#)/.test(trimmed)) {
+        if (currentLesson) {
+          currentLesson.content = contentLines.join('\n').trim();
+          if (currentLesson.content.length > 0) singleUnit.lessons.push(currentLesson);
+        }
+        contentLines = [];
+        const title = trimmed.replace(/^## +/, '').trim();
+        currentLesson = title ? { title, content: '' } : null;
+        continue;
+      }
+      if (currentLesson) contentLines.push(line);
+    }
+    if (currentLesson) {
+      currentLesson.content = contentLines.join('\n').trim();
+      if (currentLesson.content.length > 0) singleUnit.lessons.push(currentLesson);
+    }
+    if (singleUnit.lessons.length > 0) units.push(singleUnit);
+  }
+
+  // Last resort: if still nothing, treat whole text as one lesson
+  if (units.length === 0 && text.trim().length > 50) {
+    units.push({
+      name: 'المحتوى',
+      lessons: [{ title: 'الدرس الأول', content: text.trim() }],
+    });
+  }
+
+  return { units };
+}
+
+// ═══════════════════════════════════════
 // MAIN HANDLER
 // ═══════════════════════════════════════
 export async function POST(request: NextRequest) {
@@ -46,6 +155,8 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const subjectId = formData.get('subjectId') as string;
+    const preAnalyzed = formData.get('preAnalyzed') === 'true';
+    const generateQuestions = formData.get('generateQuestions') !== 'false'; // default true
     
     // Support both single file ('file') and multiple files ('files')
     const multiFiles = formData.getAll('files') as File[];
@@ -59,7 +170,6 @@ export async function POST(request: NextRequest) {
     const { data: maxSizeSetting } = await supabase.rpc('get_system_secret', { p_key: 'MAX_FILE_SIZE_MB' });
     const maxSizeMB = parseInt(maxSizeSetting || '200');
     
-    // Validate all files
     let totalSizeMB = 0;
     for (const f of allFiles) {
       const fSizeMB = f.size / (1024 * 1024);
@@ -69,17 +179,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[CurriculumUpload] Started — ${allFiles.length} files, ${totalSizeMB.toFixed(1)}MB total for subject ${subjectId}`);
+    console.log(`[CurriculumUpload] Started — ${allFiles.length} files, ${totalSizeMB.toFixed(1)}MB, preAnalyzed=${preAnalyzed}, generateQuestions=${generateQuestions}`);
 
     // ═══════════════════════════════════════
-    // PHASE 1: GET API KEY + MODEL
+    // PHASE 1: GET API KEY + MODEL (if needed)
     // ═══════════════════════════════════════
-    const { data: rawApiKey } = await supabase.rpc('get_system_secret', { p_key: 'anthropic_api_key' });
-    const apiKey = (rawApiKey || '').replace(/^["']+|["']+$/g, '').trim();
-    if (!apiKey) return NextResponse.json({ error: 'مفتاح API غير موجود' }, { status: 500 });
+    let apiKey = '';
+    let aiModel = 'claude-sonnet-4-5-20250929';
 
-    const { data: model } = await supabase.rpc('get_system_secret', { p_key: 'AI_CONTENT_MODEL' });
-    const aiModel = (model || '').replace(/^["']+|["']+$/g, '').trim() || 'claude-sonnet-4-5-20250929';
+    // Only need API key if not pre-analyzed OR if generating questions
+    if (!preAnalyzed || generateQuestions) {
+      const { data: rawApiKey } = await supabase.rpc('get_system_secret', { p_key: 'anthropic_api_key' });
+      apiKey = (rawApiKey || '').replace(/^["']+|["']+$/g, '').trim();
+      if (!apiKey) {
+        if (!preAnalyzed) {
+          return NextResponse.json({ error: 'مفتاح API غير موجود — استخدم وضع "محلل مسبقاً" لرفع بدون AI' }, { status: 500 });
+        }
+        // Pre-analyzed without questions is fine without API key
+      }
+
+      const { data: model } = await supabase.rpc('get_system_secret', { p_key: 'AI_CONTENT_MODEL' });
+      aiModel = (model || '').replace(/^["']+|["']+$/g, '').trim() || 'claude-sonnet-4-5-20250929';
+    }
 
     // ═══════════════════════════════════════
     // PHASE 2: EXTRACT TEXT FROM ALL FILES
@@ -105,8 +226,36 @@ export async function POST(request: NextRequest) {
           case 'excel': fileText = await extractFromExcel(fileBuffer); break;
           case 'powerpoint': fileText = await extractFromPowerPoint(fileBuffer); break;
           case 'text': fileText = await extractFromText(fileBuffer, fileName); break;
-          case 'pdf': fileText = await extractFromPdf(fileBuffer, apiKey, aiModel); break;
-          case 'image': fileText = await extractFromImage(fileBuffer, mimeType, apiKey, aiModel); break;
+          case 'pdf': {
+            if (preAnalyzed) {
+              // For pre-analyzed PDFs, try text extraction first (no OCR needed)
+              try {
+                const pdfDoc = await PDFDocument.load(fileBuffer, { ignoreEncryption: true });
+                // pdf-lib can't extract text — for pre-analyzed, user should use text/markdown files
+                // Try OCR if API key available
+                if (apiKey) {
+                  fileText = await extractFromPdf(fileBuffer, apiKey, aiModel);
+                } else {
+                  failedFiles.push(`${fileName} (PDF يحتاج AI للقراءة — استخدم ملف نصي)`);
+                  continue;
+                }
+              } catch {
+                failedFiles.push(`${fileName} (PDF غير قابل للقراءة)`);
+                continue;
+              }
+            } else {
+              fileText = await extractFromPdf(fileBuffer, apiKey, aiModel);
+            }
+            break;
+          }
+          case 'image': {
+            if (preAnalyzed && !apiKey) {
+              failedFiles.push(`${fileName} (الصور تحتاج AI للقراءة)`);
+              continue;
+            }
+            fileText = await extractFromImage(fileBuffer, mimeType, apiKey, aiModel);
+            break;
+          }
         }
 
         if (fileText && fileText.length > 10) {
@@ -130,11 +279,25 @@ export async function POST(request: NextRequest) {
     console.log(`[CurriculumUpload] Extracted ${Math.round(extractedText.length / 1000)}k chars from ${processedFiles.length}/${allFiles.length} files`);
 
     // ═══════════════════════════════════════
-    // PHASE 3: DETECT CURRICULUM STRUCTURE
+    // PHASE 3: DETECT STRUCTURE
     // ═══════════════════════════════════════
-    const structureText = extractedText.slice(0, MAX_TEXT_FOR_STRUCTURE);
+    let structure: { units: Array<{ name: string; lessons: Array<{ title: string; content: string }> }> };
 
-    const structurePrompt = `أنت محلل محتوى تعليمي متخصص في مناهج الثانوية العامة المصرية.
+    if (preAnalyzed) {
+      // ✅ PRE-ANALYZED: Parse markdown headers directly — NO AI needed
+      console.log('[CurriculumUpload] Pre-analyzed mode — parsing markdown structure...');
+      structure = parsePreAnalyzedMarkdown(extractedText);
+      
+      if (structure.units.length === 0) {
+        return NextResponse.json({ error: 'لم يتم العثور على هيكل واضح. استخدم تنسيق:\n# اسم الباب\n## اسم الدرس\nمحتوى الدرس...' }, { status: 400 });
+      }
+      
+      console.log(`[CurriculumUpload] Parsed: ${structure.units.length} units, ${structure.units.reduce((s, u) => s + u.lessons.length, 0)} lessons`);
+    } else {
+      // 🤖 AI MODE: Claude analyzes structure
+      const structureText = extractedText.slice(0, MAX_TEXT_FOR_STRUCTURE);
+
+      const structurePrompt = `أنت محلل محتوى تعليمي متخصص في مناهج الثانوية العامة المصرية.
 
 لديك نص مستخرج من كتاب منهج دراسي. مطلوب منك:
 1. تحليل هيكل الكتاب وتقسيمه إلى أبواب (units) ودروس (lessons)
@@ -165,32 +328,31 @@ export async function POST(request: NextRequest) {
 النص:
 ${structureText}`;
 
-    const structureResult = await callClaude(apiKey, aiModel, structurePrompt, 16000);
-    if (!structureResult.success || !structureResult.text) {
-      return NextResponse.json({ error: `فشل في تحليل هيكل المنهج: ${structureResult.error}` }, { status: 500 });
-    }
+      const structureResult = await callClaude(apiKey, aiModel, structurePrompt, 16000);
+      if (!structureResult.success || !structureResult.text) {
+        return NextResponse.json({ error: `فشل في تحليل هيكل المنهج: ${structureResult.error}` }, { status: 500 });
+      }
 
-    // Parse structure
-    let structure: { units: Array<{ name: string; lessons: Array<{ title: string; content: string }> }> };
-    try {
-      let jsonText = structureResult.text.trim();
-      jsonText = jsonText.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '');
-      const match = jsonText.match(/\{[\s\S]*\}/);
-      if (match) {
-        structure = JSON.parse(match[0]);
-      } else {
-        throw new Error('No JSON found');
+      try {
+        let jsonText = structureResult.text.trim();
+        jsonText = jsonText.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '');
+        const match = jsonText.match(/\{[\s\S]*\}/);
+        if (match) {
+          structure = JSON.parse(match[0]);
+        } else {
+          throw new Error('No JSON found');
+        }
+        if (!structure.units || !Array.isArray(structure.units) || structure.units.length === 0) {
+          throw new Error('No units detected');
+        }
+      } catch (parseErr: any) {
+        return NextResponse.json({ error: 'فشل في تحليل هيكل المنهج — جرب ملف أصغر أو بصيغة مختلفة' }, { status: 500 });
       }
-      if (!structure.units || !Array.isArray(structure.units) || structure.units.length === 0) {
-        throw new Error('No units detected');
-      }
-    } catch (parseErr: any) {
-      return NextResponse.json({ error: 'فشل في تحليل هيكل المنهج — جرب ملف أصغر أو بصيغة مختلفة' }, { status: 500 });
     }
 
     const totalUnits = structure.units.length;
     const totalLessons = structure.units.reduce((sum, u) => sum + u.lessons.length, 0);
-    console.log(`[CurriculumUpload] Detected: ${totalUnits} units, ${totalLessons} lessons`);
+    console.log(`[CurriculumUpload] Structure: ${totalUnits} units, ${totalLessons} lessons`);
 
     // ═══════════════════════════════════════
     // PHASE 4: CREATE UNITS + LESSONS IN DB
@@ -253,7 +415,7 @@ ${structureText}`;
     console.log(`[CurriculumUpload] Created: ${createdData.length} units, ${totalCreatedLessons} lessons`);
 
     // ═══════════════════════════════════════
-    // PHASE 5: GENERATE SUMMARIES + QUESTIONS
+    // PHASE 5: SAVE SUMMARIES + GENERATE QUESTIONS
     // ═══════════════════════════════════════
     let totalQuestions = 0;
     let summariesGenerated = 0;
@@ -262,47 +424,58 @@ ${structureText}`;
       for (const lesson of unitData.lessons) {
         if (!lesson.content || lesson.content.length < 30) continue;
 
-        // Generate Summary
-        const summaryPrompt = `أنت معلم خبير في مواد الثانوية العامة المصرية. اكتب ملخصاً شاملاً ومنظماً باللغة العربية.\n\nاستخدم Markdown:\n- # للعنوان الرئيسي\n- ## للأقسام (سيتم عرضها كـ tabs)\n- ### للعناوين الفرعية\n- نقاط وأرقام\n- **تمييز** للمفاهيم\n- > اقتباسات للتعريفات\n- جداول عند الحاجة\n\nقسّم الملخص إلى:\n- مقدمة ونظرة عامة\n- شرح المفاهيم\n- أمثلة عملية\n- نقاط مهمة للحفظ\n\nالمحتوى:\n${lesson.content.slice(0, 80000)}`;
-
-        const summaryResult = await callClaude(apiKey, aiModel, summaryPrompt, 4000);
-        if (summaryResult.success && summaryResult.text) {
+        if (preAnalyzed) {
+          // ✅ PRE-ANALYZED: Save content directly as summary — NO AI
           const { error: summErr } = await supabase.rpc('save_generated_summary', {
             p_lesson_id: lesson.id,
-            p_content: summaryResult.text,
+            p_content: lesson.content,
           });
           if (!summErr) summariesGenerated++;
+        } else {
+          // 🤖 AI MODE: Generate summary from raw content
+          const summaryPrompt = `أنت معلم خبير في مواد الثانوية العامة المصرية. اكتب ملخصاً شاملاً ومنظماً باللغة العربية.\n\nاستخدم Markdown:\n- # للعنوان الرئيسي\n- ## للأقسام (سيتم عرضها كـ tabs)\n- ### للعناوين الفرعية\n- نقاط وأرقام\n- **تمييز** للمفاهيم\n- > اقتباسات للتعريفات\n- جداول عند الحاجة\n\nقسّم الملخص إلى:\n- مقدمة ونظرة عامة\n- شرح المفاهيم\n- أمثلة عملية\n- نقاط مهمة للحفظ\n\nالمحتوى:\n${lesson.content.slice(0, 80000)}`;
+
+          const summaryResult = await callClaude(apiKey, aiModel, summaryPrompt, 4000);
+          if (summaryResult.success && summaryResult.text) {
+            const { error: summErr } = await supabase.rpc('save_generated_summary', {
+              p_lesson_id: lesson.id,
+              p_content: summaryResult.text,
+            });
+            if (!summErr) summariesGenerated++;
+          }
         }
 
-        // Generate Questions (2 rounds)
-        const questionText = lesson.content.slice(0, MAX_TEXT_FOR_QUESTIONS);
-        const roundDefs = [
-          { instruction: `أنشئ ${QUESTIONS_PER_ROUND} سؤال: تذكر + فهم + تطبيق.\n60% اختيار من متعدد، 25% صح/غلط، 15% مقالي.\n40% سهل، 40% متوسط، 20% صعب.` },
-          { instruction: `أنشئ ${QUESTIONS_PER_ROUND} سؤال: تحليل + أنماط امتحانات ثانوية عامة.\n60% اختيار من متعدد، 25% صح/غلط، 15% مقالي.\n20% سهل، 40% متوسط، 40% صعب.` },
-        ];
+        // Generate Questions (optional — controlled by generateQuestions flag)
+        if (generateQuestions && apiKey) {
+          const questionText = lesson.content.slice(0, MAX_TEXT_FOR_QUESTIONS);
+          const roundDefs = [
+            { instruction: `أنشئ ${QUESTIONS_PER_ROUND} سؤال: تذكر + فهم + تطبيق.\n60% اختيار من متعدد، 25% صح/غلط، 15% مقالي.\n40% سهل، 40% متوسط، 20% صعب.` },
+            { instruction: `أنشئ ${QUESTIONS_PER_ROUND} سؤال: تحليل + أنماط امتحانات ثانوية عامة.\n60% اختيار من متعدد، 25% صح/غلط، 15% مقالي.\n20% سهل، 40% متوسط، 40% صعب.` },
+          ];
 
-        for (const round of roundDefs) {
-          const qPrompt = `أنت خبير أسئلة امتحانات الثانوية العامة المصرية.\n\n${round.instruction}\n\nالمحتوى:\n${questionText}\n\n⚠️ JSON array فقط:\n{"question_ar": "...", "type": "mcq", "options": ["أ","ب","ج","د"], "correct_answer": 0, "explanation_ar": "...", "difficulty": "medium"}\ntype: "mcq" / "true_false" (["\u0635\u062d","\u063a\u0644\u0637"]) / "essay" ([])\n\nJSON:`;
+          for (const round of roundDefs) {
+            const qPrompt = `أنت خبير أسئلة امتحانات الثانوية العامة المصرية.\n\n${round.instruction}\n\nالمحتوى:\n${questionText}\n\n⚠️ JSON array فقط:\n{"question_ar": "...", "type": "mcq", "options": ["أ","ب","ج","د"], "correct_answer": 0, "explanation_ar": "...", "difficulty": "medium"}\ntype: "mcq" / "true_false" (["صح","غلط"]) / "essay" ([])\n\nJSON:`;
 
-          const qResult = await callClaude(apiKey, aiModel, qPrompt, 16000);
-          if (qResult.success && qResult.text) {
-            const parsed = parseQuestionsJSON(qResult.text);
-            if (parsed.length > 0) {
-              const questionsForDB = parsed.map(q => ({
-                question_ar: q.question_ar || '',
-                type: q.type || 'mcq',
-                options: Array.isArray(q.options) ? q.options : ['أ','ب','ج','د'],
-                correct_answer: typeof q.correct_answer === 'number' ? q.correct_answer : 0,
-                explanation_ar: q.explanation_ar || '',
-                difficulty: q.difficulty || 'medium',
-              }));
+            const qResult = await callClaude(apiKey, aiModel, qPrompt, 16000);
+            if (qResult.success && qResult.text) {
+              const parsed = parseQuestionsJSON(qResult.text);
+              if (parsed.length > 0) {
+                const questionsForDB = parsed.map(q => ({
+                  question_ar: q.question_ar || '',
+                  type: q.type || 'mcq',
+                  options: Array.isArray(q.options) ? q.options : ['أ','ب','ج','د'],
+                  correct_answer: typeof q.correct_answer === 'number' ? q.correct_answer : 0,
+                  explanation_ar: q.explanation_ar || '',
+                  difficulty: q.difficulty || 'medium',
+                }));
 
-              const { data: saveResult, error: saveError } = await supabase.rpc('save_generated_questions', {
-                p_lesson_id: lesson.id,
-                p_subject_id: subjectId,
-                p_questions: questionsForDB,
-              });
-              if (!saveError) totalQuestions += (saveResult?.inserted || parsed.length);
+                const { data: saveResult, error: saveError } = await supabase.rpc('save_generated_questions', {
+                  p_lesson_id: lesson.id,
+                  p_subject_id: subjectId,
+                  p_questions: questionsForDB,
+                });
+                if (!saveError) totalQuestions += (saveResult?.inserted || parsed.length);
+              }
             }
           }
         }
@@ -312,11 +485,15 @@ ${structureText}`;
     // ═══════════════════════════════════════
     // PHASE 6: DONE
     // ═══════════════════════════════════════
-    console.log(`[CurriculumUpload] DONE — ${createdData.length} units, ${totalCreatedLessons} lessons, ${summariesGenerated} summaries, ${totalQuestions} questions`);
+    const mode = preAnalyzed ? 'محلل مسبقاً ✅' : 'تحليل AI 🤖';
+    console.log(`[CurriculumUpload] DONE (${mode}) — ${createdData.length} units, ${totalCreatedLessons} lessons, ${summariesGenerated} summaries, ${totalQuestions} questions`);
 
     return NextResponse.json({
       success: true,
-      message: `تم تقسيم المنهج بنجاح من ${processedFiles.length} ملف!`,
+      message: preAnalyzed 
+        ? `تم رفع المنهج المحلل مسبقاً بنجاح من ${processedFiles.length} ملف!`
+        : `تم تقسيم المنهج بنجاح من ${processedFiles.length} ملف!`,
+      mode: preAnalyzed ? 'pre-analyzed' : 'ai',
       filesProcessed: processedFiles.length,
       filesFailed: failedFiles.length,
       processedFileNames: processedFiles,
@@ -358,7 +535,7 @@ function parseQuestionsJSON(text: string): any[] {
 }
 
 // ═══════════════════════════════════════
-// CLAUDE API CALL
+// CLAUDE API CALL — FIXED: PDF uses 'document' type
 // ═══════════════════════════════════════
 async function callClaude(
   apiKey: string, model: string, prompt: string, maxTokens: number,
@@ -366,17 +543,50 @@ async function callClaude(
 ): Promise<{ success: boolean; text?: string; error?: string }> {
   try {
     const content: any[] = [];
+    const isPdf = imageData?.mimeType === 'application/pdf';
+    
     if (imageData) {
-      content.push({ type: 'image', source: { type: 'base64', media_type: imageData.mimeType, data: imageData.base64 } });
+      if (isPdf) {
+        // ✅ PDF — use 'document' type (Anthropic PDF support)
+        content.push({ 
+          type: 'document', 
+          source: { 
+            type: 'base64', 
+            media_type: 'application/pdf', 
+            data: imageData.base64 
+          } 
+        });
+      } else {
+        // 🖼️ Image — use 'image' type
+        content.push({ 
+          type: 'image', 
+          source: { 
+            type: 'base64', 
+            media_type: imageData.mimeType, 
+            data: imageData.base64 
+          } 
+        });
+      }
     }
     content.push({ type: 'text', text: prompt });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 300000);
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    };
+    
+    // Add PDF beta header if needed
+    if (isPdf) {
+      headers['anthropic-beta'] = 'pdfs-2024-09-25';
+    }
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      headers,
       body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content }] }),
       signal: controller.signal,
     });
@@ -384,14 +594,14 @@ async function callClaude(
     clearTimeout(timeout);
     if (!res.ok) {
       const errBody = await res.text();
-      console.error(`[Claude] ${res.status}:`, errBody.slice(0, 300));
-      return { success: false, error: `خطأ Claude: ${res.status}` };
+      console.error(`[Claude] ${res.status}:`, errBody.slice(0, 500));
+      return { success: false, error: `خطأ Claude: ${res.status} — ${errBody.slice(0, 200)}` };
     }
 
     const data = await res.json();
     return { success: true, text: data.content?.[0]?.text || '' };
   } catch (err: any) {
-    if (err.name === 'AbortError') return { success: false, error: 'انتهت المهلة' };
+    if (err.name === 'AbortError') return { success: false, error: 'انتهت المهلة (5 دقائق)' };
     return { success: false, error: err.message };
   }
 }

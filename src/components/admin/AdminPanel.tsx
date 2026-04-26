@@ -654,6 +654,8 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
   const [curriculumProgress, setCurriculumProgress] = useState("");
   const [curriculumResult, setCurriculumResult] = useState<Record<string, unknown> | null>(null);
   const curriculumFileRef = useRef<HTMLInputElement>(null);
+  const [preAnalyzed, setPreAnalyzed] = useState(false);
+  const [generateQuestions, setGenerateQuestions] = useState(true);
 
   const subjectId = (subject.id as string) || "";
   const subjectName = (subject.name as string) || (subject.name_ar as string) || "المادة";
@@ -771,10 +773,15 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
     const fileNames = files.map(f => f.name).join("\n• ");
     const totalSizeMB = files.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024);
 
-    if (!confirm(`📚 سيتم تحليل ${files.length} ملف وتقسيمهم تلقائياً إلى أبواب ودروس.\n\n• ${fileNames}\n\n📦 الحجم الإجمالي: ${totalSizeMB.toFixed(1)} MB\n\nالذكاء الاصطناعي سيولّد ملخصات وأسئلة لكل درس.\n\nالعملية قد تأخذ عدة دقائق حسب حجم الملفات.\n\nمتابعة؟`)) return;
+    const modeText = preAnalyzed 
+      ? `✅ وضع محلل مسبقاً — الملفات جاهزة ومنظمة (# باب / ## درس)\nسيتم حفظ المحتوى مباشرة بدون تحليل AI.`
+      : `🤖 وضع AI — الذكاء الاصطناعي سيحلل ويقسم المنهج تلقائياً.`;
+    const questionsText = generateQuestions ? "\n📋 سيتم توليد أسئلة لكل درس." : "\n⏭️ بدون توليد أسئلة.";
+
+    if (!confirm(`📚 سيتم معالجة ${files.length} ملف\n\n• ${fileNames}\n\n📦 الحجم: ${totalSizeMB.toFixed(1)} MB\n\n${modeText}${questionsText}\n\nمتابعة؟`)) return;
 
     setCurriculumUploading(true);
-    setCurriculumProgress(`📤 جاري رفع ${files.length} ملف...`);
+    setCurriculumProgress(preAnalyzed ? `📤 جاري رفع وحفظ ${files.length} ملف...` : `📤 جاري رفع ${files.length} ملف...`);
     setCurriculumResult(null);
 
     try {
@@ -783,10 +790,12 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
         formData.append("files", file);
       }
       formData.append("subjectId", subjectId);
+      if (preAnalyzed) formData.append("preAnalyzed", "true");
+      if (!generateQuestions) formData.append("generateQuestions", "false");
 
       const token = document.cookie.split(";").find(c => c.trim().startsWith("auth-token="))?.split("=").slice(1).join("=");
 
-      setCurriculumProgress(`🔤 جاري استخراج النص من ${files.length} ملف...`);
+      setCurriculumProgress(preAnalyzed ? `📝 جاري تحليل هيكل ${files.length} ملف وحفظ المحتوى...` : `🔤 جاري استخراج النص من ${files.length} ملف...`);
 
       const res = await fetch("/api/content/curriculum-upload", {
         method: "POST",
@@ -1040,13 +1049,13 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
 
       {/* 📚 Curriculum Upload Section */}
       <div className="mb-4 p-4 rounded-xl border-2 border-dashed" style={{ borderColor: "var(--theme-primary)", background: "var(--theme-primary-light, rgba(99,102,241,0.05))" }}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <h4 className="font-bold text-sm flex items-center gap-2" style={{ color: "var(--theme-primary)" }}>
               📚 رفع المنهج الكامل
             </h4>
             <p className="text-xs mt-1" style={{ color: "var(--theme-text-secondary)" }}>
-              ارفع ملف أو أكتر (PDF / Word / PowerPoint / صور) — النظام يقسمهم تلقائياً لأبواب ودروس ويولّد ملخصات + أسئلة
+              ارفع ملف أو أكتر (PDF / Word / PowerPoint / صور / نص) — اختر الوضع المناسب
             </p>
           </div>
           <button
@@ -1056,12 +1065,62 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
             style={{ background: curriculumUploading ? "#9ca3af" : "var(--theme-cta-gradient)" }}
           >
             {curriculumUploading ? (
-              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> جاري التحليل...</>
+              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> جاري المعالجة...</>
             ) : (
-              <>📤 رفع الكتاب كامل</>
+              <>📤 رفع الملفات</>
             )}
           </button>
         </div>
+
+        {/* Mode Toggle */}
+        <div className="flex flex-wrap gap-2 mb-2">
+          <button
+            onClick={() => setPreAnalyzed(false)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: !preAnalyzed ? "var(--theme-primary)" : "var(--theme-surface-bg)",
+              color: !preAnalyzed ? "#fff" : "var(--theme-text-secondary)",
+              border: `1px solid ${!preAnalyzed ? "var(--theme-primary)" : "var(--theme-surface-border)"}`,
+            }}
+          >
+            🤖 تحليل بالذكاء الاصطناعي
+          </button>
+          <button
+            onClick={() => setPreAnalyzed(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: preAnalyzed ? "var(--theme-primary)" : "var(--theme-surface-bg)",
+              color: preAnalyzed ? "#fff" : "var(--theme-text-secondary)",
+              border: `1px solid ${preAnalyzed ? "var(--theme-primary)" : "var(--theme-surface-border)"}`,
+            }}
+          >
+            ✅ محلل مسبقاً (بدون AI)
+          </button>
+
+          <span className="mx-1 self-center text-xs" style={{ color: "var(--theme-text-secondary)" }}>|</span>
+
+          <button
+            onClick={() => setGenerateQuestions(!generateQuestions)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: generateQuestions ? "#059669" : "var(--theme-surface-bg)",
+              color: generateQuestions ? "#fff" : "var(--theme-text-secondary)",
+              border: `1px solid ${generateQuestions ? "#059669" : "var(--theme-surface-border)"}`,
+            }}
+          >
+            {generateQuestions ? "📋 توليد أسئلة ✓" : "📋 بدون أسئلة"}
+          </button>
+        </div>
+
+        {/* Mode Description */}
+        <p className="text-xs px-1" style={{ color: "var(--theme-text-secondary)" }}>
+          {preAnalyzed ? (
+            <>💡 <strong>الوضع المحلل:</strong> ارفع ملفات Markdown/نص منظمة (<code style={{fontSize:"10px"}}># باب</code> → <code style={{fontSize:"10px"}}>## درس</code> → محتوى). النظام يحفظ المحتوى مباشرة بدون AI.</>
+          ) : (
+            <>💡 <strong>وضع AI:</strong> ارفع PDF أو ملفات خام — الذكاء الاصطناعي يحلل ويقسم المنهج تلقائياً لأبواب ودروس ويولّد ملخصات.</>
+          )}
+        </p>
+
         <input ref={curriculumFileRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.rtf" className="hidden" onChange={handleCurriculumUpload} />
       </div>
 
