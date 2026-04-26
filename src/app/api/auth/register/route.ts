@@ -22,16 +22,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     
     // ═══ Sanitize ALL inputs ═══
-    const fullName = sanitizeName(body.fullName || body.name || '');
+    const fullName = sanitizeName(body.fullName || body.full_name || body.name || '');
     const phone = sanitizePhone(body.phone || '');
     const password = sanitizePassword(body.password || '');
     const governorate = sanitizeText(body.governorate || '', 50);
     const gradeLevel = parseInt(body.gradeLevel) || 3;
 
     // ═══ Validation ═══
-    if (!fullName || fullName.length < 3) {
+    if (!fullName || fullName.length < 2) {
       return NextResponse.json(
-        { error: 'الاسم لازم يكون 3 حروف على الأقل' },
+        { error: 'الاسم مطلوب (حرفين على الأقل)' },
         { status: 400 }
       );
     }
