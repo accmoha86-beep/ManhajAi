@@ -365,46 +365,157 @@ export default function SubjectsPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {/* TEXT/MARKDOWN CONTENT */}
+                    {/* TEXT/MARKDOWN CONTENT — Full Renderer */}
                     {!selectedLesson.summary.key_points?.length &&
                       !selectedLesson.summary.definitions?.length &&
                       selectedLesson.summary.content && (
-                        <div className="space-y-1.5">
-                          {selectedLesson.summary.content.split("\n").map((line: string, i: number) => {
-                            const t = line.trim();
-                            if (!t) return <div key={i} className="h-1.5" />;
-                            if (t.startsWith("# "))
-                              return (
-                                <h2 key={i} className="text-xl font-bold mt-5 mb-3" style={{ color: "var(--theme-primary)" }}>
-                                  {t.slice(2)}
-                                </h2>
+                        <div className="space-y-2" style={{ fontFamily: "'Cairo', sans-serif" }}>
+                          {(() => {
+                            const lines = selectedLesson.summary.content.split("\n");
+                            const elements: React.ReactNode[] = [];
+                            let inCodeBlock = false;
+                            let codeLines: string[] = [];
+                            let inBlockquote = false;
+                            let quoteLines: string[] = [];
+
+                            const renderInline = (text: string) => {
+                              return text
+                                .replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight:800;color:var(--theme-primary)">$1</strong>')
+                                .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                                .replace(/`([^`]+)`/g, '<code style="background:var(--theme-hover-overlay);padding:1px 6px;border-radius:4px;font-size:0.9em">$1</code>');
+                            };
+
+                            const flushQuote = (idx: number) => {
+                              if (quoteLines.length > 0) {
+                                elements.push(
+                                  <div key={`quote-${idx}`} className="rounded-xl p-4 my-3" style={{
+                                    background: "var(--theme-hover-overlay)",
+                                    borderRight: "4px solid var(--theme-primary)",
+                                  }}>
+                                    {quoteLines.map((ql, qi) => (
+                                      <p key={qi} className="text-[15px] leading-[1.9]" style={{ color: "var(--theme-text-primary)" }}
+                                        dangerouslySetInnerHTML={{ __html: renderInline(ql) }}
+                                      />
+                                    ))}
+                                  </div>
+                                );
+                                quoteLines = [];
+                                inBlockquote = false;
+                              }
+                            };
+
+                            lines.forEach((line: string, i: number) => {
+                              const t = line.trim();
+
+                              // Code block toggle
+                              if (t.startsWith("```")) {
+                                if (inCodeBlock) {
+                                  elements.push(
+                                    <pre key={`code-${i}`} className="rounded-xl p-4 my-3 overflow-x-auto text-sm" dir="ltr" style={{
+                                      background: "#1e1e2e", color: "#cdd6f4", fontFamily: "monospace", lineHeight: 1.7,
+                                    }}>
+                                      {codeLines.join("\n")}
+                                    </pre>
+                                  );
+                                  codeLines = [];
+                                  inCodeBlock = false;
+                                } else {
+                                  flushQuote(i);
+                                  inCodeBlock = true;
+                                }
+                                return;
+                              }
+                              if (inCodeBlock) { codeLines.push(line); return; }
+
+                              // Blockquote
+                              if (t.startsWith("> ")) {
+                                inBlockquote = true;
+                                quoteLines.push(t.slice(2));
+                                return;
+                              } else if (inBlockquote) {
+                                flushQuote(i);
+                              }
+
+                              // Empty line
+                              if (!t) { elements.push(<div key={i} className="h-2" />); return; }
+
+                              // Horizontal rule
+                              if (/^-{3,}$|^\*{3,}$|^_{3,}$/.test(t)) {
+                                elements.push(
+                                  <div key={i} className="my-4 h-px" style={{ background: "linear-gradient(to left, transparent, var(--theme-primary), transparent)", opacity: 0.3 }} />
+                                );
+                                return;
+                              }
+
+                              // H1
+                              if (t.startsWith("# ")) {
+                                elements.push(
+                                  <div key={i} className="rounded-2xl p-4 mt-6 mb-3" style={{ background: "var(--theme-cta-gradient)" }}>
+                                    <h2 className="text-xl font-extrabold text-white">{t.slice(2)}</h2>
+                                  </div>
+                                );
+                                return;
+                              }
+                              // H2
+                              if (t.startsWith("## ")) {
+                                elements.push(
+                                  <div key={i} className="flex items-center gap-3 mt-6 mb-3 pb-2" style={{ borderBottom: "2px solid var(--theme-primary)" }}>
+                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--theme-cta-gradient)" }}>
+                                      <Brain size={16} className="text-white" />
+                                    </div>
+                                    <h3 className="text-lg font-extrabold" style={{ color: "var(--theme-primary)" }}>{t.slice(3)}</h3>
+                                  </div>
+                                );
+                                return;
+                              }
+                              // H3/H4
+                              if (t.startsWith("### ") || t.startsWith("#### ")) {
+                                elements.push(
+                                  <h4 key={i} className="text-base font-bold mt-4 mb-2 flex items-center gap-2" style={{ color: "var(--theme-primary)" }}>
+                                    <span className="w-2 h-2 rounded-full" style={{ background: "var(--theme-primary)" }} />
+                                    {t.replace(/^#{1,4}\s*/, "")}
+                                  </h4>
+                                );
+                                return;
+                              }
+
+                              // Bullet points
+                              if (/^[\u2022\-\*\u25CF\u25C6] /.test(t)) {
+                                elements.push(
+                                  <div key={i} className="flex items-start gap-3 mr-2 text-[16px] leading-[1.85]" style={{ color: "var(--theme-text-primary)" }}>
+                                    <CheckCircle size={16} className="mt-1.5 flex-shrink-0" style={{ color: "var(--theme-primary)" }} />
+                                    <span dangerouslySetInnerHTML={{ __html: renderInline(t.replace(/^[\u2022\-\*\u25CF\u25C6]\s*/, "")) }} />
+                                  </div>
+                                );
+                                return;
+                              }
+
+                              // Numbered list
+                              if (/^\d+[.)]\s/.test(t)) {
+                                const num = t.match(/^(\d+)/)?.[1] || "1";
+                                const text = t.replace(/^\d+[.)]\s*/, "");
+                                elements.push(
+                                  <div key={i} className="flex items-start gap-3 mr-2 text-[16px] leading-[1.85]" style={{ color: "var(--theme-text-primary)" }}>
+                                    <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold mt-1" style={{ background: "var(--theme-primary)", color: "#fff" }}>{num}</span>
+                                    <span dangerouslySetInnerHTML={{ __html: renderInline(text) }} />
+                                  </div>
+                                );
+                                return;
+                              }
+
+                              // Normal paragraph
+                              elements.push(
+                                <p key={i} className="text-[16px] leading-[1.9]" style={{ color: "var(--theme-text-primary)" }}
+                                  dangerouslySetInnerHTML={{ __html: renderInline(t) }}
+                                />
                               );
-                            if (t.startsWith("## "))
-                              return (
-                                <h3 key={i} className="text-lg font-bold mt-4 mb-2 flex items-center gap-2" style={{ color: "var(--theme-primary)" }}>
-                                  <Brain size={15} />
-                                  {t.slice(3)}
-                                </h3>
-                              );
-                            if (t.startsWith("### ") || t.startsWith("#### "))
-                              return (
-                                <h4 key={i} className="text-base font-bold mt-3 mb-1" style={{ color: "var(--theme-primary)" }}>
-                                  {t.replace(/^#{1,4}\s*/, "")}
-                                </h4>
-                              );
-                            if (/^[\u2022\-\*\u2726\u2727\u25CF\u25C6] /.test(t))
-                              return (
-                                <div key={i} className="flex items-start gap-2.5 text-[16px] leading-[1.85]" style={{ color: "var(--theme-text-primary)" }}>
-                                  <CheckCircle size={16} className="mt-1.5 flex-shrink-0" style={{ color: "var(--theme-primary)" }} />
-                                  <span dangerouslySetInnerHTML={{ __html: t.replace(/^[\u2022\-\*\u2726\u2727\u25CF\u25C6]\s*/, "").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>") }} />
-                                </div>
-                              );
-                            return (
-                              <p key={i} className="text-[16px] leading-[1.85]" style={{ color: "var(--theme-text-primary)" }}
-                                dangerouslySetInnerHTML={{ __html: t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>") }}
-                              />
-                            );
-                          })}
+                            });
+
+                            // Flush remaining
+                            flushQuote(lines.length);
+
+                            return elements;
+                          })()}
                         </div>
                       )}
 

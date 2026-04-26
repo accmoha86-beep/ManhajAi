@@ -24,65 +24,126 @@ const typingDotsStyle = `
 .typing-dot:nth-child(3) { animation: typingBounce 1.2s infinite 0.4s; }
 `;
 
-/* ── Simple markdown-like renderer for chat messages ── */
+/* ── Enhanced markdown renderer for chat messages ── */
 function renderChatContent(text: string) {
   if (!text) return null;
-  const lines = text.split("\n");
+  const lines = text.split("
+");
   const elements: React.ReactNode[] = [];
+  let inCode = false;
+  let codeLines: string[] = [];
+
+  const renderInline = (t: string): React.ReactNode[] => {
+    const parts = t.split(/(\*\*.*?\*\*|`[^`]+`)/g);
+    return parts.map((part, j) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={j} style={{ fontWeight: 700, color: "inherit" }}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("`") && part.endsWith("`")) {
+        return <code key={j} style={{ background: "rgba(0,0,0,0.1)", padding: "1px 5px", borderRadius: "4px", fontSize: "0.88em", fontFamily: "monospace" }}>{part.slice(1, -1)}</code>;
+      }
+      return part;
+    });
+  };
 
   lines.forEach((line, i) => {
     const trimmed = line.trim();
-    if (!trimmed) {
-      elements.push(<br key={`br-${i}`} />);
+
+    // Code block
+    if (trimmed.startsWith("```")) {
+      if (inCode) {
+        elements.push(
+          <pre key={`code-${i}`} dir="ltr" style={{
+            background: "rgba(0,0,0,0.15)", padding: "10px 14px", borderRadius: "10px",
+            margin: "6px 0", fontSize: "0.85em", fontFamily: "monospace",
+            lineHeight: 1.6, overflowX: "auto", whiteSpace: "pre-wrap",
+          }}>
+            {codeLines.join("
+")}
+          </pre>
+        );
+        codeLines = [];
+        inCode = false;
+      } else {
+        inCode = true;
+      }
+      return;
+    }
+    if (inCode) { codeLines.push(line); return; }
+
+    // Empty line
+    if (!trimmed) { elements.push(<div key={i} style={{ height: "6px" }} />); return; }
+
+    // Horizontal rule
+    if (/^-{3,}$/.test(trimmed)) {
+      elements.push(<div key={i} style={{ height: "1px", background: "currentColor", opacity: 0.15, margin: "8px 0" }} />);
       return;
     }
 
-    // Bold: **text**
-    let processed: React.ReactNode = trimmed;
-    if (trimmed.includes("**")) {
-      const parts = trimmed.split(/\*\*(.*?)\*\*/g);
-      processed = parts.map((part, j) =>
-        j % 2 === 1 ? <strong key={j} style={{ fontWeight: 700 }}>{part}</strong> : part
+    // Blockquote
+    if (trimmed.startsWith("> ")) {
+      elements.push(
+        <div key={i} style={{
+          borderRight: "3px solid currentColor", paddingRight: "10px",
+          marginRight: "4px", opacity: 0.85, fontSize: "0.93em",
+          fontStyle: "italic", margin: "4px 0",
+        }}>
+          {renderInline(trimmed.slice(2))}
+        </div>
       );
+      return;
     }
 
     // Headings
     if (trimmed.startsWith("### ")) {
-      elements.push(
-        <div key={i} style={{ fontWeight: 800, fontSize: "1rem", marginTop: "8px", marginBottom: "4px" }}>
-          {trimmed.slice(4)}
-        </div>
-      );
-    } else if (trimmed.startsWith("## ")) {
-      elements.push(
-        <div key={i} style={{ fontWeight: 800, fontSize: "1.05rem", marginTop: "10px", marginBottom: "4px" }}>
-          {trimmed.slice(3)}
-        </div>
-      );
-    } else if (trimmed.startsWith("# ")) {
-      elements.push(
-        <div key={i} style={{ fontWeight: 800, fontSize: "1.1rem", marginTop: "12px", marginBottom: "4px" }}>
-          {trimmed.slice(2)}
-        </div>
-      );
+      elements.push(<div key={i} style={{ fontWeight: 800, fontSize: "0.98rem", marginTop: "10px", marginBottom: "3px" }}>{trimmed.slice(4)}</div>);
+      return;
     }
+    if (trimmed.startsWith("## ")) {
+      elements.push(<div key={i} style={{ fontWeight: 800, fontSize: "1.02rem", marginTop: "12px", marginBottom: "4px" }}>{trimmed.slice(3)}</div>);
+      return;
+    }
+    if (trimmed.startsWith("# ")) {
+      elements.push(<div key={i} style={{ fontWeight: 800, fontSize: "1.08rem", marginTop: "12px", marginBottom: "4px" }}>{trimmed.slice(2)}</div>);
+      return;
+    }
+
     // Bullet points
-    else if (/^[-•●]\s/.test(trimmed) || /^\d+[.)]\s/.test(trimmed)) {
+    if (/^[-•●\*]\s/.test(trimmed)) {
+      const content = trimmed.replace(/^[-•●\*]\s*/, "");
       elements.push(
-        <div key={i} style={{ paddingRight: "12px", marginBottom: "2px" }}>
-          {typeof processed === "string" ? processed : processed}
+        <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "2px", paddingRight: "4px" }}>
+          <span style={{ color: "inherit", opacity: 0.7, marginTop: "2px", flexShrink: 0 }}>✦</span>
+          <span>{renderInline(content)}</span>
         </div>
       );
+      return;
     }
-    // Normal paragraph
-    else {
+
+    // Numbered list
+    if (/^\d+[.)]\s/.test(trimmed)) {
+      const num = trimmed.match(/^(\d+)/)?.[1] || "1";
+      const content = trimmed.replace(/^\d+[.)]\s*/, "");
       elements.push(
-        <span key={i}>
-          {processed}
-          {i < lines.length - 1 && <br />}
-        </span>
+        <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "2px", paddingRight: "4px" }}>
+          <span style={{
+            minWidth: "22px", height: "22px", borderRadius: "50%",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "0.75em", fontWeight: 700, flexShrink: 0, marginTop: "2px",
+            background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.15)",
+          }}>{num}</span>
+          <span>{renderInline(content)}</span>
+        </div>
       );
+      return;
     }
+
+    // Normal text
+    elements.push(
+      <div key={i} style={{ marginBottom: "1px" }}>
+        {renderInline(trimmed)}
+      </div>
+    );
   });
 
   return <>{elements}</>;
