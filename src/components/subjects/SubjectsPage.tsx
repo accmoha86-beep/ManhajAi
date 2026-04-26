@@ -420,12 +420,12 @@ export default function SubjectsPage() {
     <div
       className="subject-split flex flex-col lg:flex-row gap-0 lg:gap-0"
       dir="rtl"
-      style={{ minHeight: "calc(100vh - 4rem)" }}
+      style={{ height: "calc(100vh - 4rem)", overflow: "hidden" }}
     >
       {/* ============ RIGHT: Content (50%) ============ */}
       <div
         className="w-full lg:w-[50%] overflow-y-auto p-3 sm:p-4 md:p-6"
-        style={{ height: "auto", maxHeight: "none" }}
+        style={{ height: "100%" }}
       >
         {/* Back + Header */}
         <div className="flex items-center gap-3 mb-5">
@@ -480,11 +480,10 @@ export default function SubjectsPage() {
           </h2>
         </div>
 
-        {/* Lessons Grid */}
         {sortedLessons.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <FileText
-              size={40}
+            <BookOpen
+              size={32}
               className="opacity-30"
               style={{ color: "var(--theme-text-secondary)" }}
             />
@@ -496,461 +495,463 @@ export default function SubjectsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div className="space-y-3">
             {sortedLessons.map((lesson, idx) => (
-              <button
+              <div
                 key={lesson.id}
-                onClick={() => openLesson(lesson.id)}
-                className="text-right rounded-xl p-3.5 border transition-all duration-200 hover:shadow-md flex items-start gap-3"
+                className="rounded-xl border overflow-hidden transition-all duration-200"
                 style={{
-                  background:
-                    activeLessonId === lesson.id
-                      ? "var(--theme-primary-light, rgba(99,102,241,0.08))"
-                      : "var(--theme-surface-bg)",
                   borderColor:
                     activeLessonId === lesson.id
                       ? "var(--theme-primary)"
                       : "var(--theme-surface-border)",
+                  background: "var(--theme-surface-bg)",
+                  boxShadow:
+                    activeLessonId === lesson.id
+                      ? "0 2px 12px rgba(99,102,241,0.1)"
+                      : "none",
                 }}
               >
-                {/* Lesson number */}
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                {/* ─── Lesson Heading (clickable) ─── */}
+                <button
+                  onClick={() => openLesson(lesson.id)}
+                  className="w-full text-right p-4 flex items-center gap-3 transition-all duration-150"
                   style={{
                     background:
                       activeLessonId === lesson.id
-                        ? "var(--theme-cta-gradient)"
-                        : "var(--theme-surface-border)",
-                    color:
-                      activeLessonId === lesson.id
-                        ? "#fff"
-                        : "var(--theme-text-secondary)",
+                        ? "var(--theme-primary-light, rgba(99,102,241,0.06))"
+                        : "transparent",
                   }}
                 >
-                  {idx + 1}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <h4
-                    className="text-sm font-bold truncate"
-                    style={{ color: "var(--theme-text-primary)" }}
-                  >
-                    {lesson.title}
-                  </h4>
                   <div
-                    className="flex items-center gap-3 mt-1 text-xs"
-                    style={{ color: "var(--theme-text-secondary)" }}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-sm font-bold"
+                    style={{
+                      background:
+                        activeLessonId === lesson.id
+                          ? "var(--theme-cta-gradient)"
+                          : "var(--theme-surface-border)",
+                      color:
+                        activeLessonId === lesson.id
+                          ? "#fff"
+                          : "var(--theme-text-secondary)",
+                    }}
                   >
-                    {lesson.has_summary && (
-                      <span className="flex items-center gap-1">
-                        <CheckCircle size={12} />
-                        ملخّص
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1">
-                      <MessageSquare size={12} />
-                      {lesson.question_count} سؤال
-                    </span>
+                    {idx + 1}
                   </div>
-                </div>
 
-                {/* Expand indicator */}
-                <div
-                  className="flex-shrink-0 mt-1"
-                  style={{ color: "var(--theme-text-secondary)" }}
-                >
-                  {activeLessonId === lesson.id ? (
-                    <ChevronUp size={16} />
-                  ) : (
-                    <ChevronDown size={16} />
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ---- Lesson Content (below grid) ---- */}
-        {activeLessonId && (
-          <div
-            className="rounded-2xl border p-5 mb-4 transition-all duration-300 animate-in fade-in slide-in-from-top-2"
-            style={{
-              background: "var(--theme-surface-bg)",
-              borderColor: "var(--theme-surface-border)",
-            }}
-          >
-            {loadingLesson && (
-              <div className="flex items-center justify-center py-10 gap-3">
-                <Loader2
-                  size={24}
-                  className="animate-spin"
-                  style={{ color: "var(--theme-primary)" }}
-                />
-                <span
-                  className="text-sm"
-                  style={{ color: "var(--theme-text-secondary)" }}
-                >
-                  جاري تحميل محتوى الدرس...
-                </span>
-              </div>
-            )}
-
-            {errorLesson && (
-              <div className="flex flex-col items-center justify-center py-8 gap-3">
-                <AlertCircle size={28} className="text-red-500" />
-                <p className="text-red-500 text-sm">{errorLesson}</p>
-                <button
-                  onClick={() => openLesson(activeLessonId)}
-                  className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90"
-                  style={{ background: "var(--theme-cta-gradient)" }}
-                >
-                  إعادة المحاولة
-                </button>
-              </div>
-            )}
-
-            {!loadingLesson && !errorLesson && selectedLesson && (
-              <>
-                {/* Lesson Title */}
-                <div className="flex items-center gap-2 mb-4">
-                  <PlayCircle
-                    size={20}
-                    style={{ color: "var(--theme-primary)" }}
-                  />
-                  <h3
-                    className="text-lg font-bold"
-                    style={{ color: "var(--theme-text-primary)" }}
-                  >
-                    {selectedLesson.title}
-                  </h3>
-                </div>
-
-                {!selectedLesson.summary ? (
-                  <div className="flex flex-col items-center py-8 gap-2">
-                    <FileText
-                      size={32}
-                      className="opacity-30"
-                      style={{ color: "var(--theme-text-secondary)" }}
-                    />
-                    <p
-                      className="text-sm"
+                  <div className="flex-1 min-w-0">
+                    <h3
+                      className="font-bold"
+                      style={{
+                        fontSize: "0.95rem",
+                        color: "var(--theme-text-primary)",
+                      }}
+                    >
+                      {lesson.title}
+                    </h3>
+                    <div
+                      className="flex items-center gap-3 mt-1 text-xs"
                       style={{ color: "var(--theme-text-secondary)" }}
                     >
-                      لا يوجد ملخّص متاح لهذا الدرس بعد
-                    </p>
+                      {lesson.has_summary && (
+                        <span className="flex items-center gap-1">
+                          <CheckCircle size={12} style={{ color: "var(--theme-primary)" }} />
+                          ملخّص
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1">
+                        <MessageSquare size={12} />
+                        {lesson.question_count} سؤال
+                      </span>
+                    </div>
                   </div>
-                ) : (
-                  <div className="space-y-5">
-                    {/* TEXT/MARKDOWN CONTENT RENDERER */}
-                    {!selectedLesson.summary.key_points?.length &&
-                      !selectedLesson.summary.definitions?.length &&
-                      selectedLesson.summary.content && (
-                        <div className="space-y-1.5">
-                          {selectedLesson.summary.content
-                            .split("\n")
-                            .map((line: string, i: number) => {
-                              const t = line.trim();
-                              if (!t) return <div key={i} className="h-1.5" />;
-                              if (t.startsWith("# "))
-                                return (
-                                  <h2
-                                    key={i}
-                                    className="text-lg font-bold mt-4 mb-2"
-                                    style={{ color: "var(--theme-primary)" }}
-                                  >
-                                    {t.slice(2)}
-                                  </h2>
-                                );
-                              if (t.startsWith("## "))
-                                return (
-                                  <h3
-                                    key={i}
-                                    className="text-base font-bold mt-3 mb-1.5 flex items-center gap-1.5"
-                                    style={{ color: "var(--theme-primary)" }}
-                                  >
-                                    <Brain size={15} />
-                                    {t.slice(3)}
-                                  </h3>
-                                );
-                              if (t.startsWith("### ") || t.startsWith("#### "))
-                                return (
-                                  <h4
-                                    key={i}
-                                    className="text-sm font-bold mt-2 mb-0.5"
-                                    style={{ color: "var(--theme-primary)" }}
-                                  >
-                                    {t.replace(/^#{1,4}\s*/, "")}
-                                  </h4>
-                                );
-                              if (/^[•\-\*✦✧●◆] /.test(t))
-                                return (
-                                  <div
-                                    key={i}
-                                    className="flex items-start gap-2 text-sm leading-relaxed"
-                                    style={{
-                                      color: "var(--theme-text-primary)",
-                                    }}
-                                  >
-                                    <CheckCircle
-                                      size={14}
-                                      className="mt-1 flex-shrink-0"
+
+                  <div
+                    className="flex-shrink-0 transition-transform duration-200"
+                    style={{
+                      color: "var(--theme-text-secondary)",
+                      transform:
+                        activeLessonId === lesson.id
+                          ? "rotate(180deg)"
+                          : "rotate(0deg)",
+                    }}
+                  >
+                    <ChevronDown size={18} />
+                  </div>
+                </button>
+
+                {/* ─── Expanded Lesson Content ─── */}
+                {activeLessonId === lesson.id && (
+                  <div
+                    className="border-t px-4 py-4"
+                    style={{ borderColor: "var(--theme-surface-border)" }}
+                  >
+                    {/* Loading */}
+                    {loadingLesson && (
+                      <div className="flex items-center justify-center py-8 gap-2">
+                        <Loader2
+                          size={20}
+                          className="animate-spin"
+                          style={{ color: "var(--theme-primary)" }}
+                        />
+                        <span
+                          className="text-sm"
+                          style={{ color: "var(--theme-text-secondary)" }}
+                        >
+                          جاري تحميل المحتوى...
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Error */}
+                    {!loadingLesson && errorLesson && (
+                      <div className="flex flex-col items-center py-6 gap-2">
+                        <AlertCircle
+                          size={24}
+                          style={{ color: "#ef4444" }}
+                        />
+                        <p className="text-sm text-red-500">{errorLesson}</p>
+                      </div>
+                    )}
+
+                    {/* Content */}
+                    {!loadingLesson && !errorLesson && selectedLesson && (
+                      <div>
+                        {/* ── Summary Section ── */}
+                        <div className="mb-4">
+                          <div
+                            className="flex items-center gap-2 mb-3"
+                          >
+                            <Brain
+                              size={16}
+                              style={{ color: "var(--theme-primary)" }}
+                            />
+                            <h4
+                              className="text-sm font-bold"
+                              style={{ color: "var(--theme-primary)" }}
+                            >
+                              الملخّص
+                            </h4>
+                          </div>
+
+                          {!selectedLesson.summary ? (
+                            <div className="flex flex-col items-center py-6 gap-2">
+                              <FileText
+                                size={28}
+                                className="opacity-30"
+                                style={{
+                                  color: "var(--theme-text-secondary)",
+                                }}
+                              />
+                              <p
+                                className="text-sm"
+                                style={{
+                                  color: "var(--theme-text-secondary)",
+                                }}
+                              >
+                                لا يوجد ملخّص متاح لهذا الدرس بعد
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {/* TEXT/MARKDOWN CONTENT */}
+                              {!selectedLesson.summary.key_points?.length &&
+                                !selectedLesson.summary.definitions?.length &&
+                                selectedLesson.summary.content && (
+                                  <div className="space-y-1.5">
+                                    {selectedLesson.summary.content
+                                      .split("\n")
+                                      .map(
+                                        (
+                                          line: string,
+                                          i: number
+                                        ) => {
+                                          const t = line.trim();
+                                          if (!t)
+                                            return (
+                                              <div
+                                                key={i}
+                                                className="h-1.5"
+                                              />
+                                            );
+                                          if (t.startsWith("# "))
+                                            return (
+                                              <h2
+                                                key={i}
+                                                className="text-lg font-bold mt-4 mb-2"
+                                                style={{
+                                                  color:
+                                                    "var(--theme-primary)",
+                                                }}
+                                              >
+                                                {t.slice(2)}
+                                              </h2>
+                                            );
+                                          if (t.startsWith("## "))
+                                            return (
+                                              <h3
+                                                key={i}
+                                                className="text-base font-bold mt-3 mb-1.5 flex items-center gap-1.5"
+                                                style={{
+                                                  color:
+                                                    "var(--theme-primary)",
+                                                }}
+                                              >
+                                                <Brain size={15} />
+                                                {t.slice(3)}
+                                              </h3>
+                                            );
+                                          if (
+                                            t.startsWith("### ") ||
+                                            t.startsWith("#### ")
+                                          )
+                                            return (
+                                              <h4
+                                                key={i}
+                                                className="text-sm font-bold mt-2 mb-0.5"
+                                                style={{
+                                                  color:
+                                                    "var(--theme-primary)",
+                                                }}
+                                              >
+                                                {t.replace(
+                                                  /^#{1,4}\s*/,
+                                                  ""
+                                                )}
+                                              </h4>
+                                            );
+                                          if (
+                                            /^[\u2022\-\*\u2726\u2727\u25CF\u25C6] /.test(
+                                              t
+                                            )
+                                          )
+                                            return (
+                                              <div
+                                                key={i}
+                                                className="flex items-start gap-2 text-sm leading-relaxed"
+                                                style={{
+                                                  color:
+                                                    "var(--theme-text-primary)",
+                                                }}
+                                              >
+                                                <CheckCircle
+                                                  size={14}
+                                                  className="mt-1 flex-shrink-0"
+                                                  style={{
+                                                    color:
+                                                      "var(--theme-primary)",
+                                                  }}
+                                                />
+                                                <span
+                                                  dangerouslySetInnerHTML={{
+                                                    __html: t
+                                                      .replace(
+                                                        /^[\u2022\-\*\u2726\u2727\u25CF\u25C6]\s*/,
+                                                        ""
+                                                      )
+                                                      .replace(
+                                                        /\*\*(.+?)\*\*/g,
+                                                        "<strong>$1</strong>"
+                                                      ),
+                                                  }}
+                                                />
+                                              </div>
+                                            );
+                                          return (
+                                            <p
+                                              key={i}
+                                              className="text-sm leading-relaxed"
+                                              style={{
+                                                color:
+                                                  "var(--theme-text-primary)",
+                                              }}
+                                              dangerouslySetInnerHTML={{
+                                                __html: t.replace(
+                                                  /\*\*(.+?)\*\*/g,
+                                                  "<strong>$1</strong>"
+                                                ),
+                                              }}
+                                            />
+                                          );
+                                        }
+                                      )}
+                                  </div>
+                                )}
+
+                              {/* STRUCTURED: Key Points */}
+                              {selectedLesson.summary.key_points &&
+                                selectedLesson.summary.key_points.length >
+                                  0 && (
+                                  <div>
+                                    <h4
+                                      className="text-sm font-bold mb-2 flex items-center gap-1.5"
                                       style={{
                                         color: "var(--theme-primary)",
                                       }}
-                                    />
-                                    <span
-                                      dangerouslySetInnerHTML={{
-                                        __html: t
-                                          .replace(/^[•\-\*✦✧●◆]\s*/, "")
-                                          .replace(
-                                            /\*\*(.+?)\*\*/g,
-                                            "<strong>$1</strong>"
-                                          ),
-                                      }}
-                                    />
+                                    >
+                                      <CheckCircle size={15} />
+                                      النقاط الرئيسية
+                                    </h4>
+                                    <ul className="space-y-1.5">
+                                      {selectedLesson.summary.key_points.map(
+                                        (
+                                          point: string,
+                                          i: number
+                                        ) => (
+                                          <li
+                                            key={i}
+                                            className="flex items-start gap-2 text-sm"
+                                            style={{
+                                              color:
+                                                "var(--theme-text-primary)",
+                                            }}
+                                          >
+                                            <span
+                                              className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                              style={{
+                                                background:
+                                                  "var(--theme-primary)",
+                                              }}
+                                            />
+                                            {point}
+                                          </li>
+                                        )
+                                      )}
+                                    </ul>
                                   </div>
-                                );
-                              return (
-                                <p
-                                  key={i}
-                                  className="text-sm leading-relaxed"
-                                  style={{
-                                    color: "var(--theme-text-primary)",
-                                  }}
-                                  dangerouslySetInnerHTML={{
-                                    __html: t.replace(
-                                      /\*\*(.+?)\*\*/g,
-                                      "<strong>$1</strong>"
-                                    ),
-                                  }}
-                                />
-                              );
-                            })}
-                        </div>
-                      )}
+                                )}
 
-                    {/* Key Points (structured format) */}
-                    {selectedLesson.summary.key_points &&
-                      selectedLesson.summary.key_points.length > 0 && (
-                        <div>
-                          <h4
-                            className="text-sm font-bold mb-2 flex items-center gap-1.5"
-                            style={{ color: "var(--theme-primary)" }}
-                          >
-                            <Brain size={16} />
-                            النقاط الرئيسية
-                          </h4>
-                          <ul className="space-y-1.5">
-                            {selectedLesson.summary.key_points.map(
-                              (point, i) => (
-                                <li
-                                  key={i}
-                                  className="flex items-start gap-2 text-sm leading-relaxed"
-                                  style={{
-                                    color: "var(--theme-text-primary)",
-                                  }}
-                                >
-                                  <CheckCircle
-                                    size={14}
-                                    className="mt-1 flex-shrink-0"
-                                    style={{ color: "var(--theme-primary)" }}
-                                  />
-                                  {point}
-                                </li>
-                              )
-                            )}
-                          </ul>
-                        </div>
-                      )}
-
-                    {/* Definitions Table */}
-                    {selectedLesson.summary.definitions &&
-                      selectedLesson.summary.definitions.length > 0 && (
-                        <div>
-                          <h4
-                            className="text-sm font-bold mb-2 flex items-center gap-1.5"
-                            style={{ color: "var(--theme-primary)" }}
-                          >
-                            <BookOpen size={16} />
-                            التعريفات
-                          </h4>
-                          <div
-                            className="rounded-xl border overflow-hidden"
-                            style={{
-                              borderColor: "var(--theme-surface-border)",
-                            }}
-                          >
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr
-                                  style={{
-                                    background:
-                                      "var(--theme-surface-border)",
-                                  }}
-                                >
-                                  <th
-                                    className="py-2 px-3 text-right font-bold"
-                                    style={{
-                                      color: "var(--theme-text-primary)",
-                                    }}
-                                  >
-                                    المصطلح
-                                  </th>
-                                  <th
-                                    className="py-2 px-3 text-right font-bold"
-                                    style={{
-                                      color: "var(--theme-text-primary)",
-                                    }}
-                                  >
-                                    التعريف
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {selectedLesson.summary.definitions.map(
-                                  (def, i) => (
-                                    <tr
-                                      key={i}
-                                      className="border-t"
+                              {/* STRUCTURED: Definitions */}
+                              {selectedLesson.summary.definitions &&
+                                selectedLesson.summary.definitions.length >
+                                  0 && (
+                                  <div>
+                                    <h4
+                                      className="text-sm font-bold mb-2 flex items-center gap-1.5"
                                       style={{
-                                        borderColor:
-                                          "var(--theme-surface-border)",
+                                        color: "var(--theme-primary)",
                                       }}
                                     >
-                                      <td
-                                        className="py-2 px-3 font-semibold"
-                                        style={{
-                                          color: "var(--theme-text-primary)",
-                                        }}
-                                      >
-                                        {def.term}
-                                      </td>
-                                      <td
-                                        className="py-2 px-3"
-                                        style={{
-                                          color:
-                                            "var(--theme-text-secondary)",
-                                        }}
-                                      >
-                                        {def.definition}
-                                      </td>
-                                    </tr>
-                                  )
+                                      <BookOpen size={15} />
+                                      التعريفات
+                                    </h4>
+                                    <div className="space-y-2">
+                                      {selectedLesson.summary.definitions.map(
+                                        (
+                                          def: {
+                                            term: string;
+                                            definition: string;
+                                          },
+                                          i: number
+                                        ) => (
+                                          <div
+                                            key={i}
+                                            className="rounded-lg p-3 text-sm"
+                                            style={{
+                                              background:
+                                                "var(--theme-primary-light, rgba(99,102,241,0.04))",
+                                              color:
+                                                "var(--theme-text-primary)",
+                                            }}
+                                          >
+                                            <strong
+                                              style={{
+                                                color:
+                                                  "var(--theme-primary)",
+                                              }}
+                                            >
+                                              {def.term}:
+                                            </strong>{" "}
+                                            {def.definition}
+                                          </div>
+                                        )
+                                      )}
+                                    </div>
+                                  </div>
                                 )}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
 
-                    {/* Laws / Formulas */}
-                    {selectedLesson.summary.laws &&
-                      selectedLesson.summary.laws.length > 0 && (
-                        <div>
-                          <h4
-                            className="text-sm font-bold mb-2 flex items-center gap-1.5"
-                            style={{ color: "var(--theme-primary)" }}
-                          >
-                            <Hash size={16} />
-                            القوانين والصيغ
-                          </h4>
-                          <div className="space-y-2">
-                            {selectedLesson.summary.laws.map((law, i) => (
-                              <div
-                                key={i}
-                                className="rounded-xl border p-3"
-                                style={{
-                                  background:
-                                    "var(--theme-surface-bg)",
-                                  borderColor:
-                                    "var(--theme-surface-border)",
-                                }}
-                              >
-                                <p
-                                  className="font-bold text-sm mb-1"
-                                  style={{
-                                    color: "var(--theme-text-primary)",
-                                  }}
-                                >
-                                  {law.name}
-                                </p>
-                                {law.formula && (
-                                  <p
-                                    className="text-sm font-mono mb-1 py-1 px-2 rounded-lg inline-block"
-                                    dir="ltr"
-                                    style={{
-                                      background:
-                                        "var(--theme-surface-border)",
-                                      color: "var(--theme-primary)",
-                                    }}
-                                  >
-                                    {law.formula}
-                                  </p>
+                              {/* STRUCTURED: Laws */}
+                              {selectedLesson.summary.laws &&
+                                selectedLesson.summary.laws.length >
+                                  0 && (
+                                  <div>
+                                    <h4
+                                      className="text-sm font-bold mb-2"
+                                      style={{
+                                        color: "var(--theme-primary)",
+                                      }}
+                                    >
+                                      القوانين
+                                    </h4>
+                                    <div className="space-y-2">
+                                      {selectedLesson.summary.laws.map(
+                                        (
+                                          law: {
+                                            name: string;
+                                            formula?: string;
+                                            description: string;
+                                          },
+                                          i: number
+                                        ) => (
+                                          <div
+                                            key={i}
+                                            className="rounded-lg p-3 border text-sm"
+                                            style={{
+                                              borderColor:
+                                                "var(--theme-surface-border)",
+                                              color:
+                                                "var(--theme-text-primary)",
+                                            }}
+                                          >
+                                            <strong>{law.name}</strong>
+                                            {law.formula && (
+                                              <code className="block mt-1 text-xs p-1 rounded bg-gray-100">
+                                                {law.formula}
+                                              </code>
+                                            )}
+                                            <p className="mt-1 text-xs opacity-80">
+                                              {law.description}
+                                            </p>
+                                          </div>
+                                        )
+                                      )}
+                                    </div>
+                                  </div>
                                 )}
-                                <p
-                                  className="text-xs leading-relaxed"
-                                  style={{
-                                    color: "var(--theme-text-secondary)",
-                                  }}
-                                >
-                                  {law.description}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
+                            </div>
+                          )}
                         </div>
-                      )}
 
-                    {/* Examples */}
-                    {selectedLesson.summary.examples &&
-                      selectedLesson.summary.examples.length > 0 && (
-                        <div>
-                          <h4
-                            className="text-sm font-bold mb-2 flex items-center gap-1.5"
-                            style={{ color: "var(--theme-primary)" }}
+                        {/* ── Questions indicator ── */}
+                        {selectedLesson.question_count > 0 && (
+                          <div
+                            className="rounded-lg p-3 flex items-center gap-2 text-sm"
+                            style={{
+                              background:
+                                "var(--theme-primary-light, rgba(99,102,241,0.06))",
+                              color: "var(--theme-primary)",
+                            }}
                           >
-                            <PlayCircle size={16} />
-                            أمثلة
-                          </h4>
-                          <div className="space-y-2">
-                            {selectedLesson.summary.examples.map(
-                              (example, i) => (
-                                <div
-                                  key={i}
-                                  className="rounded-xl border p-3"
-                                  style={{
-                                    background:
-                                      "var(--theme-surface-bg)",
-                                    borderColor:
-                                      "var(--theme-surface-border)",
-                                  }}
-                                >
-                                  <p
-                                    className="font-bold text-sm mb-1"
-                                    style={{
-                                      color: "var(--theme-text-primary)",
-                                    }}
-                                  >
-                                    {example.title}
-                                  </p>
-                                  <p
-                                    className="text-sm leading-relaxed whitespace-pre-wrap"
-                                    style={{
-                                      color: "var(--theme-text-secondary)",
-                                    }}
-                                  >
-                                    {example.content}
-                                  </p>
-                                </div>
-                              )
-                            )}
+                            <MessageSquare size={16} />
+                            <span className="font-bold">
+                              {selectedLesson.question_count} سؤال متاح
+                            </span>
+                            <span
+                              className="text-xs"
+                              style={{
+                                color: "var(--theme-text-secondary)",
+                              }}
+                            >
+                              — جرّب الامتحانات
+                            </span>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
-              </>
-            )}
+              </div>
+            ))}
           </div>
         )}
       </div>
