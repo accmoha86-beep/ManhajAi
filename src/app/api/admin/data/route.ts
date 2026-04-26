@@ -452,48 +452,52 @@ export async function POST(request: NextRequest) {
       }
 
       case 'create_plan': {
-        const { data, error } = await sb
-          .from('subscription_plans')
-          .insert({
-            name_ar: params.name_ar,
-            name_en: params.name_en || null,
-            max_subjects: params.max_subjects || 1,
-            price_monthly: params.price_monthly || 89,
-            price_term: params.price_term || null,
-            price_annual: params.price_annual || null,
-            discount_percent: params.discount_percent || 0,
-            features_ar: params.features_ar || [],
-            is_active: params.is_active !== false,
-          })
-          .select()
-          .single();
+        const { data, error } = await sb.rpc('admin_create_plan', {
+          p_admin_id: user.id,
+          p_name_ar: params.name_ar || 'خطة جديدة',
+          p_price_monthly: params.price_monthly || 89,
+          p_duration_days: params.duration_days || 30,
+          p_max_subjects: params.max_subjects || 1,
+          p_discount_percent: params.discount_percent || 0,
+          p_features_ar: params.features_ar || params.features || [],
+          p_features: Array.isArray(params.features) ? JSON.stringify(params.features) : (params.features || '[]'),
+          p_description: params.description || '',
+          p_is_active: params.is_active !== false,
+          p_is_popular: params.is_popular || false,
+        });
         if (error) return err(error.message);
         return ok({ plan: data });
       }
 
       case 'update_plan': {
-        const planUpdates: Record<string, unknown> = {};
-        ['name_ar', 'name_en', 'max_subjects', 'price_monthly', 'price_term', 'price_annual',
-         'discount_percent', 'features_ar', 'is_active'].forEach(key => {
-          if (params[key] !== undefined) planUpdates[key] = params[key];
-        });
-        const { data, error } = await sb
-          .from('subscription_plans')
-          .update(planUpdates)
-          .eq('id', params.id || params.plan_id)
-          .select()
-          .single();
+        const rpcParams: Record<string, unknown> = {
+          p_admin_id: user.id,
+          p_plan_id: params.id || params.plan_id,
+        };
+        if (params.name_ar !== undefined) rpcParams.p_name_ar = params.name_ar;
+        if (params.price_monthly !== undefined) rpcParams.p_price_monthly = Number(params.price_monthly);
+        if (params.price_term !== undefined) rpcParams.p_price_term = Number(params.price_term);
+        if (params.price_annual !== undefined) rpcParams.p_price_annual = Number(params.price_annual);
+        if (params.duration_days !== undefined) rpcParams.p_duration_days = Number(params.duration_days);
+        if (params.max_subjects !== undefined) rpcParams.p_max_subjects = Number(params.max_subjects);
+        if (params.discount_percent !== undefined) rpcParams.p_discount_percent = Number(params.discount_percent);
+        if (params.features_ar !== undefined) rpcParams.p_features_ar = params.features_ar;
+        if (params.features !== undefined) rpcParams.p_features = Array.isArray(params.features) ? JSON.stringify(params.features) : params.features;
+        if (params.description !== undefined) rpcParams.p_description = params.description;
+        if (params.is_active !== undefined) rpcParams.p_is_active = params.is_active;
+        if (params.is_popular !== undefined) rpcParams.p_is_popular = params.is_popular;
+        const { data, error } = await sb.rpc('admin_update_plan', rpcParams);
         if (error) return err(error.message);
         return ok({ plan: data });
       }
 
       case 'delete_plan': {
-        const { error } = await sb
-          .from('subscription_plans')
-          .delete()
-          .eq('id', params.id || params.plan_id);
+        const { data, error } = await sb.rpc('admin_delete_plan', {
+          p_admin_id: user.id,
+          p_plan_id: params.id || params.plan_id,
+        });
         if (error) return err(error.message);
-        return ok({ success: true });
+        return ok({ success: data || { success: true } });
       }
 
       // ===== EXAMS (admin) =====
