@@ -49,6 +49,9 @@ interface ExamResult {
     correct_answer: string;
     explanation: string;
     options: string[];
+    is_essay?: boolean;
+    essay_score?: number;
+    essay_feedback?: string;
   }[];
 }
 
@@ -91,6 +94,8 @@ export default function ExamsPage() {
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [essayAnswers, setEssayAnswers] = useState<Record<string, string>>({});
+  const [gradingEssays, setGradingEssays] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExamResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -195,6 +200,7 @@ export default function ExamsPage() {
         if (res.ok && json.questions && json.questions.length > 0) {
           setQuestions(json.questions);
           setAnswers({});
+          setEssayAnswers({});
           setCurrentQ(0);
           setTimer(0);
           setAiProgress("");
@@ -217,6 +223,7 @@ export default function ExamsPage() {
         if (res.ok && json.questions && json.questions.length > 0) {
           setQuestions(json.questions);
           setAnswers({});
+          setEssayAnswers({});
           setCurrentQ(0);
           setTimer(0);
           setView("exam");
@@ -242,47 +249,117 @@ export default function ExamsPage() {
     setLoading(true);
     setError("");
 
+    // Separate MCQ/TF from essay questions
+    const mcqQuestions = questions.filter(q => (q.options && q.options.length > 0) || q.type === "true_false");
+    const essayQuestions = questions.filter(q => (!q.options || q.options.length === 0) && q.type !== "true_false");
     const isAiExam = questions.some(q => q.is_ai_generated);
 
-    if (isAiExam) {
-      // For AI exams, calculate score locally (questions have correct_answer)
-      let correct = 0;
-      const detailedAnswers = questions.map((q) => {
-        const selected = answers[q.id] || "";
-        // AI exam: correct_answer is index as string
-        const correctOpt = q.options?.[parseInt(q.correct_answer || "0")] || "";
-        const isCorrect = selected === correctOpt;
-        if (isCorrect) correct++;
-        return {
+    // Grade MCQ questions
+    let mcqCorrect = 0;
+    const mcqDetailedAnswers = mcqQuestions.map((q) => {
+      const selected = answers[q.id] || "";
+      let correctOpt = "";
+      if (isAiExam) {
+        correctOpt = q.options?.[parseInt(q.correct_answer || "0")] || "";
+      } else {
+        correctOpt = q.options?.[parseInt(q.correct_answer || "0")] || q.correct_answer || "";
+      }
+      const isCorrect = selected === correctOpt;
+      if (isCorrect) mcqCorrect++;
+      return {
+        question_id: q.id,
+        question_text: q.question_text,
+        selected,
+        correct_answer: correctOpt,
+        is_correct: isCorrect,
+        explanation: q.explanation || "",
+        options: q.options || [],
+        is_essay: false,
+        essay_score: 0,
+        essay_feedback: "",
+      };
+    });
+
+    // Grade essay questions via keyword matching API (FREE)
+    let essayDetailedAnswers: typeof mcqDetailedAnswers = [];
+    let essayCorrect = 0;
+    if (essayQuestions.length > 0) {
+      setGradingEssays(true);
+      try {
+        const essayPayload = essayQuestions.map(q => ({
+          questionId: q.id,
+          questionText: q.question_text,
+          studentAnswer: essayAnswers[q.id] || "",
+          correctAnswer: q.correct_answer || "",
+        }));
+        const essayRes = await fetch("/api/exams/grade-essay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ essays: essayPayload }),
+        });
+        const essayJson = await essayRes.json();
+        if (essayJson.success && essayJson.results) {
+          essayDetailedAnswers = essayQuestions.map((q, idx) => {
+            const grading = essayJson.results[idx];
+            const isCorrect = grading.score >= 60;
+            if (isCorrect) essayCorrect++;
+            return {
+              question_id: q.id,
+              question_text: q.question_text,
+              selected: essayAnswers[q.id] || "لم يتم الإجابة",
+              correct_answer: q.correct_answer || "",
+              is_correct: isCorrect,
+              explanation: grading.feedback || "",
+              options: [],
+              is_essay: true,
+              essay_score: grading.score,
+              essay_feedback: grading.feedback,
+            };
+          });
+        }
+      } catch (err) {
+        console.error("Essay grading error:", err);
+        // Fallback: mark all essays as wrong if grading fails
+        essayDetailedAnswers = essayQuestions.map(q => ({
           question_id: q.id,
           question_text: q.question_text,
-          selected,
-          correct_answer: correctOpt,
-          is_correct: isCorrect,
-          explanation: q.explanation || "",
-          options: q.options || [],
-        };
-      });
+          selected: essayAnswers[q.id] || "لم يتم الإجابة",
+          correct_answer: q.correct_answer || "",
+          is_correct: false,
+          explanation: "⚠️ تعذر تصحيح السؤال المقالي",
+          options: [],
+          is_essay: true,
+          essay_score: 0,
+          essay_feedback: "",
+        }));
+      }
+      setGradingEssays(false);
+    }
 
-      const score = Math.round((correct / questions.length) * 100);
+    // Combine all answers
+    const allDetailedAnswers = [...mcqDetailedAnswers, ...essayDetailedAnswers];
+    const totalCorrect = mcqCorrect + essayCorrect;
+    const score = Math.round((totalCorrect / questions.length) * 100);
+
+    if (isAiExam) {
       setResult({
         score,
         total_questions: questions.length,
-        correct_answers: correct,
-        wrong_answers: questions.length - correct,
+        correct_answers: totalCorrect,
+        wrong_answers: questions.length - totalCorrect,
         points_earned: score >= 90 ? 25 : score >= 70 ? 15 : 10,
         time_taken: timer,
-        answers: detailedAnswers,
+        answers: allDetailedAnswers,
       });
       setView("result");
       setLoading(false);
       return;
     }
 
-    // DB exam — submit via API
+    // DB exam — still submit MCQ via API for history
     const formattedAnswers = questions.map((q) => ({
       question_id: q.id,
-      selected: answers[q.id] || "",
+      selected: answers[q.id] === "__essay__" ? (essayAnswers[q.id] || "") : (answers[q.id] || ""),
     }));
 
     try {
@@ -699,11 +776,51 @@ export default function ExamsPage() {
               </div>
             )}
 
-            {/* Fallback — question has no options (shouldn't happen) */}
-            {!currentQuestion.options && currentQuestion.type !== "true_false" && (
-              <div className="p-4 rounded-xl text-center" style={{ background: "var(--theme-hover-overlay)", border: "2px solid var(--theme-surface-border)" }}>
-                <p className="text-sm font-bold mb-2" style={{ color: "var(--theme-text-secondary)" }}>⚠️ هذا السؤال مقالي ولا يمكن تصحيحه تلقائياً</p>
-                <button onClick={() => setCurrentQ(p => Math.min(questions.length - 1, p + 1))} className="themed-btn-sm">تخطي ← التالي</button>
+            {/* Essay Question — textarea for student answer */}
+            {(!currentQuestion.options || currentQuestion.options.length === 0) && currentQuestion.type !== "true_false" && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs px-2 py-1 rounded-full font-bold" style={{ background: "rgba(99,102,241,0.1)", color: "#6366F1" }}>
+                    ✍️ سؤال مقالي
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
+                    اكتب إجابتك وهيتم تصحيحها تلقائياً
+                  </span>
+                </div>
+                <textarea
+                  value={essayAnswers[currentQuestion.id] || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEssayAnswers(prev => ({ ...prev, [currentQuestion.id]: val }));
+                    // Also mark in answers so navigation dots show it as answered
+                    if (val.trim()) {
+                      setAnswers(prev => ({ ...prev, [currentQuestion.id]: "__essay__" }));
+                    } else {
+                      setAnswers(prev => { const n = {...prev}; delete n[currentQuestion.id]; return n; });
+                    }
+                  }}
+                  placeholder="اكتب إجابتك هنا..."
+                  className="w-full p-4 rounded-xl text-sm leading-relaxed resize-none"
+                  style={{
+                    background: "var(--theme-hover-overlay)",
+                    border: "2px solid var(--theme-surface-border)",
+                    color: "var(--theme-text-primary)",
+                    minHeight: "140px",
+                    fontFamily: "Cairo, sans-serif",
+                    direction: "rtl",
+                  }}
+                  rows={5}
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
+                    {(essayAnswers[currentQuestion.id] || "").length} حرف
+                  </span>
+                  {(essayAnswers[currentQuestion.id] || "").length > 10 && (
+                    <span className="text-xs flex items-center gap-1" style={{ color: "#10B981" }}>
+                      <CheckCircle2 size={12} /> تم الإجابة
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -731,8 +848,8 @@ export default function ExamsPage() {
                 التالي <ChevronLeft size={18} />
               </button>
             ) : (
-              <button onClick={submitExam} disabled={loading} className="themed-btn-primary flex items-center gap-1">
-                {loading ? <Loader2 size={18} className="animate-spin" /> : <><CheckCircle2 size={18} /> تقديم الامتحان</>}
+              <button onClick={submitExam} disabled={loading || gradingEssays} className="themed-btn-primary flex items-center gap-1">
+                {loading || gradingEssays ? <Loader2 size={18} className="animate-spin" /> : <><CheckCircle2 size={18} /> تقديم الامتحان</>}
               </button>
             )}
           </div>
@@ -804,7 +921,37 @@ export default function ExamsPage() {
                           <XCircle size={18} style={{ color: "#DC2626" }} className="flex-shrink-0 mr-auto" />
                         )}
                       </div>
-                      {!a.is_correct && (
+                      {/* Essay question review */}
+                      {a.is_essay && (
+                        <div className="mr-8 mt-2 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "rgba(99,102,241,0.1)", color: "#6366F1" }}>✍️ مقالي</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{
+                              background: (a.essay_score || 0) >= 80 ? "rgba(16,185,129,0.15)" : (a.essay_score || 0) >= 60 ? "rgba(245,158,11,0.15)" : "rgba(220,38,38,0.15)",
+                              color: (a.essay_score || 0) >= 80 ? "#10B981" : (a.essay_score || 0) >= 60 ? "#F59E0B" : "#DC2626",
+                            }}>
+                              التقييم: {a.essay_score || 0}%
+                            </span>
+                          </div>
+                          <div className="text-xs p-3 rounded-lg" style={{ background: "var(--theme-hover-overlay)", color: "var(--theme-text-secondary)", lineHeight: "1.8" }}>
+                            <div className="font-bold mb-1" style={{ color: "var(--theme-text-primary)" }}>📝 إجابتك:</div>
+                            {a.selected || "لم يتم الإجابة"}
+                          </div>
+                          {a.correct_answer && (
+                            <div className="text-xs p-3 rounded-lg" style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.15)", color: "var(--theme-text-secondary)", lineHeight: "1.8" }}>
+                              <div className="font-bold mb-1" style={{ color: "#10B981" }}>✅ الإجابة النموذجية:</div>
+                              {a.correct_answer}
+                            </div>
+                          )}
+                          {a.essay_feedback && (
+                            <div className="text-xs p-2 rounded-lg" style={{ background: "rgba(99,102,241,0.05)", color: "#6366F1" }}>
+                              {a.essay_feedback}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* MCQ/TF review */}
+                      {!a.is_essay && !a.is_correct && (
                         <div className="mr-8 space-y-1 mt-2">
                           <div className="text-xs flex items-center gap-1" style={{ color: "#DC2626" }}>
                             <XCircle size={12} /> إجابتك: {a.selected || "لم تُجب"}
@@ -814,7 +961,7 @@ export default function ExamsPage() {
                           </div>
                         </div>
                       )}
-                      {a.explanation && (
+                      {!a.is_essay && a.explanation && (
                         <div className="mr-8 mt-2 text-xs p-2 rounded-lg" style={{ background: "var(--theme-hover-overlay)", color: "var(--theme-text-secondary)" }}>
                           💡 {a.explanation}
                         </div>
