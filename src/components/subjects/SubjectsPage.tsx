@@ -232,7 +232,7 @@ export default function SubjectsPage() {
         setSelectedLesson({
           id: lessonObj.id,
           title: lessonObj.title_ar || lessonObj.title || "",
-          summary: lessonObj.summary || null,
+          summary: raw.summary || lessonObj.summary || null,
           question_count: lessonObj.question_count ?? lessonObj.questions_count ?? 0,
         });
         setViewLevel("lesson-detail");
