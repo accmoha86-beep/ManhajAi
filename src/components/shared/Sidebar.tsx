@@ -61,6 +61,9 @@ export default function Sidebar() {
   // Hide sidebar for non-authenticated users
   if (!user) return null;
 
+  // Hide sidebar on subjects page (full-width for content + chat)
+  if (pathname.startsWith('/subjects')) return null;
+
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
     return pathname.startsWith(href);
