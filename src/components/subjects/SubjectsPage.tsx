@@ -52,8 +52,10 @@ interface LessonContent {
   id: string;
   title: string;
   summary: {
-    key_points: string[];
-    definitions: { term: string; definition: string }[];
+    id?: string;
+    content?: string;
+    key_points?: string[];
+    definitions?: { term: string; definition: string }[];
     laws?: { name: string; formula?: string; description: string }[];
     examples?: { title: string; content: string }[];
   } | null;
@@ -157,7 +159,14 @@ export default function SubjectsPage() {
         );
         if (!res.ok) throw new Error("فشل في تحميل محتوى الدرس");
         const data = await res.json();
-        setSelectedLesson(data.data ?? data.lesson ?? data);
+        const raw = data.data ?? data.lesson ?? data;
+        const lessonObj = raw.lesson ?? raw;
+        setSelectedLesson({
+          id: lessonObj.id || '',
+          title: lessonObj.title || lessonObj.title_ar || '',
+          summary: raw.summary || lessonObj.summary || null,
+          question_count: (raw.questions || lessonObj.questions || []).length,
+        } as LessonContent);
       } catch (err: any) {
         setErrorLesson(err.message ?? "حدث خطأ غير متوقع");
       } finally {
@@ -632,7 +641,95 @@ export default function SubjectsPage() {
                   </div>
                 ) : (
                   <div className="space-y-5">
-                    {/* Key Points */}
+                    {/* TEXT/MARKDOWN CONTENT RENDERER */}
+                    {!selectedLesson.summary.key_points?.length &&
+                      !selectedLesson.summary.definitions?.length &&
+                      selectedLesson.summary.content && (
+                        <div className="space-y-1.5">
+                          {selectedLesson.summary.content
+                            .split("\n")
+                            .map((line: string, i: number) => {
+                              const t = line.trim();
+                              if (!t) return <div key={i} className="h-1.5" />;
+                              if (t.startsWith("# "))
+                                return (
+                                  <h2
+                                    key={i}
+                                    className="text-lg font-bold mt-4 mb-2"
+                                    style={{ color: "var(--theme-primary)" }}
+                                  >
+                                    {t.slice(2)}
+                                  </h2>
+                                );
+                              if (t.startsWith("## "))
+                                return (
+                                  <h3
+                                    key={i}
+                                    className="text-base font-bold mt-3 mb-1.5 flex items-center gap-1.5"
+                                    style={{ color: "var(--theme-primary)" }}
+                                  >
+                                    <Brain size={15} />
+                                    {t.slice(3)}
+                                  </h3>
+                                );
+                              if (t.startsWith("### ") || t.startsWith("#### "))
+                                return (
+                                  <h4
+                                    key={i}
+                                    className="text-sm font-bold mt-2 mb-0.5"
+                                    style={{ color: "var(--theme-primary)" }}
+                                  >
+                                    {t.replace(/^#{1,4}\s*/, "")}
+                                  </h4>
+                                );
+                              if (/^[•\-\*✦✧●◆] /.test(t))
+                                return (
+                                  <div
+                                    key={i}
+                                    className="flex items-start gap-2 text-sm leading-relaxed"
+                                    style={{
+                                      color: "var(--theme-text-primary)",
+                                    }}
+                                  >
+                                    <CheckCircle
+                                      size={14}
+                                      className="mt-1 flex-shrink-0"
+                                      style={{
+                                        color: "var(--theme-primary)",
+                                      }}
+                                    />
+                                    <span
+                                      dangerouslySetInnerHTML={{
+                                        __html: t
+                                          .replace(/^[•\-\*✦✧●◆]\s*/, "")
+                                          .replace(
+                                            /\*\*(.+?)\*\*/g,
+                                            "<strong>$1</strong>"
+                                          ),
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              return (
+                                <p
+                                  key={i}
+                                  className="text-sm leading-relaxed"
+                                  style={{
+                                    color: "var(--theme-text-primary)",
+                                  }}
+                                  dangerouslySetInnerHTML={{
+                                    __html: t.replace(
+                                      /\*\*(.+?)\*\*/g,
+                                      "<strong>$1</strong>"
+                                    ),
+                                  }}
+                                />
+                              );
+                            })}
+                        </div>
+                      )}
+
+                    {/* Key Points (structured format) */}
                     {selectedLesson.summary.key_points &&
                       selectedLesson.summary.key_points.length > 0 && (
                         <div>
