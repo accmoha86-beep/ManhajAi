@@ -625,7 +625,7 @@ export async function POST(request: NextRequest) {
       const bcrypt = await import('bcryptjs');
       const passwordHash = await bcrypt.hash(password, 12);
 
-      const { data: newStudent, error: addErr } = await supabase.rpc('register_student', {
+      const { data: newStudent, error: addErr } = await sb.rpc('register_student', {
         p_full_name: fullName,
         p_phone: cleanPhone,
         p_password_hash: passwordHash,
