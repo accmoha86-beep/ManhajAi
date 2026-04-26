@@ -623,20 +623,12 @@ export default function SubjectsPage() {
 
     return (
       <div style={{ fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif" }}>
-        {/* Lesson Title Banner */}
-        <div className="rounded-2xl p-5 mb-5" style={{ background: "var(--theme-cta-gradient)" }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/20">
-              <FileText size={20} className="text-white" />
-            </div>
-            <div>
-              <h2 className="text-lg font-extrabold text-white">{selectedLesson.title}</h2>
-              <div className="flex items-center gap-3 mt-1 text-white/80 text-xs">
-                {selectedLesson.summary && <span className="flex items-center gap-1"><CheckCircle size={12} /> ملخّص متاح</span>}
-                {selectedLesson.question_count > 0 && <span className="flex items-center gap-1"><MessageSquare size={12} /> {selectedLesson.question_count} سؤال</span>}
-              </div>
-            </div>
-          </div>
+        {/* Lesson title - compact inline */}
+        <div className="flex items-center gap-2 mb-4 pb-3" style={{ borderBottom: "2px solid var(--theme-primary)", opacity: 0.9 }}>
+          <FileText size={18} style={{ color: "var(--theme-primary)" }} />
+          <h2 className="text-base font-extrabold" style={{ color: "var(--theme-text-primary)" }}>{selectedLesson.title}</h2>
+          {selectedLesson.summary && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">ملخّص</span>}
+          {selectedLesson.question_count > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: "var(--theme-primary-light)", color: "var(--theme-primary)" }}>{selectedLesson.question_count} سؤال</span>}
         </div>
 
         {/* Summary Content */}
@@ -969,10 +961,10 @@ export default function SubjectsPage() {
               <SubjectIcon icon={selectedSubject.icon} size={20} />
             </div>
             <div className="min-w-0">
-              <h2 className="font-extrabold text-sm truncate" style={{ color: "var(--theme-text-primary)" }}>
+              <h2 className="font-extrabold text-sm leading-tight" style={{ color: "var(--theme-text-primary)", wordBreak: "break-word" }}>
                 {displayName}
               </h2>
-              <p className="text-xs truncate" style={{ color: "var(--theme-text-secondary)" }}>
+              <p className="text-xs leading-tight line-clamp-2" style={{ color: "var(--theme-text-secondary)" }}>
                 {totalLessons} درس
               </p>
             </div>
@@ -1007,7 +999,7 @@ export default function SubjectsPage() {
                       <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ background: color.bg, color: "#fff" }}>
                         {idx + 1}
                       </div>
-                      <span className="flex-1 text-xs font-bold truncate" style={{ color: "var(--theme-text-primary)" }}>
+                      <span className="flex-1 text-xs font-bold leading-tight" style={{ color: "var(--theme-text-primary)", wordBreak: "break-word" }}>
                         {unit.name_ar}
                       </span>
                       <ChevronDown size={14} className="flex-shrink-0 transition-transform duration-200" style={{ color: "var(--theme-text-secondary)", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }} />
@@ -1026,7 +1018,7 @@ export default function SubjectsPage() {
                                   borderRight: isActive ? `3px solid ${color.accent}` : "3px solid transparent",
                                 }}
                               >
-                                <span className="flex-1 text-xs truncate" style={{ color: isActive ? color.accent : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>
+                                <span className="flex-1 text-xs leading-tight" style={{ color: isActive ? color.accent : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400, wordBreak: "break-word" }}>
                                   {lesson.title}
                                 </span>
                                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -1052,7 +1044,7 @@ export default function SubjectsPage() {
                                       }}
                                     >
                                       <span className="text-[11px] flex-shrink-0">{sec.icon}</span>
-                                      <span className="flex-1 text-[10px] truncate" style={{ color: activeSection === si ? color.accent : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400 }}>
+                                      <span className="flex-1 text-[10px] leading-tight" style={{ color: activeSection === si ? color.accent : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400, wordBreak: "break-word" }}>
                                         {sec.title}
                                       </span>
                                     </button>
@@ -1076,7 +1068,7 @@ export default function SubjectsPage() {
                       return (
                         <div key={lesson.id}>
                           <button onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-right transition-all" style={{ background: isActive ? "var(--theme-hover-overlay)" : "transparent", borderRight: isActive ? "3px solid var(--theme-primary)" : "3px solid transparent" }}>
-                            <span className="flex-1 text-xs truncate" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>{lesson.title}</span>
+                            <span className="flex-1 text-xs leading-tight" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400, wordBreak: "break-word" }}>{lesson.title}</span>
                             {lesson.has_summary && <CheckCircle size={11} style={{ color: "var(--theme-primary)" }} />}
                           </button>
                           {isActive && currentLessonSections.length > 0 && (
@@ -1084,7 +1076,7 @@ export default function SubjectsPage() {
                               {currentLessonSections.map((sec, si) => (
                                 <button key={si} onClick={() => setActiveSection(si)} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all" style={{ background: activeSection === si ? "var(--theme-primary)" + "18" : "transparent", borderRight: activeSection === si ? "2px solid var(--theme-primary)" : "2px solid transparent" }}>
                                   <span className="text-[11px] flex-shrink-0">{sec.icon}</span>
-                                  <span className="flex-1 text-[10px] truncate" style={{ color: activeSection === si ? "var(--theme-primary)" : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400 }}>{sec.title}</span>
+                                  <span className="flex-1 text-[10px] leading-tight" style={{ color: activeSection === si ? "var(--theme-primary)" : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400, wordBreak: "break-word" }}>{sec.title}</span>
                                 </button>
                               ))}
                             </div>
@@ -1103,7 +1095,7 @@ export default function SubjectsPage() {
                 return (
                   <div key={lesson.id}>
                     <button onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-right transition-all" style={{ background: isActive ? "var(--theme-primary)" + "12" : "transparent", borderRight: isActive ? "3px solid var(--theme-primary)" : "3px solid transparent" }}>
-                      <span className="flex-1 text-xs font-medium truncate" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>{lesson.title}</span>
+                      <span className="flex-1 text-xs font-medium leading-tight" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400, wordBreak: "break-word" }}>{lesson.title}</span>
                       {lesson.has_summary && <CheckCircle size={11} style={{ color: "var(--theme-primary)" }} />}
                     </button>
                     {isActive && currentLessonSections.length > 0 && (
@@ -1111,7 +1103,7 @@ export default function SubjectsPage() {
                         {currentLessonSections.map((sec, si) => (
                           <button key={si} onClick={() => setActiveSection(si)} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all" style={{ background: activeSection === si ? "var(--theme-primary)" + "18" : "transparent", borderRight: activeSection === si ? "2px solid var(--theme-primary)" : "2px solid transparent" }}>
                             <span className="text-[11px] flex-shrink-0">{sec.icon}</span>
-                            <span className="flex-1 text-[10px] truncate" style={{ color: activeSection === si ? "var(--theme-primary)" : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400 }}>{sec.title}</span>
+                            <span className="flex-1 text-[10px] leading-tight" style={{ color: activeSection === si ? "var(--theme-primary)" : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400, wordBreak: "break-word" }}>{sec.title}</span>
                           </button>
                         ))}
                       </div>
@@ -1131,7 +1123,7 @@ export default function SubjectsPage() {
           <button onClick={selectedLesson ? () => { setSelectedLesson(null); setActiveLessonId(null); setActiveSection(0); } : goHome} className="w-9 h-9 rounded-xl flex items-center justify-center border" style={{ background: "var(--theme-surface-bg)", borderColor: "var(--theme-surface-border)", color: "var(--theme-text-primary)" }}>
             <ArrowRight size={18} />
           </button>
-          <h2 className="text-sm font-bold truncate" style={{ color: "var(--theme-text-primary)" }}>
+          <h2 className="text-sm font-bold leading-tight" style={{ color: "var(--theme-text-primary)", wordBreak: "break-word" }}>
             {selectedLesson ? selectedLesson.title : selectedSubject.name}
           </h2>
         </div>
@@ -1198,7 +1190,7 @@ export default function SubjectsPage() {
                                     {currentLessonSections.map((sec, si) => (
                                       <button key={si} onClick={() => setActiveSection(si)} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right" style={{ background: activeSection === si ? color.accent + "18" : "transparent" }}>
                                         <span className="text-[11px]">{sec.icon}</span>
-                                        <span className="text-[10px] truncate" style={{ color: activeSection === si ? color.accent : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400 }}>{sec.title}</span>
+                                        <span className="text-[10px] leading-tight" style={{ color: activeSection === si ? color.accent : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400, wordBreak: "break-word" }}>{sec.title}</span>
                                       </button>
                                     ))}
                                   </div>
