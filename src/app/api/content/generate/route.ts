@@ -359,24 +359,29 @@ async function callClaude(
 ): Promise<{ success: boolean; text?: string; error?: string }> {
   try {
     const content: any[] = [];
+    const isPdf = imageData?.mimeType === 'application/pdf';
     if (imageData) {
-      content.push({
-        type: 'image',
-        source: { type: 'base64', media_type: imageData.mimeType, data: imageData.base64 },
-      });
+      if (isPdf) {
+        content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: imageData.base64 } });
+      } else {
+        content.push({ type: 'image', source: { type: 'base64', media_type: imageData.mimeType, data: imageData.base64 } });
+      }
     }
     content.push({ type: 'text', text: prompt });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 180000); // 3 min timeout per call
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    };
+    if (isPdf) headers['anthropic-beta'] = 'pdfs-2024-09-25';
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers,
       body: JSON.stringify({
         model,
         max_tokens: maxTokens,
