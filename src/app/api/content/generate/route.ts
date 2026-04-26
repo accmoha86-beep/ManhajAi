@@ -172,11 +172,18 @@ ${extractedText.slice(0, 80000)}`;
       return NextResponse.json({ error: 'فشل في إنشاء الملخص' }, { status: 500 });
     }
 
-    // Save summary
-    await supabase.rpc('admin_save_summary', {
+    // Save summary — uses save_generated_summary (SECURITY DEFINER, no admin_id needed)
+    const { data: summSaveResult, error: summSaveError } = await supabase.rpc('save_generated_summary', {
       p_lesson_id: lessonId,
       p_content: summaryResult.text!,
     });
+
+    if (summSaveError) {
+      console.error(`[Job ${jobId}] Summary save error:`, summSaveError.message);
+      await updateJob({ p_status: 'failed', p_error: `فشل في حفظ الملخص: ${summSaveError.message?.slice(0, 200)}` });
+      return NextResponse.json({ error: 'فشل في حفظ الملخص' }, { status: 500 });
+    }
+    console.log(`[Job ${jobId}] Summary saved:`, summSaveResult);
 
     await updateJob({ p_progress: 50, p_summary_text: summaryResult.text!.slice(0, 500), p_message: '✅ تم الملخص — جاري توليد الأسئلة...' });
 
