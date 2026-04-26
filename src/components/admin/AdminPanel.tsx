@@ -141,10 +141,11 @@ const TABS = [
   { id: "grades", label: "الصفوف", icon: <GraduationCap size={18} /> },
   { id: "subjects", label: "المواد", icon: <BookOpen size={18} /> },
   { id: "payments", label: "المدفوعات", icon: <DollarSign size={18} /> },
+  { id: "payment_config", label: "💳 بوابات الدفع", icon: <CreditCard size={18} /> },
   { id: "themes", label: "الثيمات", icon: <Palette size={18} /> },
   { id: "coupons", label: "الكوبونات", icon: <Tag size={18} /> },
   { id: "notifications", label: "الإشعارات", icon: <Bell size={18} /> },
-  { id: "payment_config", label: "💳 إعدادات الدفع", icon: <CreditCard size={18} /> },
+
   { id: "plans", label: "📦 الخطط", icon: <Package size={18} /> },
   { id: "secrets", label: "🔑 المفاتيح", icon: <Key size={18} /> },
   { id: "profitability", label: "💰 الأرباح", icon: <TrendingUp size={18} /> },
@@ -208,10 +209,11 @@ export default function AdminPanel() {
           {activeTab === "grades" && <GradesTab />}
           {activeTab === "subjects" && <SubjectsTab />}
           {activeTab === "payments" && <PaymentsTab />}
+          {activeTab === "payment_config" && <PaymentConfigTab />}
           {activeTab === "themes" && <ThemesTab />}
           {activeTab === "coupons" && <CouponsTab />}
           {activeTab === "notifications" && <NotificationsTab />}
-          {activeTab === "payment_config" && <PaymentConfigTab />}
+
           {activeTab === "plans" && <PlansTab />}
           {activeTab === "secrets" && <SecretsTab />}
           {activeTab === "profitability" && <ProfitabilityTab />}
@@ -1808,49 +1810,74 @@ function NotificationsTab() {
 
 /* ═══════════ TAB 10: Payment Config ═══════════ */
 function PaymentConfigTab() {
-  const [config, setConfig] = useState<Record<string, string>>({});
+  const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [savingKey, setSavingKey] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
-    try { const r = await adminAPI("get_payment_config"); setConfig(r || {}); } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
+    try {
+      const r = await adminAPI("get_payment_config");
+      const map: Record<string, string> = {};
+      (r?.secrets || []).forEach((s: Record<string, unknown>) => { map[s.key as string] = (s.value as string) || ""; });
+      setSecrets(map);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "خطأ"); }
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try { await adminAPI("update_payment_config", { config }); showToast("تم حفظ الإعدادات", "success"); } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
-    setSaving(false);
+  const saveKey = async (key: string) => {
+    setSavingKey(key);
+    try {
+      await adminAPI("update_payment_config", { secret_key: key, secret_value: secrets[key] || "" });
+      showToast("تم حفظ " + key, "success");
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : "خطأ", "error"); }
+    setSavingKey("");
   };
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
-  const fields = [
-    { key: "stripe_publishable_key", label: "Stripe Publishable Key" },
-    { key: "stripe_secret_key", label: "Stripe Secret Key" },
-    { key: "stripe_webhook_secret", label: "Stripe Webhook Secret" },
-    { key: "paymob_api_key", label: "Paymob API Key" },
-    { key: "paymob_integration_id", label: "Paymob Integration ID" },
-    { key: "paymob_iframe_id", label: "Paymob iFrame ID" },
-    { key: "paymob_hmac_secret", label: "Paymob HMAC Secret" },
+  const sections = [
+    { title: "💳 Stripe (بطاقات ائتمان)", keys: [
+      { key: "STRIPE_PUBLISHABLE_KEY", label: "Publishable Key", hint: "يبدأ بـ pk_test_ أو pk_live_" },
+      { key: "STRIPE_SECRET_KEY", label: "Secret Key", hint: "يبدأ بـ sk_test_ أو sk_live_" },
+      { key: "STRIPE_WEBHOOK_SECRET", label: "Webhook Secret", hint: "يبدأ بـ whsec_" },
+    ]},
+    { title: "📱 Paymob (فودافون كاش / إنستاباي / فوري)", keys: [
+      { key: "PAYMOB_API_KEY", label: "API Key", hint: "من لوحة تحكم Paymob" },
+      { key: "PAYMOB_HMAC_SECRET", label: "HMAC Secret", hint: "للتحقق من الإشعارات" },
+      { key: "PAYMOB_IFRAME_ID", label: "iFrame ID", hint: "رقم صفحة الدفع" },
+      { key: "PAYMOB_VODAFONE_INTEGRATION_ID", label: "فودافون كاش Integration ID", hint: "رقم التكامل" },
+      { key: "PAYMOB_INSTAPAY_INTEGRATION_ID", label: "إنستاباي Integration ID", hint: "رقم التكامل" },
+      { key: "PAYMOB_FAWRY_INTEGRATION_ID", label: "فوري Integration ID", hint: "رقم التكامل" },
+    ]},
   ];
 
   return (
-    <div>
-      <h3 className="font-bold mb-4" style={{ color: "var(--theme-text-primary)" }}>إعدادات بوابات الدفع</h3>
-      <div className="space-y-1">
-        {fields.map(f => (
-          <InputField key={f.key} label={f.label} value={config[f.key] || ""} onChange={v => setConfig({ ...config, [f.key]: v })} placeholder={f.label} dir="ltr" />
-        ))}
-      </div>
-      <button onClick={handleSave} disabled={saving} className="mt-4 w-full py-2.5 rounded-xl text-white font-medium flex items-center justify-center gap-2" style={{ background: "var(--theme-cta-gradient)" }}>
-        {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} حفظ الإعدادات
-      </button>
+    <div className="space-y-6">
+      <h3 className="font-bold text-lg" style={{ color: "var(--theme-text-primary)" }}>⚙️ إعدادات بوابات الدفع</h3>
+      <p className="text-sm opacity-70">أدخل مفاتيح Stripe و Paymob هنا. اضغط حفظ بجانب كل مفتاح بعد التعديل.</p>
+      {sections.map(section => (
+        <div key={section.title} className="rounded-xl p-4" style={{ background: "var(--theme-card-bg)", border: "1px solid var(--theme-border)" }}>
+          <h4 className="font-bold mb-3" style={{ color: "var(--theme-text-primary)" }}>{section.title}</h4>
+          <div className="space-y-3">
+            {section.keys.map(f => (
+              <div key={f.key}>
+                <label className="block text-xs font-medium mb-1 opacity-80">{f.label}</label>
+                <div className="flex gap-2">
+                  <input type="text" dir="ltr" className="flex-1 px-3 py-2 rounded-lg text-sm" style={{ background: "var(--theme-input-bg)", border: "1px solid var(--theme-border)", color: "var(--theme-text-primary)" }} placeholder={f.hint} value={secrets[f.key] || ""} onChange={e => setSecrets({ ...secrets, [f.key]: e.target.value })} />
+                  <button onClick={() => saveKey(f.key)} disabled={savingKey === f.key} className="px-3 py-2 rounded-lg text-white text-xs font-medium flex items-center gap-1" style={{ background: "var(--theme-cta-gradient)" }}>
+                    {savingKey === f.key ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} حفظ
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -2263,7 +2290,7 @@ function SecretsTab() {
 
   const categories: Record<string, { label: string; icon: string; keys: string[] }> = {
     ai: { label: "🤖 الذكاء الاصطناعي", icon: "🤖", keys: ["ANTHROPIC_API_KEY", "AI_MODEL", "AI_CONTENT_MODEL", "AI_DAILY_LIMIT", "AI_MONTHLY_LIMIT"] },
-    payments: { label: "💳 المدفوعات", icon: "💳", keys: ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "PAYMOB_API_KEY", "PAYMOB_HMAC_SECRET", "PAYMOB_IFRAME_ID", "PAYMOB_VODAFONE_INTEGRATION_ID", "PAYMOB_INSTAPAY_INTEGRATION_ID", "PAYMOB_FAWRY_INTEGRATION_ID"] },
+
     auth: { label: "🔐 الأمان والمصادقة", icon: "🔐", keys: ["jwt_secret", "FIREBASE_API_KEY", "FIREBASE_PROJECT_ID", "SMS_PROVIDER"] },
     site: { label: "🌐 إعدادات الموقع", icon: "🌐", keys: ["APP_URL", "SUPABASE_URL", "SUPABASE_ANON_KEY", "TRIAL_DAYS", "MAX_FILE_SIZE_MB", "WATERMARK_FONT_SIZE"] },
     messaging: { label: "📧 التواصل والإشعارات", icon: "📧", keys: ["RESEND_API_KEY", "whatsapp_access_token", "whatsapp_phone_number_id"] },
