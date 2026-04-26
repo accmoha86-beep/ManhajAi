@@ -121,6 +121,7 @@ export default function SubjectsPage() {
 
   const [expandedUnits, setExpandedUnits] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeSection, setActiveSection] = useState(0);
 
   /* ---------- fetch subjects ---------- */
   const fetchSubjects = useCallback(async () => {
@@ -261,6 +262,240 @@ export default function SubjectsPage() {
   /* ================================================================ */
   /*  Render: Lesson Card (reusable)                                   */
   /* ================================================================ */
+
+  /* ═══════ Section Parser + Markdown Renderer ═══════ */
+  const getSectionIcon = (title: string): string => {
+    if (/مثال|أمثلة|تطبيق/.test(title)) return "💡";
+    if (/تعريف/.test(title)) return "📝";
+    if (/قانون|قوانين|معادل/.test(title)) return "⚖️";
+    if (/خواص|خصائص|صفات/.test(title)) return "🔬";
+    if (/تفاعل/.test(title)) return "⚗️";
+    if (/ملاحظ|ملحوظ|تنبيه|مهم|انتبه/.test(title)) return "⚠️";
+    if (/ملخص|خلاصة|مراجعة/.test(title)) return "📋";
+    if (/تصنيف|أنواع|تقسيم|أقسام/.test(title)) return "📊";
+    if (/استخدام|تطبيقات/.test(title)) return "🔧";
+    if (/حفاز|عامل|محفز/.test(title)) return "⚡";
+    if (/جدول/.test(title)) return "📊";
+    if (/مقارن/.test(title)) return "⚖️";
+    if (/تجرب|عمل/.test(title)) return "🧪";
+    return "📌";
+  };
+
+  const parseSummaryIntoSections = (rawContent: string) => {
+    const lines = rawContent.split("\n");
+    const sections: { title: string; icon: string; lines: string[] }[] = [];
+    let current: { title: string; icon: string; lines: string[] } = { title: "المقدمة", icon: "📖", lines: [] };
+
+    lines.forEach((line: string) => {
+      const t = line.trim();
+      if (t.startsWith("## ")) {
+        if (current.lines.some((l: string) => l.trim()) || sections.length > 0) {
+          sections.push(current);
+        }
+        const title = t.slice(3).trim();
+        current = { title, icon: getSectionIcon(title), lines: [] };
+      } else {
+        current.lines.push(line);
+      }
+    });
+    if (current.lines.some((l: string) => l.trim())) sections.push(current);
+    return sections.filter((s: { lines: string[] }) => s.lines.some((l: string) => l.trim()));
+  };
+
+  const renderMarkdownLines = (lines: string[]): React.ReactNode[] => {
+    const elements: React.ReactNode[] = [];
+    let inCodeBlock = false;
+    let codeLines: string[] = [];
+    let inBlockquote = false;
+    let quoteLines: string[] = [];
+    let tableRows: string[][] = [];
+    let tableHeader: string[] = [];
+
+    const renderInline = (text: string) => {
+      return text
+        .replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight:800;color:var(--theme-primary)">$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`([^`]+)`/g, '<code style="background:var(--theme-hover-overlay);padding:1px 6px;border-radius:4px;font-size:0.9em">$1</code>');
+    };
+
+    const flushQuote = (idx: number) => {
+      if (quoteLines.length > 0) {
+        elements.push(
+          <div key={`quote-${idx}`} className="rounded-xl p-4 my-3" style={{
+            background: "var(--theme-hover-overlay)",
+            borderRight: "4px solid var(--theme-primary)",
+          }}>
+            {quoteLines.map((ql: string, qi: number) => (
+              <p key={qi} className="text-[15px] leading-[1.9]" style={{ color: "var(--theme-text-primary)" }}
+                dangerouslySetInnerHTML={{ __html: renderInline(ql) }}
+              />
+            ))}
+          </div>
+        );
+        quoteLines = [];
+        inBlockquote = false;
+      }
+    };
+
+    const flushTable = (idx: number) => {
+      if (tableRows.length > 0 || tableHeader.length > 0) {
+        elements.push(
+          <div key={`table-${idx}`} className="overflow-x-auto my-4 rounded-2xl" style={{
+            border: "1px solid var(--theme-primary)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+          }}>
+            <table className="w-full text-[15px]" dir="rtl" style={{ borderCollapse: "collapse", fontFamily: "'Cairo', sans-serif" }}>
+              {tableHeader.length > 0 && (
+                <thead>
+                  <tr style={{ background: "var(--theme-cta-gradient)" }}>
+                    {tableHeader.map((cell: string, ci: number) => (
+                      <th key={ci} className="px-4 py-3 text-white font-bold text-center" style={{
+                        borderBottom: "2px solid var(--theme-primary)",
+                        borderLeft: ci < tableHeader.length - 1 ? "1px solid rgba(255,255,255,0.2)" : "none",
+                        fontSize: "0.95rem",
+                      }}
+                        dangerouslySetInnerHTML={{ __html: renderInline(cell) }}
+                      />
+                    ))}
+                  </tr>
+                </thead>
+              )}
+              <tbody>
+                {tableRows.map((row: string[], ri: number) => (
+                  <tr key={ri} style={{
+                    background: ri % 2 === 0 ? "var(--theme-hover-overlay)" : "var(--theme-bg, #fff)",
+                    transition: "background 0.2s",
+                  }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--theme-primary-light, rgba(99,102,241,0.08))"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ri % 2 === 0 ? "var(--theme-hover-overlay)" : "var(--theme-bg, #fff)"; }}
+                  >
+                    {row.map((cell: string, ci: number) => (
+                      <td key={ci} className="px-4 py-2.5 text-center" style={{
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                        borderLeft: ci < row.length - 1 ? "1px solid rgba(0,0,0,0.06)" : "none",
+                        color: "var(--theme-text-primary)",
+                        fontWeight: ci === 0 ? 700 : 400,
+                      }}
+                        dangerouslySetInnerHTML={{ __html: renderInline(cell) }}
+                      />
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        tableHeader = [];
+        tableRows = [];
+      }
+    };
+
+    lines.forEach((line: string, i: number) => {
+      const t = line.trim();
+
+      if (t.startsWith("\`\`\`")) {
+        if (inCodeBlock) {
+          elements.push(
+            <pre key={`code-${i}`} className="rounded-xl p-4 my-3 overflow-x-auto text-sm" dir="ltr" style={{
+              background: "#1e1e2e", color: "#cdd6f4", fontFamily: "monospace", lineHeight: 1.7,
+            }}>
+              {codeLines.join("\n")}
+            </pre>
+          );
+          codeLines = [];
+          inCodeBlock = false;
+        } else {
+          flushQuote(i);
+          inCodeBlock = true;
+        }
+        return;
+      }
+      if (inCodeBlock) { codeLines.push(line); return; }
+
+      if (t.startsWith("> ")) {
+        inBlockquote = true;
+        quoteLines.push(t.slice(2));
+        return;
+      } else if (inBlockquote) {
+        flushQuote(i);
+      }
+
+      if (!t) { elements.push(<div key={i} className="h-2" />); return; }
+
+      if (/^-{3,}$|^\*{3,}$|^_{3,}$/.test(t)) {
+        elements.push(
+          <div key={i} className="my-4 h-px" style={{ background: "linear-gradient(to left, transparent, var(--theme-primary), transparent)", opacity: 0.3 }} />
+        );
+        return;
+      }
+
+      if (t.startsWith("# ") && !t.startsWith("## ")) {
+        elements.push(
+          <div key={i} className="rounded-2xl p-4 mt-6 mb-3" style={{ background: "var(--theme-cta-gradient)" }}>
+            <h2 className="text-xl font-extrabold text-white">{t.slice(2)}</h2>
+          </div>
+        );
+        return;
+      }
+      if (t.startsWith("### ") || t.startsWith("#### ")) {
+        elements.push(
+          <h4 key={i} className="text-base font-bold mt-4 mb-2 flex items-center gap-2" style={{ color: "var(--theme-primary)" }}>
+            <span className="w-2 h-2 rounded-full" style={{ background: "var(--theme-primary)" }} />
+            {t.replace(/^#{1,4}\s*/, "")}
+          </h4>
+        );
+        return;
+      }
+
+      if (/^[\u2022\-\*\u25CF\u25C6] /.test(t)) {
+        elements.push(
+          <div key={i} className="flex items-start gap-3 mr-2 text-[16px] leading-[1.85]" style={{ color: "var(--theme-text-primary)" }}>
+            <CheckCircle size={16} className="mt-1.5 flex-shrink-0" style={{ color: "var(--theme-primary)" }} />
+            <span dangerouslySetInnerHTML={{ __html: renderInline(t.replace(/^[\u2022\-\*\u25CF\u25C6]\s*/, "")) }} />
+          </div>
+        );
+        return;
+      }
+
+      if (/^\d+[.)]\s/.test(t)) {
+        const num = t.match(/^(\d+)/)?.[1] || "1";
+        const text = t.replace(/^\d+[.)]\s*/, "");
+        elements.push(
+          <div key={i} className="flex items-start gap-3 mr-2 text-[16px] leading-[1.85]" style={{ color: "var(--theme-text-primary)" }}>
+            <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold mt-1" style={{ background: "var(--theme-primary)", color: "#fff" }}>{num}</span>
+            <span dangerouslySetInnerHTML={{ __html: renderInline(text) }} />
+          </div>
+        );
+        return;
+      }
+
+      if (t.startsWith("|") && t.endsWith("|")) {
+        const cells = t.split("|").filter((c: string) => c.trim() !== "").map((c: string) => c.trim());
+        if (cells.every((c: string) => /^[-:]+$/.test(c))) return;
+        if (tableHeader.length === 0) {
+          tableHeader = cells;
+        } else {
+          tableRows.push(cells);
+        }
+        return;
+      }
+      if (tableHeader.length > 0 || tableRows.length > 0) {
+        flushTable(i);
+      }
+
+      elements.push(
+        <p key={i} className="text-[16px] leading-[1.9]" style={{ color: "var(--theme-text-primary)" }}
+          dangerouslySetInnerHTML={{ __html: renderInline(t) }}
+        />
+      );
+    });
+
+    flushQuote(lines.length);
+    flushTable(lines.length);
+    return elements;
+  };
+
+
   const renderLessonCard = (lesson: LessonSummary, idx: number) => (
     <div
       key={lesson.id}
@@ -365,232 +600,120 @@ export default function SubjectsPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {/* TEXT/MARKDOWN CONTENT — Full Renderer */}
+                    {/* TEXT/MARKDOWN CONTENT — Sectioned Renderer */}
                     {!selectedLesson.summary.key_points?.length &&
                       !selectedLesson.summary.definitions?.length &&
-                      selectedLesson.summary.content && (
-                        <div className="space-y-2" style={{ fontFamily: "'Cairo', sans-serif" }}>
-                          {(() => {
-                            const lines = selectedLesson.summary.content.split("\n");
-                            const elements: React.ReactNode[] = [];
-                            let inCodeBlock = false;
-                            let codeLines: string[] = [];
-                            let inBlockquote = false;
-                            let quoteLines: string[] = [];
-                            let tableRows: string[][] = [];
-                            let tableHeader: string[] = [];
+                      selectedLesson.summary.content && (() => {
+                        const sections = parseSummaryIntoSections(selectedLesson.summary.content);
+                        
+                        if (sections.length <= 1) {
+                          return (
+                            <div className="space-y-2" style={{ fontFamily: "'Cairo', sans-serif" }}>
+                              {renderMarkdownLines(selectedLesson.summary.content.split("\n"))}
+                            </div>
+                          );
+                        }
+                        
+                        const safeIdx = Math.min(activeSection, sections.length - 1);
+                        const currentSection = sections[safeIdx];
+                        
+                        return (
+                          <div style={{ fontFamily: "'Cairo', sans-serif" }}>
+                            {/* ─── Section Tabs ─── */}
+                            <div className="flex gap-2 overflow-x-auto pb-3 mb-5" style={{
+                              borderBottom: "2px solid var(--theme-surface-border)",
+                              scrollbarWidth: "none",
+                              msOverflowStyle: "none",
+                            }}>
+                              {sections.map((section: { title: string; icon: string; lines: string[] }, idx: number) => (
+                                <button
+                                  key={idx}
+                                  onClick={() => setActiveSection(idx)}
+                                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all duration-200"
+                                  style={{
+                                    background: safeIdx === idx ? "var(--theme-cta-gradient)" : "var(--theme-hover-overlay)",
+                                    color: safeIdx === idx ? "#fff" : "var(--theme-text-secondary)",
+                                    boxShadow: safeIdx === idx ? "0 4px 12px rgba(0,0,0,0.15)" : "none",
+                                    transform: safeIdx === idx ? "scale(1.05)" : "scale(1)",
+                                    border: safeIdx === idx ? "none" : "1px solid var(--theme-surface-border)",
+                                  }}
+                                >
+                                  <span>{section.icon}</span>
+                                  <span>{section.title}</span>
+                                </button>
+                              ))}
+                            </div>
 
-                            const renderInline = (text: string) => {
-                              return text
-                                .replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight:800;color:var(--theme-primary)">$1</strong>')
-                                .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                                .replace(/`([^`]+)`/g, '<code style="background:var(--theme-hover-overlay);padding:1px 6px;border-radius:4px;font-size:0.9em">$1</code>');
-                            };
+                            {/* ─── Section Header ─── */}
+                            <div className="flex items-center gap-3 mb-4 pb-2" style={{ borderBottom: "2px solid var(--theme-primary)" }}>
+                              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: "var(--theme-cta-gradient)" }}>
+                                <span className="text-white">{currentSection.icon}</span>
+                              </div>
+                              <h3 className="text-lg font-extrabold" style={{ color: "var(--theme-primary)" }}>
+                                {currentSection.title}
+                              </h3>
+                              <span className="mr-auto text-xs px-2.5 py-1 rounded-full font-bold" style={{
+                                background: "var(--theme-hover-overlay)",
+                                color: "var(--theme-text-secondary)",
+                              }}>
+                                {safeIdx + 1} / {sections.length}
+                              </span>
+                            </div>
 
-                            const flushQuote = (idx: number) => {
-                              if (quoteLines.length > 0) {
-                                elements.push(
-                                  <div key={`quote-${idx}`} className="rounded-xl p-4 my-3" style={{
-                                    background: "var(--theme-hover-overlay)",
-                                    borderRight: "4px solid var(--theme-primary)",
-                                  }}>
-                                    {quoteLines.map((ql, qi) => (
-                                      <p key={qi} className="text-[15px] leading-[1.9]" style={{ color: "var(--theme-text-primary)" }}
-                                        dangerouslySetInnerHTML={{ __html: renderInline(ql) }}
-                                      />
-                                    ))}
-                                  </div>
-                                );
-                                quoteLines = [];
-                                inBlockquote = false;
-                              }
-                            };
+                            {/* ─── Section Content ─── */}
+                            <div className="space-y-2 min-h-[200px]">
+                              {renderMarkdownLines(currentSection.lines)}
+                            </div>
 
-                            const flushTable = (idx: number) => {
-                              if (tableRows.length > 0 || tableHeader.length > 0) {
-                                elements.push(
-                                  <div key={`table-${idx}`} className="overflow-x-auto my-4 rounded-2xl" style={{
-                                    border: "1px solid var(--theme-primary)",
-                                    boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
-                                  }}>
-                                    <table className="w-full text-[15px]" dir="rtl" style={{ borderCollapse: "collapse", fontFamily: "'Cairo', sans-serif" }}>
-                                      {tableHeader.length > 0 && (
-                                        <thead>
-                                          <tr style={{ background: "var(--theme-cta-gradient)" }}>
-                                            {tableHeader.map((cell, ci) => (
-                                              <th key={ci} className="px-4 py-3 text-white font-bold text-center" style={{
-                                                borderBottom: "2px solid var(--theme-primary)",
-                                                borderLeft: ci < tableHeader.length - 1 ? "1px solid rgba(255,255,255,0.2)" : "none",
-                                                fontSize: "0.95rem",
-                                              }}
-                                                dangerouslySetInnerHTML={{ __html: renderInline(cell) }}
-                                              />
-                                            ))}
-                                          </tr>
-                                        </thead>
-                                      )}
-                                      <tbody>
-                                        {tableRows.map((row, ri) => (
-                                          <tr key={ri} style={{
-                                            background: ri % 2 === 0 ? "var(--theme-hover-overlay)" : "var(--theme-bg, #fff)",
-                                            transition: "background 0.2s",
-                                          }}
-                                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--theme-primary-light, rgba(99,102,241,0.08))"; }}
-                                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ri % 2 === 0 ? "var(--theme-hover-overlay)" : "var(--theme-bg, #fff)"; }}
-                                          >
-                                            {row.map((cell, ci) => (
-                                              <td key={ci} className="px-4 py-2.5 text-center" style={{
-                                                borderBottom: "1px solid rgba(0,0,0,0.06)",
-                                                borderLeft: ci < row.length - 1 ? "1px solid rgba(0,0,0,0.06)" : "none",
-                                                color: "var(--theme-text-primary)",
-                                                fontWeight: ci === 0 ? 700 : 400,
-                                              }}
-                                                dangerouslySetInnerHTML={{ __html: renderInline(cell) }}
-                                              />
-                                            ))}
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                );
-                                tableHeader = [];
-                                tableRows = [];
-                              }
-                            };
+                            {/* ─── Section Navigation ─── */}
+                            <div className="flex items-center justify-between mt-6 pt-4 gap-3" style={{ borderTop: "2px solid var(--theme-surface-border)" }}>
+                              <button
+                                disabled={safeIdx <= 0}
+                                onClick={() => setActiveSection((p: number) => Math.max(0, p - 1))}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all"
+                                style={{
+                                  background: safeIdx <= 0 ? "var(--theme-hover-overlay)" : "var(--theme-cta-gradient)",
+                                  color: safeIdx <= 0 ? "var(--theme-text-secondary)" : "#fff",
+                                  opacity: safeIdx <= 0 ? 0.5 : 1,
+                                  cursor: safeIdx <= 0 ? "not-allowed" : "pointer",
+                                }}
+                              >
+                                <span style={{ transform: "scaleX(-1)" }}>←</span>
+                                <span>القسم السابق</span>
+                              </button>
 
-                            lines.forEach((line: string, i: number) => {
-                              const t = line.trim();
+                              <div className="flex gap-1.5">
+                                {sections.map((_: any, idx: number) => (
+                                  <button
+                                    key={idx}
+                                    onClick={() => setActiveSection(idx)}
+                                    className="w-2.5 h-2.5 rounded-full transition-all duration-200"
+                                    style={{
+                                      background: safeIdx === idx ? "var(--theme-primary)" : "var(--theme-surface-border)",
+                                      transform: safeIdx === idx ? "scale(1.3)" : "scale(1)",
+                                    }}
+                                  />
+                                ))}
+                              </div>
 
-                              // Code block toggle
-                              if (t.startsWith("```")) {
-                                if (inCodeBlock) {
-                                  elements.push(
-                                    <pre key={`code-${i}`} className="rounded-xl p-4 my-3 overflow-x-auto text-sm" dir="ltr" style={{
-                                      background: "#1e1e2e", color: "#cdd6f4", fontFamily: "monospace", lineHeight: 1.7,
-                                    }}>
-                                      {codeLines.join("\n")}
-                                    </pre>
-                                  );
-                                  codeLines = [];
-                                  inCodeBlock = false;
-                                } else {
-                                  flushQuote(i);
-                                  inCodeBlock = true;
-                                }
-                                return;
-                              }
-                              if (inCodeBlock) { codeLines.push(line); return; }
-
-                              // Blockquote
-                              if (t.startsWith("> ")) {
-                                inBlockquote = true;
-                                quoteLines.push(t.slice(2));
-                                return;
-                              } else if (inBlockquote) {
-                                flushQuote(i);
-                              }
-
-                              // Empty line
-                              if (!t) { elements.push(<div key={i} className="h-2" />); return; }
-
-                              // Horizontal rule
-                              if (/^-{3,}$|^\*{3,}$|^_{3,}$/.test(t)) {
-                                elements.push(
-                                  <div key={i} className="my-4 h-px" style={{ background: "linear-gradient(to left, transparent, var(--theme-primary), transparent)", opacity: 0.3 }} />
-                                );
-                                return;
-                              }
-
-                              // H1
-                              if (t.startsWith("# ")) {
-                                elements.push(
-                                  <div key={i} className="rounded-2xl p-4 mt-6 mb-3" style={{ background: "var(--theme-cta-gradient)" }}>
-                                    <h2 className="text-xl font-extrabold text-white">{t.slice(2)}</h2>
-                                  </div>
-                                );
-                                return;
-                              }
-                              // H2
-                              if (t.startsWith("## ")) {
-                                elements.push(
-                                  <div key={i} className="flex items-center gap-3 mt-6 mb-3 pb-2" style={{ borderBottom: "2px solid var(--theme-primary)" }}>
-                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--theme-cta-gradient)" }}>
-                                      <Brain size={16} className="text-white" />
-                                    </div>
-                                    <h3 className="text-lg font-extrabold" style={{ color: "var(--theme-primary)" }}>{t.slice(3)}</h3>
-                                  </div>
-                                );
-                                return;
-                              }
-                              // H3/H4
-                              if (t.startsWith("### ") || t.startsWith("#### ")) {
-                                elements.push(
-                                  <h4 key={i} className="text-base font-bold mt-4 mb-2 flex items-center gap-2" style={{ color: "var(--theme-primary)" }}>
-                                    <span className="w-2 h-2 rounded-full" style={{ background: "var(--theme-primary)" }} />
-                                    {t.replace(/^#{1,4}\s*/, "")}
-                                  </h4>
-                                );
-                                return;
-                              }
-
-                              // Bullet points
-                              if (/^[\u2022\-\*\u25CF\u25C6] /.test(t)) {
-                                elements.push(
-                                  <div key={i} className="flex items-start gap-3 mr-2 text-[16px] leading-[1.85]" style={{ color: "var(--theme-text-primary)" }}>
-                                    <CheckCircle size={16} className="mt-1.5 flex-shrink-0" style={{ color: "var(--theme-primary)" }} />
-                                    <span dangerouslySetInnerHTML={{ __html: renderInline(t.replace(/^[\u2022\-\*\u25CF\u25C6]\s*/, "")) }} />
-                                  </div>
-                                );
-                                return;
-                              }
-
-                              // Numbered list
-                              if (/^\d+[.)]\s/.test(t)) {
-                                const num = t.match(/^(\d+)/)?.[1] || "1";
-                                const text = t.replace(/^\d+[.)]\s*/, "");
-                                elements.push(
-                                  <div key={i} className="flex items-start gap-3 mr-2 text-[16px] leading-[1.85]" style={{ color: "var(--theme-text-primary)" }}>
-                                    <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold mt-1" style={{ background: "var(--theme-primary)", color: "#fff" }}>{num}</span>
-                                    <span dangerouslySetInnerHTML={{ __html: renderInline(text) }} />
-                                  </div>
-                                );
-                                return;
-                              }
-
-                              // Table row
-                              if (t.startsWith("|") && t.endsWith("|")) {
-                                const cells = t.split("|").filter(c => c.trim() !== "").map(c => c.trim());
-                                // Skip separator rows like |---|---|
-                                if (cells.every(c => /^[-:]+$/.test(c))) return;
-                                if (tableHeader.length === 0) {
-                                  tableHeader = cells;
-                                } else {
-                                  tableRows.push(cells);
-                                }
-                                return;
-                              }
-                              // If we were in a table and this line is not a table row, flush
-                              if (tableHeader.length > 0 || tableRows.length > 0) {
-                                flushTable(i);
-                              }
-
-                              // Normal paragraph
-                              elements.push(
-                                <p key={i} className="text-[16px] leading-[1.9]" style={{ color: "var(--theme-text-primary)" }}
-                                  dangerouslySetInnerHTML={{ __html: renderInline(t) }}
-                                />
-                              );
-                            });
-
-                            // Flush remaining
-                            flushQuote(lines.length);
-                            flushTable(lines.length);
-
-                            return elements;
-                          })()}
-                        </div>
-                      )}
+                              <button
+                                disabled={safeIdx >= sections.length - 1}
+                                onClick={() => setActiveSection((p: number) => Math.min(sections.length - 1, p + 1))}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all"
+                                style={{
+                                  background: safeIdx >= sections.length - 1 ? "var(--theme-hover-overlay)" : "var(--theme-cta-gradient)",
+                                  color: safeIdx >= sections.length - 1 ? "var(--theme-text-secondary)" : "#fff",
+                                  opacity: safeIdx >= sections.length - 1 ? 0.5 : 1,
+                                  cursor: safeIdx >= sections.length - 1 ? "not-allowed" : "pointer",
+                                }}
+                              >
+                                <span>القسم التالي</span>
+                                <span>←</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                     {/* STRUCTURED: Key Points */}
                     {selectedLesson.summary.key_points && selectedLesson.summary.key_points.length > 0 && (
