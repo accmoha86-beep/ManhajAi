@@ -98,14 +98,18 @@ export async function POST(request: NextRequest) {
     // ═══════════════════════════════════════
     await updateJob({ p_status: 'processing', p_progress: 5, p_message: '⚙️ جاري تحميل الإعدادات...' });
 
-    const { data: apiKey } = await supabase.rpc('get_system_secret', { p_key: 'anthropic_api_key' });
+    const { data: rawApiKey } = await supabase.rpc('get_system_secret', { p_key: 'anthropic_api_key' });
+    // Strip wrapping quotes from jsonb values
+    const apiKey = (rawApiKey || '').replace(/^["']+|["']+$/g, '').trim();
     if (!apiKey) {
       await updateJob({ p_status: 'failed', p_error: '❌ مفتاح API غير موجود' });
       return NextResponse.json({ error: 'مفتاح API غير موجود' }, { status: 500 });
     }
 
     const { data: model } = await supabase.rpc('get_system_secret', { p_key: 'AI_CONTENT_MODEL' });
-    const aiModel = model || 'claude-sonnet-4-6';
+    // Strip wrapping quotes from jsonb values + validate
+    const cleanModel = (model || '').replace(/^["']+|["']+$/g, '').trim();
+    const aiModel = cleanModel || 'claude-sonnet-4-5-20250929';
 
     // ═══════════════════════════════════════
     // PHASE 2: EXTRACT TEXT

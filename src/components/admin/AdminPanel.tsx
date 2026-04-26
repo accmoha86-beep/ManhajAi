@@ -681,41 +681,52 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !uploadLessonId) return;
+    const files = e.target.files;
+    if (!files || files.length === 0 || !uploadLessonId) return;
 
-    // Supported: PDF, Images, Word, Excel, PowerPoint, Text
+    // Supported types
     const allowedTypes = [
       "application/pdf",
       "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/bmp",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
-      "application/msword", // .doc
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
-      "application/vnd.ms-excel", // .xls
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
-      "application/vnd.ms-powerpoint", // .ppt
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "application/vnd.ms-powerpoint",
       "text/plain", "text/csv", "text/markdown",
     ];
-    const ext = file.name?.toLowerCase().split('.').pop() || '';
     const allowedExts = ['pdf','png','jpg','jpeg','webp','gif','bmp','docx','doc','xlsx','xls','csv','pptx','ppt','txt','md','rtf'];
-    if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext)) {
-      alert("صيغة الملف غير مدعومة. الصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص");
-      return;
-    }
-    // Client-side size check (200MB default — matches server setting MAX_FILE_SIZE_MB)
     const maxSizeMB = 200;
-    if (file.size > maxSizeMB * 1024 * 1024) {
-      alert(`حجم الملف (${(file.size / 1024 / 1024).toFixed(1)} MB) يتجاوز الحد المسموح (${maxSizeMB} MB). يمكنك تغيير الحد من إعدادات المفاتيح → MAX_FILE_SIZE_MB`);
-      return;
+
+    // Validate all files first
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const ext = f.name?.toLowerCase().split('.').pop() || '';
+      if (!allowedTypes.includes(f.type) && !allowedExts.includes(ext)) {
+        alert(`❌ الملف "${f.name}" — صيغة غير مدعومة.\nالصيغ المدعومة: PDF, Word, Excel, PowerPoint, صور, نص`);
+        return;
+      }
+      if (f.size > maxSizeMB * 1024 * 1024) {
+        alert(`❌ الملف "${f.name}" — حجمه (${(f.size / 1024 / 1024).toFixed(1)} MB) يتجاوز الحد (${maxSizeMB} MB)`);
+        return;
+      }
     }
 
+    const totalFiles = files.length;
     setGeneratingId(uploadLessonId);
-    const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
-    setGenProgress(`📤 جاري رفع الملف (${fileSizeMB} MB)...`);
     setGenResult(null);
+    let totalQuestionsAll = 0;
+    let lastError: string | null = null;
+
+    // Process files sequentially
+    for (let fi = 0; fi < totalFiles; fi++) {
+      const file = files[fi];
+      const fileLabel = totalFiles > 1 ? `📁 ملف ${fi + 1}/${totalFiles}: ${file.name}` : '';
+      const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+      setGenProgress(`${fileLabel}\n📤 جاري رفع الملف (${fileSizeMB} MB)...`);
 
     try {
-      // Generate jobId on client side — so we can start polling BEFORE server responds
       const jobId = crypto.randomUUID();
 
       const formData = new FormData();
@@ -742,13 +753,12 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
           if (e.lengthComputable) {
             const pct = Math.round((e.loaded / e.total) * 100);
             const loadedMB = (e.loaded / 1024 / 1024).toFixed(1);
-            setGenProgress(`📤 جاري رفع الملف... ${pct}% (${loadedMB} من ${fileSizeMB} MB)`);
+            setGenProgress(`${fileLabel}\n📤 جاري رفع الملف... ${pct}% (${loadedMB} من ${fileSizeMB} MB)`);
           }
         };
         
         xhr.upload.onload = () => {
-          // Upload complete! Server received file. Start polling immediately.
-          setGenProgress("✅ تم الرفع — جاري المعالجة...");
+          setGenProgress(`${fileLabel}\n✅ تم الرفع — جاري المعالجة...`);
         };
         
         xhr.onload = () => {
@@ -805,7 +815,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
           } else if (status.progress > 0) {
             const pct = status.progress || 0;
             const msg = status.message || 'جاري المعالجة...';
-            setGenProgress(`${msg} — ${pct}%`);
+            setGenProgress(`${fileLabel}\n${msg} — ${pct}%`);
           }
         } catch (pollErr: any) {
           if (pollErr.message?.includes('فشل')) throw pollErr;
@@ -830,13 +840,36 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       }
 
     } catch (err: unknown) {
-      setGenProgress("");
-      if (err instanceof Error) {
-        alert(err.message);
-      } else {
-        alert("خطأ غير متوقع — جرّب تاني");
+      lastError = err instanceof Error ? err.message : "خطأ غير متوقع";
+      if (totalFiles === 1) {
+        setGenProgress("");
+        alert(lastError);
       }
     }
+
+    // Track total questions across all files
+    if (genResult) {
+      totalQuestionsAll += ((genResult as Record<string, any>)?.questions?.total || 0);
+    }
+
+    } // end for loop (multi-file)
+
+    // Final result for multi-file
+    if (totalFiles > 1) {
+      if (lastError && totalQuestionsAll === 0) {
+        setGenProgress("");
+        alert(`فشل في معالجة الملفات: ${lastError}`);
+      } else {
+        setGenResult({
+          summary: true,
+          questions: { total: totalQuestionsAll },
+          multiFile: totalFiles,
+        });
+        setGenProgress("");
+        loadLessons();
+      }
+    }
+
     setGeneratingId(null);
     e.target.value = "";
   };
@@ -875,7 +908,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
       </div>
 
       {/* Hidden file input */}
-      <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.rtf" className="hidden" onChange={handleFileUpload} />
+      <input ref={fileInputRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.rtf" className="hidden" onChange={handleFileUpload} />
 
       {/* Generation Result Banner */}
       {genResult && (
@@ -886,6 +919,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
             <span>📋 {(genResult.questions as Record<string, unknown>)?.total || 0} سؤال</span>
             {(genResult.pages as number) > 0 && <span>📄 {genResult.pages as number} صفحة</span>}
             {(genResult.chunks as number) > 1 && <span>✂️ {genResult.chunks as number} جزء</span>}
+            {(genResult.multiFile as number) > 1 && <span>📁 {genResult.multiFile as number} ملف</span>}
           </div>
           <button onClick={() => setGenResult(null)} className="mt-2 text-xs text-green-500 hover:underline">إغلاق ✕</button>
         </div>
@@ -958,7 +992,7 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
                       {isGenerating ? (
                         <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> جاري...</>
                       ) : (
-                        <><Upload size={14} /> {hasSummary ? "إعادة توليد 🤖" : "رفع ملف 📄📝📊"}</>
+                        <><Upload size={14} /> {hasSummary ? "إعادة توليد 🤖" : "رفع ملفات 📄📝📊"}</>
                       )}
                     </button>
                     <button onClick={() => handleDeleteLesson(lessonId)} className="p-1.5 rounded-lg hover:opacity-70 text-red-500"><Trash2 size={14} /></button>
