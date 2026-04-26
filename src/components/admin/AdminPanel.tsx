@@ -741,19 +741,21 @@ function SubjectLessonsView({ subject, onBack }: { subject: Record<string, unkno
   const handleCurriculumUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
+
+    // CRITICAL: Copy files BEFORE clearing input — FileList is a live reference
+    const allSelectedFiles: File[] = Array.from(fileList);
     e.target.value = "";
 
     const allowedExts = ['pdf','png','jpg','jpeg','webp','gif','bmp','docx','doc','xlsx','xls','csv','pptx','ppt','txt','md','rtf'];
     const files: File[] = [];
     const invalidFiles: string[] = [];
 
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
-      const ext = file.name?.toLowerCase().split('.').pop() || '';
+    for (const file of allSelectedFiles) {
+      const ext = (file.name || '').toLowerCase().split('.').pop()?.trim() || '';
       if (allowedExts.includes(ext)) {
         files.push(file);
       } else {
-        invalidFiles.push(file.name);
+        invalidFiles.push(`${file.name} (.${ext})`);
       }
     }
 
