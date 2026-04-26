@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useUIStore } from "@/store/ui-store";
 import {
   BookOpen,
@@ -145,6 +145,43 @@ export default function SubjectsPage() {
   const [activeSection, setActiveSection] = useState(0);
 
   const setForceHideSidebar = useUIStore((s) => s.setForceHideSidebar);
+
+  // ─── Sections of the currently selected lesson (for sidebar sub-items) ───
+  const currentLessonSections = useMemo(() => {
+    if (!selectedLesson?.summary?.content) return [];
+    const lines = selectedLesson.summary.content.split("\n");
+    const sections: { title: string; icon: string }[] = [];
+    const getSIcon = (t: string) => {
+      if (/مقدم|تعريف|تعرف/.test(t)) return "📖";
+      if (/مهم|أساس|رئيس|محور/.test(t)) return "⭐";
+      if (/مثال|تطبيق|تمرين/.test(t)) return "💡";
+      if (/سؤال|تدريب|اختبار|متوقع/.test(t)) return "📝";
+      if (/ملخص|خلاصة|مراجع|خريطة/.test(t)) return "🗺️";
+      if (/قانون|معادل|صيغ/.test(t)) return "📐";
+      if (/تجرب|عمل/.test(t)) return "🧪";
+      if (/تحذير|ملاحظ|انتبه|نقاط/.test(t)) return "⚠️";
+      if (/تفاعل|كيميا/.test(t)) return "⚗️";
+      if (/رقم|عدد|إحصا/.test(t)) return "🔢";
+      return "📌";
+    };
+    let hasContent = false;
+    let currentLines: string[] = [];
+    lines.forEach((line: string) => {
+      const t = line.trim();
+      if (t.startsWith("## ")) {
+        if (currentLines.some(l => l.trim()) || sections.length > 0) {
+          if (sections.length === 0 && hasContent) sections.push({ title: "المقدمة", icon: "📖" });
+        }
+        const title = t.slice(3).trim();
+        sections.push({ title, icon: getSIcon(title) });
+        currentLines = [];
+      } else {
+        if (t) hasContent = true;
+        currentLines.push(line);
+      }
+    });
+    return sections;
+  }, [selectedLesson]);
 
   // ─── Hide sidebar when inside a subject, show when on list ───
   useEffect(() => {
@@ -980,27 +1017,49 @@ export default function SubjectsPage() {
                         {unit.lessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => {
                           const isActive = activeLessonId === lesson.id;
                           return (
-                            <button
-                              key={lesson.id}
-                              onClick={() => openLesson(lesson.id)}
-                              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-right transition-all"
-                              style={{
-                                background: isActive ? color.accent + "15" : "transparent",
-                                borderRight: isActive ? `3px solid ${color.accent}` : "3px solid transparent",
-                              }}
-                            >
-                              <span className="flex-1 text-xs truncate" style={{ color: isActive ? color.accent : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>
-                                {lesson.title}
-                              </span>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {lesson.has_summary && <CheckCircle size={11} style={{ color: color.accent }} />}
-                                {lesson.question_count > 0 && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "var(--theme-hover-overlay)", color: "var(--theme-text-secondary)" }}>
-                                    {lesson.question_count}
-                                  </span>
-                                )}
-                              </div>
-                            </button>
+                            <div key={lesson.id}>
+                              <button
+                                onClick={() => openLesson(lesson.id)}
+                                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-right transition-all"
+                                style={{
+                                  background: isActive ? color.accent + "15" : "transparent",
+                                  borderRight: isActive ? `3px solid ${color.accent}` : "3px solid transparent",
+                                }}
+                              >
+                                <span className="flex-1 text-xs truncate" style={{ color: isActive ? color.accent : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>
+                                  {lesson.title}
+                                </span>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  {lesson.has_summary && <CheckCircle size={11} style={{ color: color.accent }} />}
+                                  {lesson.question_count > 0 && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "var(--theme-hover-overlay)", color: "var(--theme-text-secondary)" }}>
+                                      {lesson.question_count}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                              {/* Section sub-items under active lesson */}
+                              {isActive && currentLessonSections.length > 0 && (
+                                <div className="mr-5 mt-0.5 mb-1 space-y-0.5 border-r pr-2" style={{ borderColor: color.accent + "25" }}>
+                                  {currentLessonSections.map((sec, si) => (
+                                    <button
+                                      key={si}
+                                      onClick={() => setActiveSection(si)}
+                                      className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all"
+                                      style={{
+                                        background: activeSection === si ? color.accent + "18" : "transparent",
+                                        borderRight: activeSection === si ? `2px solid ${color.accent}` : "2px solid transparent",
+                                      }}
+                                    >
+                                      <span className="text-[11px] flex-shrink-0">{sec.icon}</span>
+                                      <span className="flex-1 text-[10px] truncate" style={{ color: activeSection === si ? color.accent : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400 }}>
+                                        {sec.title}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
@@ -1015,10 +1074,22 @@ export default function SubjectsPage() {
                     {selectedSubject.unassigned_lessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => {
                       const isActive = activeLessonId === lesson.id;
                       return (
-                        <button key={lesson.id} onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-right transition-all" style={{ background: isActive ? "var(--theme-hover-overlay)" : "transparent", borderRight: isActive ? "3px solid var(--theme-primary)" : "3px solid transparent" }}>
-                          <span className="flex-1 text-xs truncate" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>{lesson.title}</span>
-                          {lesson.has_summary && <CheckCircle size={11} style={{ color: "var(--theme-primary)" }} />}
-                        </button>
+                        <div key={lesson.id}>
+                          <button onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-right transition-all" style={{ background: isActive ? "var(--theme-hover-overlay)" : "transparent", borderRight: isActive ? "3px solid var(--theme-primary)" : "3px solid transparent" }}>
+                            <span className="flex-1 text-xs truncate" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>{lesson.title}</span>
+                            {lesson.has_summary && <CheckCircle size={11} style={{ color: "var(--theme-primary)" }} />}
+                          </button>
+                          {isActive && currentLessonSections.length > 0 && (
+                            <div className="mr-5 mt-0.5 mb-1 space-y-0.5 border-r pr-2" style={{ borderColor: "var(--theme-primary)" + "25" }}>
+                              {currentLessonSections.map((sec, si) => (
+                                <button key={si} onClick={() => setActiveSection(si)} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all" style={{ background: activeSection === si ? "var(--theme-primary)" + "18" : "transparent", borderRight: activeSection === si ? "2px solid var(--theme-primary)" : "2px solid transparent" }}>
+                                  <span className="text-[11px] flex-shrink-0">{sec.icon}</span>
+                                  <span className="flex-1 text-[10px] truncate" style={{ color: activeSection === si ? "var(--theme-primary)" : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400 }}>{sec.title}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -1030,10 +1101,22 @@ export default function SubjectsPage() {
               {allFlatLessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => {
                 const isActive = activeLessonId === lesson.id;
                 return (
-                  <button key={lesson.id} onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-right transition-all" style={{ background: isActive ? "var(--theme-primary)" + "12" : "transparent", borderRight: isActive ? "3px solid var(--theme-primary)" : "3px solid transparent" }}>
-                    <span className="flex-1 text-xs font-medium truncate" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>{lesson.title}</span>
-                    {lesson.has_summary && <CheckCircle size={11} style={{ color: "var(--theme-primary)" }} />}
-                  </button>
+                  <div key={lesson.id}>
+                    <button onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-right transition-all" style={{ background: isActive ? "var(--theme-primary)" + "12" : "transparent", borderRight: isActive ? "3px solid var(--theme-primary)" : "3px solid transparent" }}>
+                      <span className="flex-1 text-xs font-medium truncate" style={{ color: isActive ? "var(--theme-primary)" : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>{lesson.title}</span>
+                      {lesson.has_summary && <CheckCircle size={11} style={{ color: "var(--theme-primary)" }} />}
+                    </button>
+                    {isActive && currentLessonSections.length > 0 && (
+                      <div className="mr-5 mt-0.5 mb-1 space-y-0.5 border-r pr-2" style={{ borderColor: "var(--theme-primary)" + "25" }}>
+                        {currentLessonSections.map((sec, si) => (
+                          <button key={si} onClick={() => setActiveSection(si)} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right transition-all" style={{ background: activeSection === si ? "var(--theme-primary)" + "18" : "transparent", borderRight: activeSection === si ? "2px solid var(--theme-primary)" : "2px solid transparent" }}>
+                            <span className="text-[11px] flex-shrink-0">{sec.icon}</span>
+                            <span className="flex-1 text-[10px] truncate" style={{ color: activeSection === si ? "var(--theme-primary)" : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400 }}>{sec.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -1102,12 +1185,27 @@ export default function SubjectsPage() {
                       </button>
                       {isExpanded && (
                         <div className="px-4 pb-3 space-y-1">
-                          {unit.lessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => (
-                            <button key={lesson.id} onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-right" style={{ background: "var(--theme-surface-bg)" }}>
-                              <span className="flex-1 text-xs" style={{ color: "var(--theme-text-primary)" }}>{lesson.title}</span>
-                              {lesson.has_summary && <CheckCircle size={11} style={{ color: color.accent }} />}
-                            </button>
-                          ))}
+                          {unit.lessons.sort((a, b) => a.sort_order - b.sort_order).map((lesson) => {
+                            const isActive = activeLessonId === lesson.id;
+                            return (
+                              <div key={lesson.id}>
+                                <button onClick={() => openLesson(lesson.id)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-right" style={{ background: isActive ? color.accent + "15" : "var(--theme-surface-bg)" }}>
+                                  <span className="flex-1 text-xs" style={{ color: isActive ? color.accent : "var(--theme-text-primary)", fontWeight: isActive ? 700 : 400 }}>{lesson.title}</span>
+                                  {lesson.has_summary && <CheckCircle size={11} style={{ color: color.accent }} />}
+                                </button>
+                                {isActive && currentLessonSections.length > 0 && (
+                                  <div className="mr-6 mt-0.5 mb-1 space-y-0.5 border-r pr-2" style={{ borderColor: color.accent + "25" }}>
+                                    {currentLessonSections.map((sec, si) => (
+                                      <button key={si} onClick={() => setActiveSection(si)} className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-right" style={{ background: activeSection === si ? color.accent + "18" : "transparent" }}>
+                                        <span className="text-[11px]">{sec.icon}</span>
+                                        <span className="text-[10px] truncate" style={{ color: activeSection === si ? color.accent : "var(--theme-text-secondary)", fontWeight: activeSection === si ? 600 : 400 }}>{sec.title}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
