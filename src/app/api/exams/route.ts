@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     const subjectId = searchParams.get('subject_id');
     const lessonId = searchParams.get('lesson_id');
     const count = parseInt(searchParams.get('count') || '20');
+    const difficulty = searchParams.get('difficulty');
     const action = searchParams.get('action') || 'questions';
     
     const supabase = await createServerSupabaseClient();
@@ -28,7 +29,8 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.rpc('get_exam_questions', {
       p_subject_id: subjectId,
       p_lesson_id: lessonId || null,
-      p_count: count
+      p_count: count,
+      p_difficulty: difficulty || null,
     });
     if (error) return NextResponse.json({ error: 'فشل في جلب الأسئلة' }, { status: 500 });
     return NextResponse.json({ success: true, questions: data });
